@@ -6,6 +6,47 @@
     <groupId>it.uniud.newbestsub</groupId>
     <artifactId>NewBestSub</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <organization>
+        <name>Uniud</name>
+        <url>https://www.uniud.it/</url>
+    </organization>
+    <developers>
+        <developer>
+            <id>miccighel</id>
+            <name>Michael Soprano</name>
+            <email>miccighel@gmail.com</email>
+            <organization>Uniud</organization>
+            <organizationUrl>https://www.uniud.it/</organizationUrl>
+            <roles>
+                <role>Architect</role>
+                <role>Developer</role>
+            </roles>
+            <timezone>Europe/Rome</timezone>
+        </developer>
+    </developers>
+    <contributors>
+        <contributor>
+            <name>Kevin Roitero</name>
+            <email>roitero.kevin@spes.uniud.it</email>
+            <organization>Uniud</organization>
+            <organizationUrl>https://www.uniud.it/</organizationUrl>
+            <roles>
+                <role>Supervisor</role>
+            </roles>
+            <timezone>Europe/Rome</timezone>
+        </contributor>
+        <contributor>
+            <name>Stefano Mizzaro</name>
+            <email>mizzaro@uniud.it</email>
+            <url>http://users.dimi.uniud.it/~stefano.mizzaro/</url>
+            <organization>Uniud</organization>
+            <organizationUrl>https://www.uniud.it/</organizationUrl>
+            <roles>
+                <role>Supervisor</role>
+            </roles>
+            <timezone>Europe/Rome</timezone>
+        </contributor>
+    </contributors>
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
@@ -40,6 +81,20 @@
             <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-core</artifactId>
             <version>5.2</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.maven.reporting</groupId>
+                    <artifactId>maven-reporting-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.commons</groupId>
+                    <artifactId>commons-lang3</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.commons</groupId>
+                    <artifactId>commons-math3</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.uma.jmetal</groupId>
@@ -47,4 +102,41 @@
             <version>5.2</version>
         </dependency>
     </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.0.0</version>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                            <overWriteReleases>false</overWriteReleases>
+                            <overWriteSnapshots>false</overWriteSnapshots>
+                            <overWriteIfNewer>true</overWriteIfNewer>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>lib/</classpathPrefix>
+                            <mainClass>it.uniud.newbestsub.program.Program</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
