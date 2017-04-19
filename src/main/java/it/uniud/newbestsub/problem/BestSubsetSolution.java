@@ -17,6 +17,7 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
 
     public BestSubsetSolution(BinaryProblem problem, int totalNumberOfTopics) {
         super(problem) ;
+        initializeObjectiveValues();
 
         topicStatus = new boolean[totalNumberOfTopics];
 
@@ -42,12 +43,21 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
             numberOfSelectedTopics++;
         }
 
+        setVariableValue(0, createNewBitSet(topicStatus.length,topicStatus));
+
         System.out.println("SOLUTION - Current Gene: " + Arrays.toString(topicStatus).replaceAll("true", "1").replaceAll("false","0").replaceAll(", ",""));
         System.out.println("SOLUTION - Number of selected topics: " + numberOfSelectedTopics);
     }
 
     public BestSubsetSolution(BestSubsetSolution solution) {
         super(solution.problem);
+        for (int i = 0; i < problem.getNumberOfVariables(); i++) {
+            setVariableValue(i, (BinarySet) solution.getVariableValue(i).clone());
+        }
+
+        for (int i = 0; i < problem.getNumberOfObjectives(); i++) {
+            setObjective(i, solution.getObjective(i)) ;
+        }
     }
 
     public BestSubsetSolution copy() {
@@ -55,19 +65,38 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
     }
 
     public int getNumberOfBits(int index) {
-        return topicStatus.length ;
+        return getVariableValue(index).getBinarySetLength() ;
     }
 
     public int getTotalNumberOfBits() {
-        return topicStatus.length;
+        int sum = 0 ;
+        for (int i = 0; i < getNumberOfVariables(); i++) {
+            sum += getVariableValue(i).getBinarySetLength() ;
+        }
+        return sum ;
     }
 
     public String getVariableValueString(int index) {
         String toReturn = "";
         for (boolean status : topicStatus) {
-            toReturn += status;
+            if(status) {
+                toReturn += "1";
+            } else {
+                toReturn += "0";
+            }
         }
         return toReturn;
     }
 
+    private BinarySet createNewBitSet(int numberOfBits, boolean[] values) {
+        BinarySet bitSet = new BinarySet(numberOfBits) ;
+        for (int i = 0; i < numberOfBits; i++) {
+            if(values[i]){
+                bitSet.set(i);
+            } else {
+                bitSet.clear(i);
+            }
+        }
+        return bitSet ;
+    }
 }
