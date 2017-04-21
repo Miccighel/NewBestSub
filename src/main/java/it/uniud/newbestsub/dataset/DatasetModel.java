@@ -8,6 +8,11 @@ import java.io.IOException;
 import java.util.*;
 
 import it.uniud.newbestsub.problem.BestSubsetSolution;
+import it.uniud.newbestsub.problem.CorrelationStrategy;
+
+import org.apache.commons.math3.stat.correlation.KendallsCorrelation;
+import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
+
 import org.uma.jmetal.problem.BinaryProblem;
 import org.uma.jmetal.algorithm.Algorithm;
 import org.uma.jmetal.operator.Operator;
@@ -20,6 +25,9 @@ public class DatasetModel {
 
     public String[] systemLabels;
     public String[] topicLabels;
+    public int numberOfSystems;
+    public int systemSize;
+    public int numberOfTopics;
     public int topicSize;
     public Map<String, double[]> averagePrecisionsPerSystem = new LinkedHashMap<String, double[]>();
     public Map<String, double[]> averagePrecisionsPerTopic = new LinkedHashMap<String, double[]>();
@@ -32,9 +40,10 @@ public class DatasetModel {
 
     public DatasetModel() {}
 
-    public DatasetModel getModel() {
+    public DatasetModel retrieveModel() {
         return this;
     }
+
 
     public void loadData(String datasetName) throws FileNotFoundException, IOException {
 
@@ -43,12 +52,13 @@ public class DatasetModel {
         CSVReader reader = new CSVReader(new FileReader(datasetName));
         topicLabels = ((String[]) reader.readNext());
 
-        int topicSize = topicLabels.length-1;
+        numberOfTopics = topicLabels.length-1;
 
         String[] nextLine;
+        double[] averagePrecisions = new double[0];
         while ((nextLine = reader.readNext()) != null) {
             String systemLabel = nextLine[0];
-            double[] averagePrecisions = new double[nextLine.length - 1];
+            averagePrecisions = new double[nextLine.length - 1];
             for (int i = 1; i < nextLine.length; i++) {
                 averagePrecisions[i - 1] = Double.parseDouble(nextLine[i]);
             }
@@ -56,6 +66,8 @@ public class DatasetModel {
         }
 
         systemLabels = new String[averagePrecisionsPerSystem.entrySet().size()];
+        numberOfSystems = averagePrecisionsPerSystem.entrySet().size();
+        systemSize = averagePrecisions.length;
 
         /* averagePrecisionsPerSystem is a <String,double[]> dictionary where, for each entry, the key is the system label
         and the value is an array that contains the AP values of a single system, for each topic. */
@@ -75,6 +87,7 @@ public class DatasetModel {
         for (int i = 0; i < averagePrecisionsPerSystemAsMatrix.length; i++)
             for (int j = 0; j < averagePrecisionsPerSystemAsMatrix[0].length; j++)
                 transposedMatrix[j][i] = averagePrecisionsPerSystemAsMatrix[i][j];
+        topicSize = transposedMatrix[0].length;
 
         /* The above code is needed to traspose the average precision values collected to "move"
          from a "average precision values for each topic" perspective to a "average precision values for each system"
@@ -99,10 +112,35 @@ public class DatasetModel {
         /* The first label is stripped from the topic labels array because it's a fake label. */
     }
 
-    public void solve() {
+    public void solve(String chosenCorrelationMethod) {
 
-        problem = new BestSubsetProblem(averagePrecisionsPerTopic.entrySet().size(), averagePrecisionsPerTopic);
-        System.out.println(problem.createSolution().getVariableValueString(0));
+        CorrelationStrategy<double[],double[],Double> correlationStrategy;
+
+        switch (chosenCorrelationMethod) {
+            case "Pearson":
+                correlationStrategy = (firstArray, secondArray) -> {
+                    PearsonsCorrelation pcorr = new PearsonsCorrelation();
+                    return pcorr.correlation(firstArray, secondArray);
+                };
+                break;
+            case "Kendall":
+                correlationStrategy = (firstArray, secondArray) -> {
+                    KendallsCorrelation pcorr = new KendallsCorrelation();
+                    return pcorr.correlation(firstArray, secondArray);
+                };
+                break;
+            default:
+                correlationStrategy = (firstArray, secondArray) -> {
+                    PearsonsCorrelation pcorr = new PearsonsCorrelation();
+                    return pcorr.correlation(firstArray, secondArray);
+
+                };
+                break;
+        }
+
+        problem = new BestSubsetProblem(numberOfTopics, averagePrecisionsPerSystem, correlationStrategy);
+        BestSubsetSolution solution = new BestSubsetSolution(problem,numberOfTopics);
+        problem.evaluate(solution);
 
     }
 
