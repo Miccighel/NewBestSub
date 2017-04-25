@@ -2,24 +2,35 @@ package it.uniud.newbestsub.dataset;
 
 import com.opencsv.CSVReader;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
 
-import it.uniud.newbestsub.problem.BestSubsetSolution;
-import it.uniud.newbestsub.problem.CorrelationStrategy;
-
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation;
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
 
 import org.uma.jmetal.problem.BinaryProblem;
-import org.uma.jmetal.algorithm.Algorithm;
-import org.uma.jmetal.operator.Operator;
+import org.uma.jmetal.problem.Problem;
+
 import org.uma.jmetal.solution.BinarySolution;
 
-import it.uniud.newbestsub.problem.BestSubsetProblem;
+import org.uma.jmetal.operator.Operator;
+import org.uma.jmetal.operator.CrossoverOperator;
+import org.uma.jmetal.operator.MutationOperator;
+import org.uma.jmetal.operator.SelectionOperator;
+import org.uma.jmetal.operator.impl.selection.BinaryTournamentSelection;
+
+import org.uma.jmetal.algorithm.Algorithm;
+import org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAIIBuilder;
+
+import org.uma.jmetal.util.AlgorithmRunner;
+import org.uma.jmetal.util.JMetalLogger;
 import org.uma.jmetal.util.binarySet.BinarySet;
+import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator;
+
+import it.uniud.newbestsub.problem.*;
 
 public class DatasetModel {
 
@@ -32,11 +43,11 @@ public class DatasetModel {
     public Map<String, double[]> averagePrecisionsPerSystem = new LinkedHashMap<String, double[]>();
     public Map<String, double[]> averagePrecisionsPerTopic = new LinkedHashMap<String, double[]>();
 
-    private BinaryProblem problem;
-    private Algorithm<List<BinarySolution>> algorithm;
-    private Operator crossover;
-    private Operator mutation;
-    private Operator selection;
+    private Problem problem;
+    private Algorithm<List<BestSubsetSolution>> algorithm;
+    private CrossoverOperator<BestSubsetSolution> crossover;
+    private MutationOperator<BestSubsetSolution> mutation;
+    private SelectionOperator<List<BestSubsetSolution>, BestSubsetSolution> selection;
 
     public DatasetModel() {}
 
@@ -112,7 +123,7 @@ public class DatasetModel {
         /* The first label is stripped from the topic labels array because it's a fake label. */
     }
 
-    public void solve(String chosenCorrelationMethod) {
+    public List<BestSubsetSolution> solve(String chosenCorrelationMethod) {
 
         CorrelationStrategy<double[],double[],Double> correlationStrategy;
 
@@ -139,9 +150,19 @@ public class DatasetModel {
         }
 
         problem = new BestSubsetProblem(numberOfTopics, averagePrecisionsPerSystem, correlationStrategy);
-        BestSubsetSolution solution = new BestSubsetSolution(problem,numberOfTopics);
-        problem.evaluate(solution);
+        crossover = new BinaryPruningCrossover(0.9);
+        mutation = new BitFlipMutation(1);
+        selection =  new BinaryTournamentSelection<BestSubsetSolution>(new RankingAndCrowdingDistanceComparator<BestSubsetSolution>());
+        algorithm = new NSGAIIBuilder<BestSubsetSolution>(problem, crossover, mutation)
+                .setSelectionOperator(selection)
+                .setMaxEvaluations(100000)
+                .setPopulationSize(averagePrecisionsPerSystem.size())
+                .build() ;
 
+        AlgorithmRunner algorithmRunner = new AlgorithmRunner.Executor(algorithm).execute() ;
+        List<BestSubsetSolution> population = algorithm.getResult() ;
+
+        return population;
     }
 
 }

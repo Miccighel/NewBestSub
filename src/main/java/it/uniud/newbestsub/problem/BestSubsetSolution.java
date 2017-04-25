@@ -16,7 +16,6 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
     protected int numberOfSelectedTopics;
 
     public BestSubsetSolution(BinaryProblem problem, int numberOfTopics) {
-
         super(problem);
         initializeObjectiveValues();
 
@@ -46,13 +45,15 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
 
         setVariableValue(0, createNewBitSet(topicStatus.length, topicStatus));
 
-        //System.out.println("SOLUTION - Current Gene: " + Arrays.toString(topicStatus).replaceAll("true", "1").replaceAll("false","0").replaceAll(", ",""));
-        //System.out.println("SOLUTION - Number of selected topics: " + numberOfSelectedTopics);
+        System.out.println("SOLUTION - (New) Gene: " + getVariableValueString(0));
+        System.out.println("SOLUTION - (New) Number of selected topics: " + numberOfSelectedTopics);
     }
 
     public BestSubsetSolution(BestSubsetSolution solution) {
-
         super(solution.problem);
+
+        topicStatus = solution.topicStatus;
+        numberOfSelectedTopics = solution.numberOfSelectedTopics;
 
         for (int i = 0; i < problem.getNumberOfVariables(); i++) {
             setVariableValue(i, (BinarySet) solution.getVariableValue(i).clone());
@@ -65,6 +66,43 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
 
     public BestSubsetSolution copy() {
         return new BestSubsetSolution(this);
+    }
+
+    private BinarySet createNewBitSet(int numberOfBits, boolean[] values) {
+        BinarySet bitSet = new BinarySet(numberOfBits);
+        for (int i = 0; i < numberOfBits; i++) {
+            if (values[i]) {
+                bitSet.set(i);
+            } else {
+                bitSet.clear(i);
+            }
+        }
+        return bitSet;
+    }
+
+    public boolean[] getTopicStatus() {
+        boolean[] topicStatusValues = new boolean[getVariableValue(0).getBinarySetLength()];
+        for (int i=0;i<topicStatusValues.length;i++){
+            topicStatusValues[i] = getVariableValue(0).get(i);
+        }
+        return topicStatusValues;
+    }
+
+    public int getNumberOfSelectedTopics() {
+        return numberOfSelectedTopics;
+    }
+
+    public void setBitValue(int index, boolean value) {
+        BinarySet topicStatusValues = getVariableValue(0);
+        if(topicStatusValues.get(index) != value) {
+            topicStatusValues.set(index, value);
+            if(value){
+                numberOfSelectedTopics++;
+            } else {
+                numberOfSelectedTopics--;
+            }
+        }
+        setVariableValue(0, topicStatusValues);
     }
 
     public int getNumberOfBits(int index) {
@@ -81,29 +119,14 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
 
     public String getVariableValueString(int index) {
         String toReturn = "";
-        for (boolean status : topicStatus) {
-            if (status) {
+        BinarySet topicStatusValues = getVariableValue(0);
+        for (int i=0;i<topicStatusValues.getBinarySetLength();i++){
+            if(topicStatusValues.get(i)){
                 toReturn += "1";
             } else {
                 toReturn += "0";
             }
         }
         return toReturn;
-    }
-
-    public int getNumberOfSelectedTopics() {
-        return numberOfSelectedTopics;
-    }
-
-    private BinarySet createNewBitSet(int numberOfBits, boolean[] values) {
-        BinarySet bitSet = new BinarySet(numberOfBits);
-        for (int i = 0; i < numberOfBits; i++) {
-            if (values[i]) {
-                bitSet.set(i);
-            } else {
-                bitSet.clear(i);
-            }
-        }
-        return bitSet;
     }
 }

@@ -40,18 +40,18 @@ public class Program {
                         String chosenCorrelationMethod = commandLine.getOptionValue("c");
                         datasetController = new DatasetController();
                         datasetController.loadData(datasetPath);
-                        datasetController.solve(chosenCorrelationMethod);
+                        datasetController.solve(chosenCorrelationMethod, "outputFile.txt");
 
                     } else {
-                        throw new ParseException("EXCEPTION - The value for the option <<c>> or <<corr>> is wrong. Check the usage section below.");
+                        throw new ParseException("EXCEPTION (System) - The value for the option <<c>> or <<corr>> is wrong. Check the usage section below.");
                     }
 
                 } else {
-                    throw new ParseException("EXCEPTION - You have to specify a method to compute correlations. Check the usage section below.");
+                    throw new ParseException("EXCEPTION (System) - You have to specify a method to compute correlations. Check the usage section below.");
                 }
 
             } else {
-                throw new ParseException("EXCEPTION - You have to specify a path to a source file. Check the usage section below");
+                throw new ParseException("EXCEPTION (System) - You have to specify a path to a source file. Check the usage section below");
             }
 
         } catch (ParseException exception) {

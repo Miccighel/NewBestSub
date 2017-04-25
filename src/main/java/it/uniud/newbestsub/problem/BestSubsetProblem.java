@@ -45,7 +45,7 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
     }
 
     public int getBitsPerVariable(int index) {
-        return solution.getVariableValue(index).getBinarySetLength();
+        return solution.getNumberOfBits(0);
     }
 
     public BestSubsetSolution createSolution() {
@@ -61,7 +61,7 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
             topicStatusValues[i] = topicsStatus.get(i);
         }
 
-        System.out.println("PROBLEM - Evaluating gene: "+ Arrays.toString(topicStatusValues).replaceAll("true", "1").replaceAll("false", "0").replaceAll(", ", ""));
+        System.out.println("PROBLEM - Evaluating gene: "+ solution.getVariableValueString(0));
         System.out.println("PROBLEM - Number of selected topics: "+ ((BestSubsetSolution) solution).getNumberOfSelectedTopics());
 
         double[] meanAveragePrecisionsReduced = new double[averagePrecisions.entrySet().size()];
@@ -81,11 +81,7 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
 
         System.out.println("PROBLEM - Correlation: " + correlation);
 
-        //MULTIPLY BY -1 IF YOU WANT TO MAXIMIZE; LEAVE AS IT IS IF YOU WANT TO MINIMIZE
-
-        // Obiettivo 0: correlazione
         solution.setObjective(0,correlation*-1);
-        // Obiettivo 1: minimizzare il numero di colonne selezionate
         solution.setObjective(1, ((BestSubsetSolution) solution).getNumberOfSelectedTopics());
 
     }
