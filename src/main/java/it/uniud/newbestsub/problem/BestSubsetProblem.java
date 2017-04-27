@@ -16,14 +16,16 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
     public double[] meanAveragePrecisions;
     protected int numberOfTopics;
     protected int systemSize;
-    CorrelationStrategy<double[],double[],Double> correlationStrategy;
+    protected CorrelationStrategy<double[],double[],Double> correlationStrategy;
+    protected TargetStrategy<BestSubsetSolution,Double> targetToAchieve;
     BestSubsetSolution solution;
 
-    public BestSubsetProblem(int numberOfTopics, Map<String,double[]> averagePrecisions, CorrelationStrategy<double[],double[],Double> correlationStrategy) {
+    public BestSubsetProblem(int numberOfTopics, Map<String,double[]> averagePrecisions, CorrelationStrategy<double[],double[],Double> correlationMethod, TargetStrategy<BestSubsetSolution,Double> targetToAchieve) {
 
         this.numberOfTopics = numberOfTopics;
         this.averagePrecisions = averagePrecisions;
-        this.correlationStrategy = correlationStrategy;
+        this.correlationStrategy = correlationMethod;
+        this.targetToAchieve = targetToAchieve;
 
         setNumberOfVariables(1);
         setNumberOfObjectives(2);
@@ -74,15 +76,14 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
             counter++;
         }
 
-        System.out.println("PROBLEM - Mean Average Precisions: " + Arrays.toString(meanAveragePrecisions));
-        System.out.println("PROBLEM - Mean Average Precisions reduced: " + Arrays.toString(meanAveragePrecisionsReduced));
+        // System.out.println("PROBLEM - Mean Average Precisions: " + Arrays.toString(meanAveragePrecisions));
+        // System.out.println("PROBLEM - Mean Average Precisions reduced: " + Arrays.toString(meanAveragePrecisionsReduced));
 
         double correlation = correlationStrategy.computeCorrelation(meanAveragePrecisionsReduced,meanAveragePrecisions);
 
         System.out.println("PROBLEM - Correlation: " + correlation);
 
-        solution.setObjective(0,correlation*-1);
-        solution.setObjective(1, ((BestSubsetSolution) solution).getNumberOfSelectedTopics());
+        targetToAchieve.setTarget((BestSubsetSolution)solution,correlation);
 
     }
 

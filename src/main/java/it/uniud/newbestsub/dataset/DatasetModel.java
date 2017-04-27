@@ -8,6 +8,8 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
 
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation;
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
 
@@ -49,21 +51,21 @@ public class DatasetModel {
     private MutationOperator<BestSubsetSolution> mutation;
     private SelectionOperator<List<BestSubsetSolution>, BestSubsetSolution> selection;
 
-    public DatasetModel() {}
+    public DatasetModel() {
+    }
 
     public DatasetModel retrieveModel() {
         return this;
     }
 
-
-    public void loadData(String datasetName) throws FileNotFoundException, IOException {
+    public void loadData(String datasetPath) throws FileNotFoundException, IOException {
 
         // The parsing phase of the original .csv dataset file starts there.
 
-        CSVReader reader = new CSVReader(new FileReader(datasetName));
+        CSVReader reader = new CSVReader(new FileReader(datasetPath));
         topicLabels = ((String[]) reader.readNext());
 
-        numberOfTopics = topicLabels.length-1;
+        numberOfTopics = topicLabels.length - 1;
 
         String[] nextLine;
         double[] averagePrecisions = new double[0];
@@ -87,8 +89,8 @@ public class DatasetModel {
 
         Iterator iterator = averagePrecisionsPerSystem.entrySet().iterator();
         int counter = 0;
-        while(iterator.hasNext()) {
-            Map.Entry<String,double[]> singleSystem = (Map.Entry<String,double[]>)iterator.next();
+        while (iterator.hasNext()) {
+            Map.Entry<String, double[]> singleSystem = (Map.Entry<String, double[]>) iterator.next();
             averagePrecisionsPerSystemAsMatrix[counter] = singleSystem.getValue();
             systemLabels[counter] = singleSystem.getKey();
             counter++;
@@ -104,8 +106,8 @@ public class DatasetModel {
          from a "average precision values for each topic" perspective to a "average precision values for each system"
          perspective. */
 
-        for(int i=1; i<topicLabels.length;i++) {
-            this.averagePrecisionsPerTopic.put(topicLabels[i],transposedMatrix[i-1]);
+        for (int i = 1; i < topicLabels.length; i++) {
+            this.averagePrecisionsPerTopic.put(topicLabels[i], transposedMatrix[i - 1]);
         }
 
         /* averagePrecisionsPerTopic is a <String,double[]> dictionary where, for each entry, the key is the topic label
@@ -114,34 +116,34 @@ public class DatasetModel {
         /* In the loading phase there is an extensive use of the Map data structure. This has been done to do not lose
         the system and topic labels, which maybe will be useful in the future. */
 
-        String[] labels = new String[topicLabels.length-1];
-        for(int i=1;i<topicLabels.length;i++){
-            labels[i-1] = topicLabels[i];
+        String[] labels = new String[topicLabels.length - 1];
+        for (int i = 1; i < topicLabels.length; i++) {
+            labels[i - 1] = topicLabels[i];
         }
         topicLabels = labels;
 
         /* The first label is stripped from the topic labels array because it's a fake label. */
     }
 
-    public List<BestSubsetSolution> solve(String chosenCorrelationMethod) {
+    public ImmutablePair<List<BestSubsetSolution>, Long> solve(String chosenCorrelationMethod, String targetToAchieve) {
 
-        CorrelationStrategy<double[],double[],Double> correlationStrategy;
+        CorrelationStrategy<double[], double[], Double> correlationMethod;
 
         switch (chosenCorrelationMethod) {
             case "Pearson":
-                correlationStrategy = (firstArray, secondArray) -> {
+                correlationMethod = (firstArray, secondArray) -> {
                     PearsonsCorrelation pcorr = new PearsonsCorrelation();
                     return pcorr.correlation(firstArray, secondArray);
                 };
                 break;
             case "Kendall":
-                correlationStrategy = (firstArray, secondArray) -> {
+                correlationMethod = (firstArray, secondArray) -> {
                     KendallsCorrelation pcorr = new KendallsCorrelation();
                     return pcorr.correlation(firstArray, secondArray);
                 };
                 break;
             default:
-                correlationStrategy = (firstArray, secondArray) -> {
+                correlationMethod = (firstArray, secondArray) -> {
                     PearsonsCorrelation pcorr = new PearsonsCorrelation();
                     return pcorr.correlation(firstArray, secondArray);
 
@@ -149,20 +151,59 @@ public class DatasetModel {
                 break;
         }
 
-        problem = new BestSubsetProblem(numberOfTopics, averagePrecisionsPerSystem, correlationStrategy);
+        TargetStrategy<BestSubsetSolution, Double> target;
+
+        switch (targetToAchieve) {
+            case "Best":
+                target = (solution, correlation) -> {
+                    solution.setObjective(0, correlation * -1);
+                    solution.setObjective(1, solution.getNumberOfSelectedTopics());
+                };
+                break;
+            case "Worst":
+                target = (solution, correlation) -> {
+                    solution.setObjective(0, correlation);
+                    solution.setObjective(1, solution.getNumberOfSelectedTopics() * -1);
+                };
+                break;
+            default:
+                target = (solution, correlation) -> {
+                    solution.setObjective(0, correlation * -1);
+                    solution.setObjective(1, solution.getNumberOfSelectedTopics());
+                };
+                break;
+        }
+
+        problem = new BestSubsetProblem(numberOfTopics, averagePrecisionsPerSystem, correlationMethod, target);
         crossover = new BinaryPruningCrossover(0.9);
         mutation = new BitFlipMutation(1);
-        selection =  new BinaryTournamentSelection<BestSubsetSolution>(new RankingAndCrowdingDistanceComparator<BestSubsetSolution>());
+        selection = new BinaryTournamentSelection<BestSubsetSolution>(new RankingAndCrowdingDistanceComparator<BestSubsetSolution>());
         algorithm = new NSGAIIBuilder<BestSubsetSolution>(problem, crossover, mutation)
                 .setSelectionOperator(selection)
                 .setMaxEvaluations(100000)
                 .setPopulationSize(averagePrecisionsPerSystem.size())
-                .build() ;
+                .build();
 
-        AlgorithmRunner algorithmRunner = new AlgorithmRunner.Executor(algorithm).execute() ;
-        List<BestSubsetSolution> population = algorithm.getResult() ;
+        AlgorithmRunner algorithmRunner = new AlgorithmRunner.Executor(algorithm).execute();
+        List<BestSubsetSolution> population = algorithm.getResult();
 
-        return population;
+
+        switch (targetToAchieve) {
+            case "Best":
+                for (int i = 0; i < population.size(); i++) {
+                    BestSubsetSolution solutionToFix = population.get(i);
+                    double correlationToFix = solutionToFix.getObjective(0) * -1;
+                    solutionToFix.setObjective(0, correlationToFix);
+                    population.set(i, solutionToFix);
+                }
+                break;
+            case "Worst":
+                break;
+        }
+
+        long computingTime = algorithmRunner.getComputingTime();
+
+        return new ImmutablePair<List<BestSubsetSolution>, Long>(population, computingTime);
     }
 
 }

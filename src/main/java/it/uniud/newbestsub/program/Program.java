@@ -25,39 +25,39 @@ public class Program {
 
         DatasetController datasetController = new DatasetController();
 
+        String datasetPath = "";
+        String resultPath = "";
+        String chosenCorrelationMethod = "";
+        String targetToAchieve = "";
+
         try {
 
             parser = new DefaultParser();
-            commandLine = parser.parse( options, arguments);
+            commandLine = parser.parse(options, arguments);
 
-            if(commandLine.hasOption("f")) {
+            datasetPath = commandLine.getOptionValue("fi") + ".csv";
+            resultPath = commandLine.getOptionValue("fo");
 
-                if(commandLine.hasOption("c")){
-
-                    if(commandLine.getOptionValue("c").equals("Pearson")||commandLine.getOptionValue("c").equals("Kendall")){
-
-                        String datasetPath = commandLine.getOptionValue("f");
-                        String chosenCorrelationMethod = commandLine.getOptionValue("c");
-                        datasetController = new DatasetController();
-                        datasetController.loadData(datasetPath);
-                        datasetController.solve(chosenCorrelationMethod, "outputFile.txt");
-
-                    } else {
-                        throw new ParseException("EXCEPTION (System) - The value for the option <<c>> or <<corr>> is wrong. Check the usage section below.");
-                    }
-
-                } else {
-                    throw new ParseException("EXCEPTION (System) - You have to specify a method to compute correlations. Check the usage section below.");
-                }
-
+            if (commandLine.getOptionValue("c").equals("Pearson") || commandLine.getOptionValue("c").equals("Kendall")) {
+                chosenCorrelationMethod = commandLine.getOptionValue("c");
             } else {
-                throw new ParseException("EXCEPTION (System) - You have to specify a path to a source file. Check the usage section below");
+                throw new ParseException("EXCEPTION (System) - You have to specify a target for the program. Check the usage section below.");
             }
 
+            if (commandLine.getOptionValue("t").equals("Best") || commandLine.getOptionValue("t").equals("Worst") || commandLine.getOptionValue("t").equals("Average")) {
+                targetToAchieve = commandLine.getOptionValue("t");
+            } else {
+                throw new ParseException("EXCEPTION (System) - The value for the option <<t>> or <<target>> is wrong. Check the usage section below.");
+            }
+
+            datasetController = new DatasetController();
+            datasetController.loadData(datasetPath);
+            datasetController.solve(chosenCorrelationMethod, targetToAchieve, resultPath);
+
         } catch (ParseException exception) {
-            System.out.println(exception.getMessage());
+            System.out.println("EXCEPTION (System) - " + exception.getMessage());
             HelpFormatter formatter = new HelpFormatter();
-            formatter.printHelp( "NewBestSub", options);
+            formatter.printHelp("NewBestSub", options);
         }
 
         System.out.println("SYSTEM - NewBestSub is closing.");
@@ -68,14 +68,17 @@ public class Program {
 
         Option source;
         Options options = new Options();
-        source = Option.builder("f").longOpt( "file" ).desc( "Relative path to the CSV dataset file." ).hasArg().argName( "source" ).build();
+        source = Option.builder("fi").longOpt("fileIn").desc("Relative path to the CSV dataset file (do not use any extension in filename).").hasArg().argName("SourceFile").required().build();
         options.addOption(source);
-        source = Option.builder("c").longOpt("corr").desc( "Indicates the method that must be used to compute correlations.").hasArg().argName("Pearson,Kendall").build();
+        source = Option.builder("fo").longOpt("fileOut").desc("Relative path to the output file (do not use any extension in file name).").hasArg().argName("OutputFile").required().build();
         options.addOption(source);
-        source = Option.builder("g").longOpt("gui").desc( "Indicates if the GUI should be started or not." ).build();
+        source = Option.builder("c").longOpt("corr").desc("Indicates the method that must be used to compute correlations. Available methods: Pearson, Kendall. Choose one of them.").hasArg().argName("Method").required().build();
+        options.addOption(source);
+        source = Option.builder("t").longOpt("target").desc("Indicates the target that must be achieved. Available targets: Best, Worst, Average. Choose one of them.").hasArg().argName("Target").required().build();
+        options.addOption(source);
+        source = Option.builder("g").longOpt("gui").desc("Indicates if the GUI should be started or not.").build();
         options.addOption(source);
         return options;
-
     }
 
     /*public void start(Stage primaryStage) throws Exception {

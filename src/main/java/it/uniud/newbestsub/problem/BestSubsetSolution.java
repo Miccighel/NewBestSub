@@ -10,7 +10,7 @@ import org.uma.jmetal.util.pseudorandom.impl.ExtendedPseudoRandomGenerator;
 
 import java.util.Arrays;
 
-public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, BinaryProblem> implements BinarySolution {
+public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, BinaryProblem> implements BinarySolution, Comparable<BestSubsetSolution> {
 
     protected boolean topicStatus[];
     protected int numberOfSelectedTopics;
@@ -129,4 +129,17 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
         }
         return toReturn;
     }
+
+    public int compareTo(BestSubsetSolution anotherSolution) {
+        if (this.getNumberOfSelectedTopics() > anotherSolution.getNumberOfSelectedTopics()){
+            return 1;
+        } else {
+            if(this.getNumberOfSelectedTopics() == anotherSolution.getNumberOfSelectedTopics()){
+                return 0;
+            } else {
+                return -1;
+            }
+        }
+    }
+
 }
