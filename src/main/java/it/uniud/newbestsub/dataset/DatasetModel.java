@@ -8,7 +8,9 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
 
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.MutableTriple;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation;
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
@@ -44,6 +46,7 @@ public class DatasetModel {
     public int topicSize;
     public Map<String, double[]> averagePrecisionsPerSystem = new LinkedHashMap<String, double[]>();
     public Map<String, double[]> averagePrecisionsPerTopic = new LinkedHashMap<String, double[]>();
+    public Map<String, Map<String,Integer>> topicsSetsDistribution = new LinkedHashMap<String, Map<String, Integer>>();
 
     private Problem problem;
     private Algorithm<List<BestSubsetSolution>> algorithm;
@@ -123,6 +126,7 @@ public class DatasetModel {
         topicLabels = labels;
 
         /* The first label is stripped from the topic labels array because it's a fake label. */
+
     }
 
     public ImmutablePair<List<BestSubsetSolution>, Long> solve(String chosenCorrelationMethod, String targetToAchieve) {
@@ -180,13 +184,13 @@ public class DatasetModel {
         selection = new BinaryTournamentSelection<BestSubsetSolution>(new RankingAndCrowdingDistanceComparator<BestSubsetSolution>());
         algorithm = new NSGAIIBuilder<BestSubsetSolution>(problem, crossover, mutation)
                 .setSelectionOperator(selection)
-                .setMaxEvaluations(100000)
+                .setMaxEvaluations(1000)
                 .setPopulationSize(averagePrecisionsPerSystem.size())
                 .build();
 
         AlgorithmRunner algorithmRunner = new AlgorithmRunner.Executor(algorithm).execute();
+        long computingTime = algorithmRunner.getComputingTime();
         List<BestSubsetSolution> population = algorithm.getResult();
-
 
         switch (targetToAchieve) {
             case "Best":
@@ -198,12 +202,39 @@ public class DatasetModel {
                 }
                 break;
             case "Worst":
+                for (int i = 0; i < population.size(); i++) {
+                    BestSubsetSolution solutionToFix = population.get(i);
+                    double cardinalityToFix = solutionToFix.getObjective(1) * -1;
+                    solutionToFix.setObjective(1, cardinalityToFix);
+                    population.set(i, solutionToFix);
+                }
                 break;
         }
 
-        long computingTime = algorithmRunner.getComputingTime();
+        for(int i=0; i<topicLabels.length;i++){
+            Map<String,Integer> distributionPerCardinalities = new HashMap<String,Integer>();
+            topicsSetsDistribution.put(topicLabels[i],distributionPerCardinalities);
+        }
 
-        return new ImmutablePair<List<BestSubsetSolution>, Long>(population, computingTime);
+        for(int i=0;i<population.size();i++) {
+            BestSubsetSolution solutionToAnalyze = population.get(i);
+            boolean[] topicStatus = solutionToAnalyze.getTopicStatus();
+            double cardinality = solutionToAnalyze.getObjective(1);
+            for(int j=0;j<topicStatus.length;j++){
+                Map<String,Integer> distributionsPerCardinalities = topicsSetsDistribution.get(topicLabels[j]);
+                int distributionPerCardinality;
+                try {
+                    distributionPerCardinality = distributionsPerCardinalities.get(Double.toString(cardinality));
+                } catch (NullPointerException e) {
+                    distributionPerCardinality = 0;
+                }
+                int newValue = distributionPerCardinality + 1;
+                distributionsPerCardinalities.put(Double.toString(cardinality),newValue);
+                topicsSetsDistribution.put(topicLabels[j],distributionsPerCardinalities);
+            }
+        }
+
+        return new ImmutablePair<List<BestSubsetSolution>,Long>(population, computingTime);
     }
 
 }

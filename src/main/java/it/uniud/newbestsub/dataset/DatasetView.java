@@ -25,8 +25,8 @@ public class DatasetView {
 
         new SolutionListOutput(population)
                 .setSeparator(",")
-                .setVarFileOutputContext(new DefaultFileOutputContext(outputPath + "_var.csv"))
-                .setFunFileOutputContext(new DefaultFileOutputContext(outputPath + "_fun.csv"))
+                .setVarFileOutputContext(new DefaultFileOutputContext("res/" + outputPath + "_var.csv"))
+                .setFunFileOutputContext(new DefaultFileOutputContext("res/" + outputPath + "_fun.csv"))
                 .print();
 
         System.out.println("VIEW - Algorithm computing time: " + computingTime/1000 + " seconds.");

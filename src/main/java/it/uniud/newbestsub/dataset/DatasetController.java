@@ -1,5 +1,6 @@
 package it.uniud.newbestsub.dataset;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
@@ -14,12 +15,26 @@ public class DatasetController {
     }
 
     public void loadData(String datasetPath) {
-        System.out.println("CONTROLLER - Datased loading has been started");
-        System.out.println("CONTROLLER - The path to the dataset file is: " + datasetPath);
+        System.out.println("CONTROLLER - Datased loading has been started.");
+        System.out.println("CONTROLLER - Path to dataset file is: \"" + datasetPath + "\".");
+
+        File outputDirectory = new File("res/");
+        if (!outputDirectory.exists()) {
+            System.out.println("CONTROLLER - Starting to create output directory.");
+            boolean result = false;
+                outputDirectory.mkdir();
+                result = true;
+            if(result) {
+                System.out.println("CONTROLLER - Output directory created. Path is: \"" + outputDirectory.getName() + "/\".");
+            }
+        } else {
+            System.out.println("CONTROLLER - Output directory already exists. Path is: \"" + outputDirectory.getName() + "/\".");
+        }
+
         try {
             model.loadData(datasetPath);
         } catch (FileNotFoundException exception) {
-            System.out.println("EXCEPTION (Controller) - The path to your file isn't correct, fix it and try again.");
+            System.out.println("EXCEPTION (Controller) - Dataset file wasn't found. Be sure that your file is inside a \"data\" folder.");
         } catch (IOException exception) {
             System.out.println(exception.getMessage());
         }
@@ -28,9 +43,9 @@ public class DatasetController {
 
     public void solve(String chosenCorrelationMethod, String targetToAchieve, String resultPath) {
         System.out.println("CONTROLLER - Starting to solve the problem");
-        System.out.println("CONTROLLER - The chosen method to compute correlation is: " + chosenCorrelationMethod + ".");
-        System.out.println("CONTROLLER - The target to achieve is: " + targetToAchieve);
-        System.out.println("CONTROLLER - The path to the result file is: " + resultPath + ".");
+        System.out.println("CONTROLLER - Chosen method to compute correlation is: " + chosenCorrelationMethod + ".");
+        System.out.println("CONTROLLER - Target to achieve is: " + targetToAchieve);
+        System.out.println("CONTROLLER - Path to the result file is: \"res/" + resultPath + "\".");
         view.print(model.solve(chosenCorrelationMethod, targetToAchieve),resultPath);
         System.out.println("CONTROLLER - Finished to solve the problem.");
     }

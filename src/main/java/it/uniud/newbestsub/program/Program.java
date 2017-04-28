@@ -35,7 +35,7 @@ public class Program {
             parser = new DefaultParser();
             commandLine = parser.parse(options, arguments);
 
-            datasetPath = commandLine.getOptionValue("fi") + ".csv";
+            datasetPath = "data/" + commandLine.getOptionValue("fi") + ".csv";
             resultPath = commandLine.getOptionValue("fo");
 
             if (commandLine.getOptionValue("c").equals("Pearson") || commandLine.getOptionValue("c").equals("Kendall")) {
@@ -47,7 +47,7 @@ public class Program {
             if (commandLine.getOptionValue("t").equals("Best") || commandLine.getOptionValue("t").equals("Worst") || commandLine.getOptionValue("t").equals("Average")) {
                 targetToAchieve = commandLine.getOptionValue("t");
             } else {
-                throw new ParseException("EXCEPTION (System) - The value for the option <<t>> or <<target>> is wrong. Check the usage section below.");
+                throw new ParseException("EXCEPTION (System) - Value for the option <<t>> or <<target>> is wrong. Check the usage section below.");
             }
 
             datasetController = new DatasetController();
