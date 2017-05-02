@@ -19,9 +19,7 @@ public class DatasetView {
         List<BestSubsetSolution> population = runResult.left;
         long computingTime = runResult.right;
 
-        Comparator<BestSubsetSolution> comparator = (BestSubsetSolution sol1, BestSubsetSolution sol2) -> sol1.compareTo(sol2);
-
-        population.sort(comparator);
+        population.sort((BestSubsetSolution sol1, BestSubsetSolution sol2) -> sol1.compareTo(sol2));
 
         new SolutionListOutput(population)
                 .setSeparator(",")
@@ -32,6 +30,10 @@ public class DatasetView {
         System.out.println("VIEW - Algorithm computing time: " + computingTime/1000 + " seconds.");
         System.out.println("VIEW - Finished to print the result");
 
+    }
+
+    public void print(int test, String outputPath) {
+        System.out.println(test);
     }
 
 }

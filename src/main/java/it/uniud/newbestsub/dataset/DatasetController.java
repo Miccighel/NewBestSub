@@ -41,12 +41,23 @@ public class DatasetController {
         System.out.println("CONTROLLER - Dataset loading has been completed successfully.");
     }
 
-    public void solve(String chosenCorrelationMethod, String targetToAchieve, String resultPath) {
+    public void solve(String chosenCorrelationMethod, String targetToAchieve, int numberOfIterations, String resultPath) {
         System.out.println("CONTROLLER - Starting to solve the problem");
         System.out.println("CONTROLLER - Chosen method to compute correlation is: " + chosenCorrelationMethod + ".");
         System.out.println("CONTROLLER - Target to achieve is: " + targetToAchieve);
-        System.out.println("CONTROLLER - Path to the result file is: \"res/" + resultPath + "\".");
-        view.print(model.solve(chosenCorrelationMethod, targetToAchieve),resultPath);
+        System.out.println("CONTROLLER - Number of iterations to do is: " + numberOfIterations);
+        System.out.println("CONTROLLER - Path to the result file is: \"res/" + resultPath + ".csv\".");
+        view.print(model.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations),resultPath);
+        System.out.println("CONTROLLER - Finished to solve the problem.");
+    }
+
+    public void solve(String chosenCorrelationMethod, String resultPath) {
+        System.out.println("CONTROLLER - Starting to solve the problem");
+        System.out.println("CONTROLLER - Chosen method to compute correlation is: " + chosenCorrelationMethod + ".");
+        System.out.println("CONTROLLER - Target to achieve is: Average");
+        System.out.println("CONTROLLER - Number of iterations to do is: not necessary to define.");
+        System.out.println("CONTROLLER - Path to the result file is: \"res/" + resultPath + ".csv\".");
+        view.print(model.solve(chosenCorrelationMethod),resultPath);
         System.out.println("CONTROLLER - Finished to solve the problem.");
     }
 

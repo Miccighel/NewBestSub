@@ -29,6 +29,7 @@ public class Program {
         String resultPath = "";
         String chosenCorrelationMethod = "";
         String targetToAchieve = "";
+        int numberOfIterations = 0;
 
         try {
 
@@ -41,18 +42,35 @@ public class Program {
             if (commandLine.getOptionValue("c").equals("Pearson") || commandLine.getOptionValue("c").equals("Kendall")) {
                 chosenCorrelationMethod = commandLine.getOptionValue("c");
             } else {
-                throw new ParseException("EXCEPTION (System) - You have to specify a target for the program. Check the usage section below.");
+                throw new ParseException("You have to specify a correlation method for the program. Check the usage section below.");
             }
 
-            if (commandLine.getOptionValue("t").equals("Best") || commandLine.getOptionValue("t").equals("Worst") || commandLine.getOptionValue("t").equals("Average")) {
+            if (commandLine.getOptionValue("t").equals("Best") || commandLine.getOptionValue("t").equals("Worst")) {
                 targetToAchieve = commandLine.getOptionValue("t");
+                if (commandLine.hasOption("i")) {
+                    try {
+                        numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"));
+                        datasetController = new DatasetController();
+                        datasetController.loadData(datasetPath);
+                        datasetController.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations, resultPath);
+                    } catch (NumberFormatException exception) {
+                        throw new ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below");
+                    }
+                } else {
+                    throw new ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.");
+                }
             } else {
-                throw new ParseException("EXCEPTION (System) - Value for the option <<t>> or <<target>> is wrong. Check the usage section below.");
+                if (commandLine.getOptionValue("t").equals("Average")) {
+                    if (commandLine.hasOption("i")) {
+                        throw new ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.");
+                    }
+                    datasetController = new DatasetController();
+                    datasetController.loadData(datasetPath);
+                    datasetController.solve(chosenCorrelationMethod, resultPath);
+                } else {
+                    throw new ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.");
+                }
             }
-
-            datasetController = new DatasetController();
-            datasetController.loadData(datasetPath);
-            datasetController.solve(chosenCorrelationMethod, targetToAchieve, resultPath);
 
         } catch (ParseException exception) {
             System.out.println("EXCEPTION (System) - " + exception.getMessage());
@@ -75,6 +93,8 @@ public class Program {
         source = Option.builder("c").longOpt("corr").desc("Indicates the method that must be used to compute correlations. Available methods: Pearson, Kendall. Choose one of them.").hasArg().argName("Method").required().build();
         options.addOption(source);
         source = Option.builder("t").longOpt("target").desc("Indicates the target that must be achieved. Available targets: Best, Worst, Average. Choose one of them.").hasArg().argName("Target").required().build();
+        options.addOption(source);
+        source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It must be an integer value. It is mandatory only if the selected target is: Best, Worst.").hasArg().argName("Number").build();
         options.addOption(source);
         source = Option.builder("g").longOpt("gui").desc("Indicates if the GUI should be started or not.").build();
         options.addOption(source);

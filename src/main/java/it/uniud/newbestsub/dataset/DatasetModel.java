@@ -46,7 +46,7 @@ public class DatasetModel {
     public int topicSize;
     public Map<String, double[]> averagePrecisionsPerSystem = new LinkedHashMap<String, double[]>();
     public Map<String, double[]> averagePrecisionsPerTopic = new LinkedHashMap<String, double[]>();
-    public Map<String, Map<String,Integer>> topicsSetsDistribution = new LinkedHashMap<String, Map<String, Integer>>();
+    public Map<String, Map<Double, Integer>> topicsSetsDistribution = new LinkedHashMap<String, Map<Double, Integer>>();
 
     private Problem problem;
     private Algorithm<List<BestSubsetSolution>> algorithm;
@@ -129,7 +129,7 @@ public class DatasetModel {
 
     }
 
-    public ImmutablePair<List<BestSubsetSolution>, Long> solve(String chosenCorrelationMethod, String targetToAchieve) {
+    private CorrelationStrategy<double[], double[], Double> getCorrelationStrategy(String chosenCorrelationMethod) {
 
         CorrelationStrategy<double[], double[], Double> correlationMethod;
 
@@ -155,36 +155,43 @@ public class DatasetModel {
                 break;
         }
 
-        TargetStrategy<BestSubsetSolution, Double> target;
+        return correlationMethod;
+    }
+
+    public ImmutablePair<List<BestSubsetSolution>, Long> solve(String chosenCorrelationMethod, String targetToAchieve, int numberOfIterations) {
+
+        CorrelationStrategy<double[], double[], Double> correlationStrategy = getCorrelationStrategy(chosenCorrelationMethod);
+
+        TargetStrategy<BestSubsetSolution, Double> targetStrategy;
 
         switch (targetToAchieve) {
             case "Best":
-                target = (solution, correlation) -> {
+                targetStrategy = (solution, correlation) -> {
                     solution.setObjective(0, correlation * -1);
                     solution.setObjective(1, solution.getNumberOfSelectedTopics());
                 };
                 break;
             case "Worst":
-                target = (solution, correlation) -> {
+                targetStrategy = (solution, correlation) -> {
                     solution.setObjective(0, correlation);
                     solution.setObjective(1, solution.getNumberOfSelectedTopics() * -1);
                 };
                 break;
             default:
-                target = (solution, correlation) -> {
+                targetStrategy = (solution, correlation) -> {
                     solution.setObjective(0, correlation * -1);
                     solution.setObjective(1, solution.getNumberOfSelectedTopics());
                 };
                 break;
         }
 
-        problem = new BestSubsetProblem(numberOfTopics, averagePrecisionsPerSystem, correlationMethod, target);
+        problem = new BestSubsetProblem(numberOfTopics, averagePrecisionsPerSystem, correlationStrategy, targetStrategy);
         crossover = new BinaryPruningCrossover(0.9);
         mutation = new BitFlipMutation(1);
         selection = new BinaryTournamentSelection<BestSubsetSolution>(new RankingAndCrowdingDistanceComparator<BestSubsetSolution>());
         algorithm = new NSGAIIBuilder<BestSubsetSolution>(problem, crossover, mutation)
                 .setSelectionOperator(selection)
-                .setMaxEvaluations(1000)
+                .setMaxEvaluations(numberOfIterations)
                 .setPopulationSize(averagePrecisionsPerSystem.size())
                 .build();
 
@@ -211,30 +218,70 @@ public class DatasetModel {
                 break;
         }
 
-        for(int i=0; i<topicLabels.length;i++){
-            Map<String,Integer> distributionPerCardinalities = new HashMap<String,Integer>();
-            topicsSetsDistribution.put(topicLabels[i],distributionPerCardinalities);
+
+        for (int i = 0; i < topicLabels.length; i++) {
+            Map<Double, Integer> distributionPerCardinalities = new TreeMap<Double, Integer>();
+            topicsSetsDistribution.put(topicLabels[i], distributionPerCardinalities);
         }
 
-        for(int i=0;i<population.size();i++) {
+        for (int i = 0; i < population.size(); i++) {
             BestSubsetSolution solutionToAnalyze = population.get(i);
             boolean[] topicStatus = solutionToAnalyze.getTopicStatus();
             double cardinality = solutionToAnalyze.getObjective(1);
-            for(int j=0;j<topicStatus.length;j++){
-                Map<String,Integer> distributionsPerCardinalities = topicsSetsDistribution.get(topicLabels[j]);
+            for (int j = 0; j < topicStatus.length; j++) {
+                Map<Double, Integer> distributionsPerCardinalities = topicsSetsDistribution.get(topicLabels[j]);
                 int distributionPerCardinality;
                 try {
-                    distributionPerCardinality = distributionsPerCardinalities.get(Double.toString(cardinality));
+                    distributionPerCardinality = distributionsPerCardinalities.get(cardinality);
                 } catch (NullPointerException e) {
                     distributionPerCardinality = 0;
                 }
                 int newValue = distributionPerCardinality + 1;
-                distributionsPerCardinalities.put(Double.toString(cardinality),newValue);
-                topicsSetsDistribution.put(topicLabels[j],distributionsPerCardinalities);
+                distributionsPerCardinalities.put(cardinality, newValue);
+                topicsSetsDistribution.put(topicLabels[j], distributionsPerCardinalities);
             }
         }
 
-        return new ImmutablePair<List<BestSubsetSolution>,Long>(population, computingTime);
+        return new ImmutablePair<List<BestSubsetSolution>, Long>(population, computingTime);
+
+    }
+
+    public int solve(String chosenCorrelationMethod) {
+
+        CorrelationStrategy<double[], double[], Double> correlationStrategy = getCorrelationStrategy(chosenCorrelationMethod);
+
+        int maxCardinality = numberOfTopics;
+        Random generator = new Random();
+
+        for (int i = 1; i <= maxCardinality; i++) {
+
+            Set<Integer> topicToChoose = new HashSet<Integer>();
+            while (topicToChoose.size() < i) {
+                Integer next = generator.nextInt(maxCardinality) + 1;
+                topicToChoose.add(next);
+            }
+
+            int[] topicStatus = new int[maxCardinality];
+
+            if(i==maxCardinality){
+                for(int j=0; j<topicStatus.length;j++){
+                    topicStatus[j]=1;
+                }
+            } else {
+                for(int j=0; j<topicStatus.length;j++){
+                    topicStatus[j]=0;
+                }
+                Iterator iterator = topicToChoose.iterator();
+                while (iterator.hasNext()) {
+                    int chosenTopic = (int)iterator.next();
+                    topicStatus[chosenTopic-1] = 1;
+                }
+            }
+
+        }
+
+        return 1;
+
     }
 
 }
