@@ -1,5 +1,6 @@
 package it.uniud.newbestsub.problem;
 
+import it.uniud.newbestsub.utils.BestSubsetLogger;
 import org.uma.jmetal.operator.CrossoverOperator;
 import org.uma.jmetal.util.pseudorandom.JMetalRandom;
 
@@ -9,9 +10,11 @@ import java.util.List;
 public class BinaryPruningCrossover implements CrossoverOperator<BestSubsetSolution> {
 
     public double probability;
+    private BestSubsetLogger logger;
 
     public BinaryPruningCrossover(double probability) {
         this.probability = probability;
+        this.logger = BestSubsetLogger.getInstance();
     }
 
     public int getNumberOfParents(){
@@ -33,7 +36,7 @@ public class BinaryPruningCrossover implements CrossoverOperator<BestSubsetSolut
 
         if(JMetalRandom.getInstance().nextDouble() < probability){
 
-            System.out.println("CROSSOVER: Starting to apply it");
+            logger.log("CROSSOVER: Starting to apply it");
 
             for(int i=0;i<firstTopicStatus.length;i++){
                 childrenSolution.get(0).setBitValue(i,firstTopicStatus[i] && secondTopicStatus[i]);
@@ -50,14 +53,14 @@ public class BinaryPruningCrossover implements CrossoverOperator<BestSubsetSolut
 
         }
 
-        System.out.println("CROSSOVER - Parent 1: " + firstSolution.getVariableValueString(0));
-        System.out.println("CROSSOVER - Number of selected topics: " + firstSolution.getNumberOfSelectedTopics());
-        System.out.println("CROSSOVER - Parent 2: " + secondSolution.getVariableValueString(0));
-        System.out.println("CROSSOVER - Number of selected topics: " + secondSolution.getNumberOfSelectedTopics());
-        System.out.println("CROSSOVER - Child 1: " + childrenSolution.get(0).getVariableValueString(0));
-        System.out.println("CROSSOVER - Number of selected topics: " + childrenSolution.get(0).getNumberOfSelectedTopics());
-        System.out.println("CROSSOVER - Child 2: " + childrenSolution.get(1).getVariableValueString(0));
-        System.out.println("CROSSOVER - Number of selected topics: " + childrenSolution.get(1).getNumberOfSelectedTopics());
+        logger.log("CROSSOVER - Parent 1: " + firstSolution.getVariableValueString(0));
+        logger.log("CROSSOVER - Number of selected topics: " + firstSolution.getNumberOfSelectedTopics());
+        logger.log("CROSSOVER - Parent 2: " + secondSolution.getVariableValueString(0));
+        logger.log("CROSSOVER - Number of selected topics: " + secondSolution.getNumberOfSelectedTopics());
+        logger.log("CROSSOVER - Child 1: " + childrenSolution.get(0).getVariableValueString(0));
+        logger.log("CROSSOVER - Number of selected topics: " + childrenSolution.get(0).getNumberOfSelectedTopics());
+        logger.log("CROSSOVER - Child 2: " + childrenSolution.get(1).getVariableValueString(0));
+        logger.log("CROSSOVER - Number of selected topics: " + childrenSolution.get(1).getNumberOfSelectedTopics());
 
         return childrenSolution;
     }

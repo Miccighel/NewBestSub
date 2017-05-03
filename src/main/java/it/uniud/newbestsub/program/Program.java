@@ -4,6 +4,8 @@ import it.uniud.newbestsub.dataset.DatasetController;
 import it.uniud.newbestsub.dataset.DatasetModel;
 import it.uniud.newbestsub.dataset.DatasetView;
 
+import it.uniud.newbestsub.utils.BestSubsetLogger;
+import it.uniud.newbestsub.utils.Constants;
 import org.apache.commons.cli.*;
 
 public class Program {
@@ -15,8 +17,6 @@ public class Program {
     public static void main(String[] arguments) {
 
         // launch(args);
-
-        System.out.println("SYSTEM - NewBestSub is starting.");
 
         CommandLine commandLine;
         CommandLineParser parser;
@@ -30,19 +30,30 @@ public class Program {
         String chosenCorrelationMethod = "";
         String targetToAchieve = "";
         int numberOfIterations = 0;
+        String loggingModality = "";
+        BestSubsetLogger logger = null;
 
         try {
 
             parser = new DefaultParser();
             commandLine = parser.parse(options, arguments);
-
-            datasetPath = "data/" + commandLine.getOptionValue("fi") + ".csv";
+            datasetPath = Constants.INPUT_PATH + commandLine.getOptionValue("fi") + ".csv";
             resultPath = commandLine.getOptionValue("fo");
+
+            if (commandLine.getOptionValue("l").equals("Debug") || commandLine.getOptionValue("l").equals("File")) {
+                loggingModality = commandLine.getOptionValue("l");
+                logger = BestSubsetLogger.getInstance(loggingModality);
+                System.out.println("SYSTEM - NewBestSub is starting");
+                System.out.println("SYSTEM - Logging path is : \"" + Constants.LOG_PATH + Constants.LOG_FILE_NAME + "\"");
+                System.out.println("SYSTEM - Wait for the program to complete...");
+            } else {
+                throw new ParseException("Value for the option <<l>> or <<log>> is wrong. Check the usage section below.");
+            }
 
             if (commandLine.getOptionValue("c").equals("Pearson") || commandLine.getOptionValue("c").equals("Kendall")) {
                 chosenCorrelationMethod = commandLine.getOptionValue("c");
             } else {
-                throw new ParseException("You have to specify a correlation method for the program. Check the usage section below.");
+                throw new ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.");
             }
 
             if (commandLine.getOptionValue("t").equals("Best") || commandLine.getOptionValue("t").equals("Worst")) {
@@ -78,8 +89,7 @@ public class Program {
             formatter.printHelp("NewBestSub", options);
         }
 
-        System.out.println("SYSTEM - NewBestSub is closing.");
-
+        System.out.println("SYSTEM - NewBestSub is closing");
     }
 
     public static Options loadCommandLineOptions() {
@@ -96,9 +106,12 @@ public class Program {
         options.addOption(source);
         source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It must be an integer value. It is mandatory only if the selected target is: Best, Worst.").hasArg().argName("Number").build();
         options.addOption(source);
+        source = Option.builder("l").longOpt("log").desc("Indicates the required level of loggin. Available levels: Debug, File. Choose one of them").required().hasArg().argName("Log Level").build();
+        options.addOption(source);
         source = Option.builder("g").longOpt("gui").desc("Indicates if the GUI should be started or not.").build();
         options.addOption(source);
         return options;
+
     }
 
     /*public void start(Stage primaryStage) throws Exception {

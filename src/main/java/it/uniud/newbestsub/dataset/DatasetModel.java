@@ -6,10 +6,16 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+
 import java.util.*;
+
+import it.uniud.newbestsub.utils.BestSubsetLogger;
+import it.uniud.newbestsub.utils.Formula;
+import it.uniud.newbestsub.problem.*;
 
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.ImmutableTriple;
 import org.apache.commons.lang3.tuple.MutableTriple;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation;
@@ -34,8 +40,6 @@ import org.uma.jmetal.util.JMetalLogger;
 import org.uma.jmetal.util.binarySet.BinarySet;
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator;
 
-import it.uniud.newbestsub.problem.*;
-
 public class DatasetModel {
 
     public String[] systemLabels;
@@ -46,6 +50,7 @@ public class DatasetModel {
     public int topicSize;
     public Map<String, double[]> averagePrecisionsPerSystem = new LinkedHashMap<String, double[]>();
     public Map<String, double[]> averagePrecisionsPerTopic = new LinkedHashMap<String, double[]>();
+    public double[] meanAveragePrecisions;
     public Map<String, Map<Double, Integer>> topicsSetsDistribution = new LinkedHashMap<String, Map<Double, Integer>>();
 
     private Problem problem;
@@ -54,7 +59,10 @@ public class DatasetModel {
     private MutationOperator<BestSubsetSolution> mutation;
     private SelectionOperator<List<BestSubsetSolution>, BestSubsetSolution> selection;
 
+    private BestSubsetLogger logger;
+
     public DatasetModel() {
+        logger = BestSubsetLogger.getInstance();
     }
 
     public DatasetModel retrieveModel() {
@@ -99,23 +107,6 @@ public class DatasetModel {
             counter++;
         }
 
-        double[][] transposedMatrix = new double[averagePrecisionsPerSystemAsMatrix[0].length][averagePrecisionsPerSystemAsMatrix.length];
-        for (int i = 0; i < averagePrecisionsPerSystemAsMatrix.length; i++)
-            for (int j = 0; j < averagePrecisionsPerSystemAsMatrix[0].length; j++)
-                transposedMatrix[j][i] = averagePrecisionsPerSystemAsMatrix[i][j];
-        topicSize = transposedMatrix[0].length;
-
-        /* The above code is needed to traspose the average precision values collected to "move"
-         from a "average precision values for each topic" perspective to a "average precision values for each system"
-         perspective. */
-
-        for (int i = 1; i < topicLabels.length; i++) {
-            this.averagePrecisionsPerTopic.put(topicLabels[i], transposedMatrix[i - 1]);
-        }
-
-        /* averagePrecisionsPerTopic is a <String,double[]> dictionary where, for each entry, the key is the topic label
-        and the value is an array that contains the AP values for of a single topic, for each system. */
-
         /* In the loading phase there is an extensive use of the Map data structure. This has been done to do not lose
         the system and topic labels, which maybe will be useful in the future. */
 
@@ -126,6 +117,20 @@ public class DatasetModel {
         topicLabels = labels;
 
         /* The first label is stripped from the topic labels array because it's a fake label. */
+
+        meanAveragePrecisions = new double[averagePrecisionsPerSystem.entrySet().size()];
+
+        boolean[] useColumns = new boolean[numberOfTopics];
+        Arrays.fill(useColumns, Boolean.TRUE);
+
+        iterator = averagePrecisionsPerSystem.entrySet().iterator();
+        counter = 0;
+        while (iterator.hasNext()) {
+            Map.Entry<String, double[]> singleSystem = (Map.Entry<String, double[]>) iterator.next();
+            meanAveragePrecisions[counter] = Formula.getMean(singleSystem.getValue(), useColumns);
+            this.systemSize = (this.systemSize == 0) ? singleSystem.getValue().length : this.systemSize;
+            counter++;
+        }
 
     }
 
@@ -185,7 +190,7 @@ public class DatasetModel {
                 break;
         }
 
-        problem = new BestSubsetProblem(numberOfTopics, averagePrecisionsPerSystem, correlationStrategy, targetStrategy);
+        problem = new BestSubsetProblem(numberOfTopics, averagePrecisionsPerSystem, meanAveragePrecisions, correlationStrategy, targetStrategy);
         crossover = new BinaryPruningCrossover(0.9);
         mutation = new BitFlipMutation(1);
         selection = new BinaryTournamentSelection<BestSubsetSolution>(new RankingAndCrowdingDistanceComparator<BestSubsetSolution>());
@@ -218,7 +223,6 @@ public class DatasetModel {
                 break;
         }
 
-
         for (int i = 0; i < topicLabels.length; i++) {
             Map<Double, Integer> distributionPerCardinalities = new TreeMap<Double, Integer>();
             topicsSetsDistribution.put(topicLabels[i], distributionPerCardinalities);
@@ -246,41 +250,61 @@ public class DatasetModel {
 
     }
 
-    public int solve(String chosenCorrelationMethod) {
+    public ImmutableTriple<List<int[]>, int[], double[]> solve(String chosenCorrelationMethod) {
 
         CorrelationStrategy<double[], double[], Double> correlationStrategy = getCorrelationStrategy(chosenCorrelationMethod);
 
-        int maxCardinality = numberOfTopics;
+        List<int[]> variableValues = new LinkedList<int[]>();
+        int[] cardinalities = new int[numberOfTopics];
+        double[] correlations = new double[numberOfTopics];
+
         Random generator = new Random();
 
-        for (int i = 1; i <= maxCardinality; i++) {
+        for (int currentCardinality = 0; currentCardinality < numberOfTopics; currentCardinality++) {
 
             Set<Integer> topicToChoose = new HashSet<Integer>();
-            while (topicToChoose.size() < i) {
-                Integer next = generator.nextInt(maxCardinality) + 1;
+            while (topicToChoose.size() < currentCardinality + 1) {
+                Integer next = generator.nextInt(numberOfTopics) + 1;
                 topicToChoose.add(next);
             }
 
-            int[] topicStatus = new int[maxCardinality];
+            int[] topicStatus = new int[numberOfTopics];
 
-            if(i==maxCardinality){
-                for(int j=0; j<topicStatus.length;j++){
-                    topicStatus[j]=1;
-                }
-            } else {
-                for(int j=0; j<topicStatus.length;j++){
-                    topicStatus[j]=0;
-                }
-                Iterator iterator = topicToChoose.iterator();
-                while (iterator.hasNext()) {
-                    int chosenTopic = (int)iterator.next();
-                    topicStatus[chosenTopic-1] = 1;
-                }
+            Iterator iterator = topicToChoose.iterator();
+            while (iterator.hasNext()) {
+                int chosenTopic = (int) iterator.next();
+                topicStatus[chosenTopic - 1] = 1;
             }
+
+            String toString = "";
+            for (int j = 0; j < topicStatus.length; j++) {
+                toString += topicStatus[j];
+            }
+
+            logger.log("PROBLEM - Evaluating gene: " + toString);
+            logger.log("PROBLEM - Number of selected topics: " + currentCardinality);
+
+            double[] meanAveragePrecisionsReduced = new double[averagePrecisionsPerSystem.entrySet().size()];
+
+            iterator = averagePrecisionsPerSystem.entrySet().iterator();
+            int counter = 0;
+            while (iterator.hasNext()) {
+                Map.Entry<String, double[]> singleSystem = (Map.Entry<String, double[]>) iterator.next();
+                meanAveragePrecisionsReduced[counter] = Formula.getMean(singleSystem.getValue(), topicStatus);
+                counter++;
+            }
+
+            double correlation = correlationStrategy.computeCorrelation(meanAveragePrecisionsReduced, meanAveragePrecisions);
+
+            logger.log("PROBLEM - Correlation: " + correlation);
+
+            cardinalities[currentCardinality] = currentCardinality + 1;
+            correlations[currentCardinality] = correlation;
+            variableValues.add(topicStatus);
 
         }
 
-        return 1;
+        return new ImmutableTriple<List<int[]>, int[], double[]>(variableValues, cardinalities, correlations);
 
     }
 

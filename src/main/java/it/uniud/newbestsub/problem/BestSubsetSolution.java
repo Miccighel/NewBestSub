@@ -1,5 +1,6 @@
 package it.uniud.newbestsub.problem;
 
+import it.uniud.newbestsub.utils.BestSubsetLogger;
 import org.uma.jmetal.problem.BinaryProblem;
 import org.uma.jmetal.solution.BinarySolution;
 import org.uma.jmetal.solution.impl.AbstractGenericSolution;
@@ -14,11 +15,14 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
 
     protected boolean topicStatus[];
     protected int numberOfSelectedTopics;
+    private BestSubsetLogger logger;
 
     public BestSubsetSolution(BinaryProblem problem, int numberOfTopics) {
         super(problem);
         initializeObjectiveValues();
 
+        logger = BestSubsetLogger.getInstance();
+        
         topicStatus = new boolean[numberOfTopics];
         numberOfSelectedTopics = 0;
 
@@ -45,8 +49,8 @@ public class BestSubsetSolution extends AbstractGenericSolution<BinarySet, Binar
 
         setVariableValue(0, createNewBitSet(topicStatus.length, topicStatus));
 
-        System.out.println("SOLUTION - (New) Gene: " + getVariableValueString(0));
-        System.out.println("SOLUTION - (New) Number of selected topics: " + numberOfSelectedTopics);
+        logger.log("SOLUTION - (New) Gene: " + getVariableValueString(0));
+        logger.log("SOLUTION - (New) Number of selected topics: " + numberOfSelectedTopics);
     }
 
     public BestSubsetSolution(BestSubsetSolution solution) {

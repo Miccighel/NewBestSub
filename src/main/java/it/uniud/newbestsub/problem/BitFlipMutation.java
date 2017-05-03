@@ -1,6 +1,7 @@
 package it.uniud.newbestsub.problem;
 
-import it.uniud.newbestsub.utils.Tools;
+import it.uniud.newbestsub.utils.BestSubsetLogger;
+import it.uniud.newbestsub.utils.Formula;
 import org.uma.jmetal.operator.MutationOperator;
 import org.uma.jmetal.util.pseudorandom.JMetalRandom;
 import org.uma.jmetal.util.binarySet.BinarySet;
@@ -8,9 +9,11 @@ import org.uma.jmetal.util.binarySet.BinarySet;
 public class BitFlipMutation implements MutationOperator<BestSubsetSolution> {
 
     public double probability;
+    private BestSubsetLogger logger;
 
     public BitFlipMutation(double probability) {
         this.probability = probability;
+        this.logger = BestSubsetLogger.getInstance();
     }
 
     public BestSubsetSolution execute (BestSubsetSolution solution){
@@ -19,8 +22,8 @@ public class BitFlipMutation implements MutationOperator<BestSubsetSolution> {
         int totalNumberOfTopics = solution.getNumberOfBits(0);
         String oldGene = solution.getVariableValueString(0);
 
-        System.out.println("MUTATION - (Pre) Gene: " + solution.getVariableValueString(0));
-        System.out.println("MUTATION - (Pre) Number of selected topics: " + solution.getNumberOfSelectedTopics());
+        logger.log("MUTATION - (Pre) Gene: " + solution.getVariableValueString(0));
+        logger.log("MUTATION - (Pre) Number of selected topics: " + solution.getNumberOfSelectedTopics());
 
         if(JMetalRandom.getInstance().nextDouble() < probability) {
 
@@ -43,9 +46,9 @@ public class BitFlipMutation implements MutationOperator<BestSubsetSolution> {
 
         String newGene = solution.getVariableValueString(0);
 
-        System.out.println("MUTATION - (Post) Gene: " + solution.getVariableValueString(0));
-        System.out.println("MUTATION - (Post) Number of selected topics: " + solution.getNumberOfSelectedTopics());
-        System.out.println("MUTATION - Hamming distance: " + Tools.stringComparison(oldGene,newGene));
+        logger.log("MUTATION - (Post) Gene: " + solution.getVariableValueString(0));
+        logger.log("MUTATION - (Post) Number of selected topics: " + solution.getNumberOfSelectedTopics());
+        logger.log("MUTATION - Hamming distance: " + Formula.stringComparison(oldGene,newGene));
 
         return solution;
 

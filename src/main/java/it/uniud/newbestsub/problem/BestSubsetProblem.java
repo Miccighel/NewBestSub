@@ -4,7 +4,8 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 
-import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
+import it.uniud.newbestsub.utils.BestSubsetLogger;
+import it.uniud.newbestsub.utils.Formula;
 
 import org.uma.jmetal.problem.impl.AbstractBinaryProblem;
 import org.uma.jmetal.solution.BinarySolution;
@@ -18,12 +19,15 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
     protected int systemSize;
     protected CorrelationStrategy<double[],double[],Double> correlationStrategy;
     protected TargetStrategy<BestSubsetSolution,Double> targetToAchieve;
-    BestSubsetSolution solution;
+    protected BestSubsetSolution solution;
+    
+    private BestSubsetLogger logger;
 
-    public BestSubsetProblem(int numberOfTopics, Map<String,double[]> averagePrecisions, CorrelationStrategy<double[],double[],Double> correlationMethod, TargetStrategy<BestSubsetSolution,Double> targetToAchieve) {
+    public BestSubsetProblem(int numberOfTopics, Map<String,double[]> averagePrecisions, double[] meanAveragePrecisions, CorrelationStrategy<double[],double[],Double> correlationMethod, TargetStrategy<BestSubsetSolution,Double> targetToAchieve) {
 
         this.numberOfTopics = numberOfTopics;
         this.averagePrecisions = averagePrecisions;
+        this.meanAveragePrecisions = meanAveragePrecisions;
         this.correlationStrategy = correlationMethod;
         this.targetToAchieve = targetToAchieve;
 
@@ -31,19 +35,7 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
         setNumberOfObjectives(2);
         setName("BestSubsetProblem");
 
-        meanAveragePrecisions = new double[averagePrecisions.entrySet().size()];
-
-        boolean[] useColumns = new boolean[numberOfTopics];
-        Arrays.fill(useColumns, Boolean.TRUE);
-
-        Iterator iterator = averagePrecisions.entrySet().iterator();
-        int counter = 0;
-        while(iterator.hasNext()) {
-            Map.Entry<String,double[]> singleSystem = (Map.Entry<String,double[]>)iterator.next();
-            meanAveragePrecisions[counter] = getMean(singleSystem.getValue(), useColumns);
-            this.systemSize =  (this.systemSize==0) ? singleSystem.getValue().length : this.systemSize;
-            counter++;
-        }
+        logger = BestSubsetLogger.getInstance();
     }
 
     public int getBitsPerVariable(int index) {
@@ -63,8 +55,8 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
             topicStatusValues[i] = topicsStatus.get(i);
         }
 
-        System.out.println("PROBLEM - Evaluating gene: "+ solution.getVariableValueString(0));
-        System.out.println("PROBLEM - Number of selected topics: "+ ((BestSubsetSolution) solution).getNumberOfSelectedTopics());
+        logger.log("PROBLEM - Evaluating gene: "+ solution.getVariableValueString(0));
+        logger.log("PROBLEM - Number of selected topics: "+ ((BestSubsetSolution) solution).getNumberOfSelectedTopics());
 
         double[] meanAveragePrecisionsReduced = new double[averagePrecisions.entrySet().size()];
 
@@ -72,40 +64,19 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
         int counter = 0;
         while(iterator.hasNext()) {
             Map.Entry<String,double[]> singleSystem = (Map.Entry<String,double[]>)iterator.next();
-            meanAveragePrecisionsReduced[counter] = getMean(singleSystem.getValue(), topicStatusValues);
+            meanAveragePrecisionsReduced[counter] = Formula.getMean(singleSystem.getValue(), topicStatusValues);
             counter++;
         }
 
-        // System.out.println("PROBLEM - Mean Average Precisions: " + Arrays.toString(meanAveragePrecisions));
-        // System.out.println("PROBLEM - Mean Average Precisions reduced: " + Arrays.toString(meanAveragePrecisionsReduced));
+        // logger.log("PROBLEM - Mean Average Precisions: " + Arrays.toString(meanAveragePrecisions));
+        // logger.log("PROBLEM - Mean Average Precisions reduced: " + Arrays.toString(meanAveragePrecisionsReduced));
 
         double correlation = correlationStrategy.computeCorrelation(meanAveragePrecisionsReduced,meanAveragePrecisions);
 
-        System.out.println("PROBLEM - Correlation: " + correlation);
+        logger.log("PROBLEM - Correlation: " + correlation);
 
         targetToAchieve.setTarget((BestSubsetSolution)solution,correlation);
 
-    }
-
-    protected double getMean(double[] run, boolean[] useColumns){
-
-        double mean = 0.0;
-
-        int numberOfUsedCols = 0;
-        for(int i=0; i<useColumns.length; i++){
-            if(useColumns[i]){
-                numberOfUsedCols++;
-            }
-        }
-
-        for(int i=0; i<run.length;i++){
-            if(useColumns[i]){
-                mean = mean + run[i];
-            }
-        }
-        mean = mean / ((double) numberOfUsedCols);
-
-        return mean;
     }
 
 }

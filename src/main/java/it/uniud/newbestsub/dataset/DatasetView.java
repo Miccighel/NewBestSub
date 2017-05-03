@@ -1,7 +1,11 @@
 package it.uniud.newbestsub.dataset;
 
 import it.uniud.newbestsub.problem.BestSubsetSolution;
+import it.uniud.newbestsub.utils.BestSubsetLogger;
+
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.ImmutableTriple;
+
 import org.uma.jmetal.util.fileoutput.SolutionListOutput;
 import org.uma.jmetal.util.fileoutput.impl.DefaultFileOutputContext;
 
@@ -9,12 +13,16 @@ import java.util.Comparator;
 import java.util.List;
 
 public class DatasetView {
+    
+    public BestSubsetLogger logger;
 
-    public DatasetView() {}
+    public DatasetView() {
+        logger = BestSubsetLogger.getInstance();
+    }
 
     public void print(ImmutablePair<List<BestSubsetSolution>,Long> runResult, String outputPath) {
 
-        System.out.println("VIEW - Starting to print the result");
+        logger.log("VIEW - Starting to print the result");
 
         List<BestSubsetSolution> population = runResult.left;
         long computingTime = runResult.right;
@@ -27,13 +35,21 @@ public class DatasetView {
                 .setFunFileOutputContext(new DefaultFileOutputContext("res/" + outputPath + "_fun.csv"))
                 .print();
 
-        System.out.println("VIEW - Algorithm computing time: " + computingTime/1000 + " seconds.");
-        System.out.println("VIEW - Finished to print the result");
+        logger.log("VIEW - Algorithm computing time: " + computingTime/1000 + " seconds.");
+        logger.log("VIEW - Finished to print the result");
 
     }
 
-    public void print(int test, String outputPath) {
-        System.out.println(test);
+    public void print(ImmutableTriple<List<int[]>, int[], double[]> runResult, String outputPath) {
+
+        logger.log("VIEW - Starting to print the result");
+
+        List<int[]> population = runResult.left;
+        int[] cardinalities = runResult.middle;
+        double[] correlations = runResult.right;
+
+        logger.log("VIEW - Finished to print the result");
+
     }
 
 }
