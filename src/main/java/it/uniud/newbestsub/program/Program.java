@@ -40,7 +40,7 @@ public class Program {
             parser = new DefaultParser();
             commandLine = parser.parse(options, arguments);
             datasetPath = Constants.INPUT_PATH + commandLine.getOptionValue("fi") + ".csv";
-            resultPath = commandLine.getOptionValue("fi")+"-";
+            resultPath = commandLine.getOptionValue("fi") + "-";
 
             if (commandLine.getOptionValue("l").equals("Debug") || commandLine.getOptionValue("l").equals("File")) {
                 loggingModality = commandLine.getOptionValue("l");
@@ -54,15 +54,20 @@ public class Program {
 
             if (commandLine.getOptionValue("c").equals("Pearson") || commandLine.getOptionValue("c").equals("Kendall")) {
                 chosenCorrelationMethod = commandLine.getOptionValue("c");
-                resultPath += chosenCorrelationMethod += "-";
+                resultPath = resultPath + chosenCorrelationMethod + "-";
             } else {
                 throw new ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.");
             }
 
-            if (commandLine.getOptionValue("t").equals("Best") || commandLine.getOptionValue("t").equals("Worst")) {
+            if (commandLine.getOptionValue("t").equals("Best") || commandLine.getOptionValue("t").equals("Worst") || commandLine.getOptionValue("t").equals("Average")) {
+                if (commandLine.getOptionValue("t").equals("Average")) {
+                    if (commandLine.hasOption("i")) {
+                        throw new ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.");
+                    }
+                }
                 targetToAchieve = commandLine.getOptionValue("t");
                 resultPath += targetToAchieve;
-                if (commandLine.hasOption("i")) {
+                if (commandLine.hasOption("i") && !commandLine.getOptionValue("t").equals("Average")) {
                     try {
                         numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"));
                         datasetController = new DatasetController();
@@ -72,21 +77,18 @@ public class Program {
                         throw new ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below");
                     }
                 } else {
-                    throw new ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.");
-                }
-            } else {
-                if (commandLine.getOptionValue("t").equals("Average")) {
-                    if (commandLine.hasOption("i")) {
-                        throw new ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.");
+                    if (commandLine.getOptionValue("t").equals("Best") || commandLine.getOptionValue("t").equals("Worst")) {
+                        throw new ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.");
+                    } else {
+                        datasetController = new DatasetController();
+                        datasetController.loadData(datasetPath);
+                        datasetController.solve(chosenCorrelationMethod, targetToAchieve, 0, resultPath);
                     }
-                    datasetController = new DatasetController();
-                    datasetController.loadData(datasetPath);
-                    datasetController.solve(chosenCorrelationMethod, resultPath);
-                } else {
-                    throw new ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.");
                 }
-            }
 
+            } else {
+                throw new ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.");
+            }
         } catch (ParseException exception) {
             System.out.println("EXCEPTION (System) - " + exception.getMessage());
             HelpFormatter formatter = new HelpFormatter();
@@ -100,17 +102,17 @@ public class Program {
 
         Option source;
         Options options = new Options();
-        source = Option.builder("fi").longOpt("fileIn").desc("Relative path to the CSV dataset file (do not use any extension in filename).").hasArg().argName("SourceFile").required().build();
+        source = Option.builder("fi").longOpt("fileIn").desc("Relative path to the CSV dataset file (do not use any extension in filename) [REQUIRED].").hasArg().argName("SourceFile").required().build();
         options.addOption(source);
-        source = Option.builder("c").longOpt("corr").desc("Indicates the method that must be used to compute correlations. Available methods: Pearson, Kendall. Choose one of them.").hasArg().argName("Method").required().build();
+        source = Option.builder("c").longOpt("corr").desc("Indicates the method that must be used to compute correlations. Available methods: Pearson, Kendall. [REQUIRED]").hasArg().argName("Method").required().build();
         options.addOption(source);
-        source = Option.builder("t").longOpt("target").desc("Indicates the target that must be achieved. Available targets: Best, Worst, Average. Choose one of them.").hasArg().argName("Target").required().build();
+        source = Option.builder("t").longOpt("target").desc("Indicates the target that must be achieved. Available targets: Best, Worst, Average. [REQUIRED]").hasArg().argName("Target").required().build();
         options.addOption(source);
-        source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It must be an integer value. It is mandatory only if the selected target is: Best, Worst.").hasArg().argName("Number").build();
+        source = Option.builder("l").longOpt("log").desc("Indicates the required level of loggin. Available levels: Debug, File. [REQUIRED]").required().hasArg().argName("Log Level").build();
         options.addOption(source);
-        source = Option.builder("l").longOpt("log").desc("Indicates the required level of loggin. Available levels: Debug, File. Choose one of them").required().hasArg().argName("Log Level").build();
+        source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It must be an integer value. It is mandatory only if the selected target is: Best, Worst. [OPTIONAL]").hasArg().argName("Number").build();
         options.addOption(source);
-        source = Option.builder("g").longOpt("gui").desc("Indicates if the GUI should be started or not.").build();
+        source = Option.builder("g").longOpt("gui").desc("Indicates if the GUI should be started or not. [OPTIONAL]").build();
         options.addOption(source);
         return options;
 

@@ -8,7 +8,10 @@ import it.uniud.newbestsub.utils.BestSubsetLogger;
 import it.uniud.newbestsub.utils.Formula;
 
 import org.uma.jmetal.problem.impl.AbstractBinaryProblem;
+
 import org.uma.jmetal.solution.BinarySolution;
+import org.uma.jmetal.solution.Solution;
+
 import org.uma.jmetal.util.binarySet.BinarySet;
 
 public class BestSubsetProblem extends AbstractBinaryProblem {
@@ -18,12 +21,12 @@ public class BestSubsetProblem extends AbstractBinaryProblem {
     protected int numberOfTopics;
     protected int systemSize;
     protected CorrelationStrategy<double[],double[],Double> correlationStrategy;
-    protected TargetStrategy<BestSubsetSolution,Double> targetToAchieve;
+    protected TargetStrategy<Solution,Double> targetToAchieve;
     protected BestSubsetSolution solution;
     
     private BestSubsetLogger logger;
 
-    public BestSubsetProblem(int numberOfTopics, Map<String,double[]> averagePrecisions, double[] meanAveragePrecisions, CorrelationStrategy<double[],double[],Double> correlationMethod, TargetStrategy<BestSubsetSolution,Double> targetToAchieve) {
+    public BestSubsetProblem(int numberOfTopics, Map<String,double[]> averagePrecisions, double[] meanAveragePrecisions, CorrelationStrategy<double[],double[],Double> correlationMethod, TargetStrategy<Solution,Double> targetToAchieve) {
 
         this.numberOfTopics = numberOfTopics;
         this.averagePrecisions = averagePrecisions;

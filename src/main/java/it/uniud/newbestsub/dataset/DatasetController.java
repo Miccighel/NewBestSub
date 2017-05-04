@@ -50,20 +50,10 @@ public class DatasetController {
     public void solve(String chosenCorrelationMethod, String targetToAchieve, int numberOfIterations, String resultPath) {
         logger.log("CONTROLLER - Starting to solve the problem");
         logger.log("CONTROLLER - Chosen method to compute correlation is: " + chosenCorrelationMethod + ".");
-        logger.log("CONTROLLER - Target to achieve is: " + targetToAchieve);
+        logger.log("CONTROLLER - Target to achieve is: " + targetToAchieve + ".");
         logger.log("CONTROLLER - Number of iterations to do is: " + numberOfIterations);
-        logger.log("CONTROLLER - Path to the result files are: \"" + Constants.OUTPUT_PATH +  resultPath + "_fun.csv\" and \""+ Constants.OUTPUT_PATH +  resultPath + "_var.csv\"" + ".");
+        logger.log("CONTROLLER - Path to the result files are: \"" + Constants.OUTPUT_PATH +  resultPath + "-Fun.csv\" and \""+ Constants.OUTPUT_PATH +  resultPath + "-Var.csv\"" + ".");
         view.print(model.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations),resultPath);
-        logger.log("CONTROLLER - Finished to solve the problem.");
-    }
-
-    public void solve(String chosenCorrelationMethod, String resultPath) {
-        logger.log("CONTROLLER - Starting to solve the problem");
-        logger.log("CONTROLLER - Chosen method to compute correlation is: " + chosenCorrelationMethod + ".");
-        logger.log("CONTROLLER - Target to achieve is: Average");
-        logger.log("CONTROLLER - Number of iterations to do is: not necessary to define.");
-        logger.log("CONTROLLER - Path to the result files are: \"" + Constants.OUTPUT_PATH +  resultPath + "_fun.csv\" and \""+ Constants.OUTPUT_PATH +  resultPath + "_var.csv\"" + ".");
-        view.print(model.solve(chosenCorrelationMethod),resultPath);
         logger.log("CONTROLLER - Finished to solve the problem.");
     }
 
