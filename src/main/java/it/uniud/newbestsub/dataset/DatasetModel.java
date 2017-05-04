@@ -24,6 +24,7 @@ import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
 import org.uma.jmetal.problem.BinaryProblem;
 import org.uma.jmetal.problem.Problem;
 
+import org.uma.jmetal.runner.AbstractAlgorithmRunner;
 import org.uma.jmetal.solution.BinarySolution;
 
 import org.uma.jmetal.operator.Operator;
@@ -37,8 +38,10 @@ import org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAIIBuilder;
 
 import org.uma.jmetal.util.AlgorithmRunner;
 import org.uma.jmetal.util.JMetalLogger;
+import org.uma.jmetal.util.SolutionListUtils;
 import org.uma.jmetal.util.binarySet.BinarySet;
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator;
+import org.uma.jmetal.util.fileoutput.SolutionListOutput;
 
 public class DatasetModel {
 
@@ -134,7 +137,7 @@ public class DatasetModel {
 
     }
 
-    private CorrelationStrategy<double[], double[], Double> getCorrelationStrategy(String chosenCorrelationMethod) {
+    private CorrelationStrategy<double[], double[], Double> loadCorrelationStrategy(String chosenCorrelationMethod) {
 
         CorrelationStrategy<double[], double[], Double> correlationMethod;
 
@@ -163,9 +166,7 @@ public class DatasetModel {
         return correlationMethod;
     }
 
-    public ImmutablePair<List<BestSubsetSolution>, Long> solve(String chosenCorrelationMethod, String targetToAchieve, int numberOfIterations) {
-
-        CorrelationStrategy<double[], double[], Double> correlationStrategy = getCorrelationStrategy(chosenCorrelationMethod);
+    private TargetStrategy<BestSubsetSolution, Double> loadTargetStrategy (String targetToAchieve) {
 
         TargetStrategy<BestSubsetSolution, Double> targetStrategy;
 
@@ -190,6 +191,14 @@ public class DatasetModel {
                 break;
         }
 
+        return targetStrategy;
+    }
+
+    public ImmutablePair<List<BestSubsetSolution>, Long> solve(String chosenCorrelationMethod, String targetToAchieve, int numberOfIterations) {
+
+        CorrelationStrategy<double[], double[], Double> correlationStrategy = this.loadCorrelationStrategy(chosenCorrelationMethod);
+        TargetStrategy<BestSubsetSolution, Double> targetStrategy = this.loadTargetStrategy(targetToAchieve);
+
         problem = new BestSubsetProblem(numberOfTopics, averagePrecisionsPerSystem, meanAveragePrecisions, correlationStrategy, targetStrategy);
         crossover = new BinaryPruningCrossover(0.9);
         mutation = new BitFlipMutation(1);
@@ -203,6 +212,7 @@ public class DatasetModel {
         AlgorithmRunner algorithmRunner = new AlgorithmRunner.Executor(algorithm).execute();
         long computingTime = algorithmRunner.getComputingTime();
         List<BestSubsetSolution> population = algorithm.getResult();
+        population.sort((BestSubsetSolution sol1, BestSubsetSolution sol2) -> sol1.compareTo(sol2));
 
         switch (targetToAchieve) {
             case "Best":
@@ -223,25 +233,25 @@ public class DatasetModel {
                 break;
         }
 
-        for (int i = 0; i < topicLabels.length; i++) {
-            Map<Double, Integer> distributionPerCardinalities = new TreeMap<Double, Integer>();
-            topicsSetsDistribution.put(topicLabels[i], distributionPerCardinalities);
-        }
-
         for (int i = 0; i < population.size(); i++) {
             BestSubsetSolution solutionToAnalyze = population.get(i);
             boolean[] topicStatus = solutionToAnalyze.getTopicStatus();
             double cardinality = solutionToAnalyze.getObjective(1);
             for (int j = 0; j < topicStatus.length; j++) {
                 Map<Double, Integer> distributionsPerCardinalities = topicsSetsDistribution.get(topicLabels[j]);
+                if(distributionsPerCardinalities==null){
+                    distributionsPerCardinalities = new TreeMap<Double,Integer>();
+                }
                 int distributionPerCardinality;
                 try {
                     distributionPerCardinality = distributionsPerCardinalities.get(cardinality);
                 } catch (NullPointerException e) {
                     distributionPerCardinality = 0;
                 }
-                int newValue = distributionPerCardinality + 1;
-                distributionsPerCardinalities.put(cardinality, newValue);
+                if(topicStatus[j]){
+                    distributionPerCardinality++;
+                }
+                distributionsPerCardinalities.put(cardinality, distributionPerCardinality);
                 topicsSetsDistribution.put(topicLabels[j], distributionsPerCardinalities);
             }
         }
@@ -252,7 +262,7 @@ public class DatasetModel {
 
     public ImmutableTriple<List<int[]>, int[], double[]> solve(String chosenCorrelationMethod) {
 
-        CorrelationStrategy<double[], double[], Double> correlationStrategy = getCorrelationStrategy(chosenCorrelationMethod);
+        CorrelationStrategy<double[], double[], Double> correlationStrategy = loadCorrelationStrategy(chosenCorrelationMethod);
 
         List<int[]> variableValues = new LinkedList<int[]>();
         int[] cardinalities = new int[numberOfTopics];

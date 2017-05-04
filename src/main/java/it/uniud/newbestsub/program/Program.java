@@ -8,6 +8,8 @@ import it.uniud.newbestsub.utils.BestSubsetLogger;
 import it.uniud.newbestsub.utils.Constants;
 import org.apache.commons.cli.*;
 
+import java.io.File;
+
 public class Program {
 
     DatasetModel datasetModel;
@@ -38,12 +40,12 @@ public class Program {
             parser = new DefaultParser();
             commandLine = parser.parse(options, arguments);
             datasetPath = Constants.INPUT_PATH + commandLine.getOptionValue("fi") + ".csv";
-            resultPath = commandLine.getOptionValue("fo");
+            resultPath = commandLine.getOptionValue("fi")+"-";
 
             if (commandLine.getOptionValue("l").equals("Debug") || commandLine.getOptionValue("l").equals("File")) {
                 loggingModality = commandLine.getOptionValue("l");
                 logger = BestSubsetLogger.getInstance(loggingModality);
-                System.out.println("SYSTEM - NewBestSub is starting");
+                System.out.println("SYSTEM - NewBestSub is starting.");
                 System.out.println("SYSTEM - Logging path is : \"" + Constants.LOG_PATH + Constants.LOG_FILE_NAME + "\"");
                 System.out.println("SYSTEM - Wait for the program to complete...");
             } else {
@@ -52,12 +54,14 @@ public class Program {
 
             if (commandLine.getOptionValue("c").equals("Pearson") || commandLine.getOptionValue("c").equals("Kendall")) {
                 chosenCorrelationMethod = commandLine.getOptionValue("c");
+                resultPath += chosenCorrelationMethod += "-";
             } else {
                 throw new ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.");
             }
 
             if (commandLine.getOptionValue("t").equals("Best") || commandLine.getOptionValue("t").equals("Worst")) {
                 targetToAchieve = commandLine.getOptionValue("t");
+                resultPath += targetToAchieve;
                 if (commandLine.hasOption("i")) {
                     try {
                         numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"));
@@ -89,7 +93,7 @@ public class Program {
             formatter.printHelp("NewBestSub", options);
         }
 
-        System.out.println("SYSTEM - NewBestSub is closing");
+        System.out.println("SYSTEM - NewBestSub is closing.");
     }
 
     public static Options loadCommandLineOptions() {
@@ -97,8 +101,6 @@ public class Program {
         Option source;
         Options options = new Options();
         source = Option.builder("fi").longOpt("fileIn").desc("Relative path to the CSV dataset file (do not use any extension in filename).").hasArg().argName("SourceFile").required().build();
-        options.addOption(source);
-        source = Option.builder("fo").longOpt("fileOut").desc("Relative path to the output file (do not use any extension in file name).").hasArg().argName("OutputFile").required().build();
         options.addOption(source);
         source = Option.builder("c").longOpt("corr").desc("Indicates the method that must be used to compute correlations. Available methods: Pearson, Kendall. Choose one of them.").hasArg().argName("Method").required().build();
         options.addOption(source);

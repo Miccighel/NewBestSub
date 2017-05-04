@@ -3,16 +3,20 @@ package it.uniud.newbestsub.dataset;
 import it.uniud.newbestsub.problem.BestSubsetSolution;
 import it.uniud.newbestsub.utils.BestSubsetLogger;
 
+import it.uniud.newbestsub.utils.Constants;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.ImmutableTriple;
 
+import org.uma.jmetal.runner.AbstractAlgorithmRunner;
+import org.uma.jmetal.util.SolutionListUtils;
 import org.uma.jmetal.util.fileoutput.SolutionListOutput;
 import org.uma.jmetal.util.fileoutput.impl.DefaultFileOutputContext;
 
+import java.io.FileNotFoundException;
 import java.util.Comparator;
 import java.util.List;
 
-public class DatasetView {
+public class DatasetView extends AbstractAlgorithmRunner {
     
     public BestSubsetLogger logger;
 
@@ -27,12 +31,10 @@ public class DatasetView {
         List<BestSubsetSolution> population = runResult.left;
         long computingTime = runResult.right;
 
-        population.sort((BestSubsetSolution sol1, BestSubsetSolution sol2) -> sol1.compareTo(sol2));
-
         new SolutionListOutput(population)
                 .setSeparator(",")
-                .setVarFileOutputContext(new DefaultFileOutputContext("res/" + outputPath + "_var.csv"))
-                .setFunFileOutputContext(new DefaultFileOutputContext("res/" + outputPath + "_fun.csv"))
+                .setVarFileOutputContext(new DefaultFileOutputContext(Constants.OUTPUT_PATH + outputPath + "-Var.csv"))
+                .setFunFileOutputContext(new DefaultFileOutputContext(Constants.OUTPUT_PATH + outputPath + "-Fun.csv"))
                 .print();
 
         logger.log("VIEW - Algorithm computing time: " + computingTime/1000 + " seconds.");
