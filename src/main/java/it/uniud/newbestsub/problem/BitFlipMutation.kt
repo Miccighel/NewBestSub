@@ -8,7 +8,6 @@ import org.uma.jmetal.operator.MutationOperator
 import org.uma.jmetal.solution.BinarySolution
 
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
-import org.uma.jmetal.util.binarySet.BinarySet
 
 class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution> {
 
@@ -18,22 +17,22 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
         val totalNumberOfTopics = solution.getNumberOfBits(0)
         val oldGene = solution.getVariableValueString(0)
 
-        BestSubsetLogger.Companion.log("MUTATION - (Pre) Gene: " + solution.getVariableValueString(0))
-        BestSubsetLogger.Companion.log("MUTATION - (Pre) Number of selected topics: " + (solution as BestSubsetSolution).getNumberOfSelectedTopics())
+        BestSubsetLogger.log("MUTATION - (Pre) Gene: ${solution.getVariableValueString(0)}")
+        BestSubsetLogger.log("MUTATION - (Pre) Number of selected topics: ${(solution as BestSubsetSolution).numberOfSelectedTopics}")
 
         if (JMetalRandom.getInstance().nextDouble() < probability) {
 
             var flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * totalNumberOfTopics).toInt()
             if (flipIndex == totalNumberOfTopics) {
-                flipIndex = flipIndex - 1
+                flipIndex -= 1
             }
 
             solution.setBitValue(flipIndex, !topicStatus.get(flipIndex))
 
-            if (solution.getNumberOfSelectedTopics() == 0) {
+            if (solution.numberOfSelectedTopics == 0) {
                 flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * totalNumberOfTopics).toInt()
                 if (flipIndex == totalNumberOfTopics) {
-                    flipIndex = flipIndex - 1
+                    flipIndex -= 1
                 }
                 solution.setBitValue(flipIndex, !topicStatus.get(flipIndex))
             }
@@ -42,9 +41,9 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
 
         val newGene = solution.getVariableValueString(0)
 
-        BestSubsetLogger.Companion.log("MUTATION - (Post) Gene: " + solution.getVariableValueString(0))
-        BestSubsetLogger.Companion.log("MUTATION - (Post) Number of selected topics: " + solution.getNumberOfSelectedTopics())
-        BestSubsetLogger.Companion.log("MUTATION - Hamming distance: " + Formula.stringComparison(oldGene, newGene))
+        BestSubsetLogger.log("MUTATION - (Post) Gene: " + solution.getVariableValueString(0))
+        BestSubsetLogger.log("MUTATION - (Post) Number of selected topics: " + solution.numberOfSelectedTopics)
+        BestSubsetLogger.log("MUTATION - Hamming distance: " + Formula.stringComparison(oldGene, newGene))
 
         return solution
 

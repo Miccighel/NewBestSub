@@ -50,7 +50,7 @@ class BestSubsetProblem(
         }
 
         BestSubsetLogger.log("PROBLEM - Evaluating gene: " + solution.getVariableValueString(0))
-        BestSubsetLogger.log("PROBLEM - Number of selected topics: " + (solution as BestSubsetSolution).getNumberOfSelectedTopics())
+        BestSubsetLogger.log("PROBLEM - Number of selected topics: " + (solution as BestSubsetSolution).numberOfSelectedTopics)
 
         val meanAveragePrecisionsReduced = DoubleArray(averagePrecisions.entries.size)
 

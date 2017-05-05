@@ -6,7 +6,7 @@ object Formula {
         var distance = 0
         var i = 0
         while (i < firstString.length) {
-            if (secondString.toCharArray()[i] != firstString.toCharArray()[i]) {
+            if (secondString[i] != firstString[i]) {
                 distance++
             }
             i++

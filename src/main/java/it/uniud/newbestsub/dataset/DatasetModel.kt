@@ -25,6 +25,7 @@ import org.uma.jmetal.operator.impl.selection.BinaryTournamentSelection
 
 import org.uma.jmetal.algorithm.Algorithm
 import org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAIIBuilder
+import org.uma.jmetal.problem.BinaryProblem
 
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.solution.Solution
@@ -37,13 +38,14 @@ class DatasetModel {
 
     lateinit var systemLabels: Array<String>
     lateinit var topicLabels: Array<String>
-    var numberOfSystems: Int
-    var systemSize: Int
-    var numberOfTopics: Int
-    var topicSize: Int
-    var averagePrecisions: MutableMap<String, DoubleArray>
-    var meanAveragePrecisions: DoubleArray
-    var topicDistribution: MutableMap<String, MutableMap<Double, Boolean>>
+    var numberOfSystems = 0
+    var systemSize = 0
+    var numberOfTopics = 0
+    var topicSize = 0
+    var averagePrecisions: MutableMap<String, DoubleArray> = LinkedHashMap()
+    var meanAveragePrecisions = DoubleArray(0)
+    var topicDistribution: MutableMap<String, MutableMap<Double, Boolean>> = LinkedHashMap()
+    var computingTime : Long = 0
 
     private lateinit var problem: Problem<BinarySolution>
     private lateinit var crossover: CrossoverOperator<BinarySolution>
@@ -53,18 +55,6 @@ class DatasetModel {
     private lateinit var builder: NSGAIIBuilder<BinarySolution>
     private lateinit var algorithm: Algorithm<List<BinarySolution>>
     private lateinit var algorithmRunner: AlgorithmRunner
-    private var computingTime: Long
-
-    init {
-        numberOfSystems = 0
-        systemSize = 0
-        numberOfTopics = 0
-        topicSize = 0
-        averagePrecisions = LinkedHashMap()
-        meanAveragePrecisions = DoubleArray(0)
-        topicDistribution = LinkedHashMap()
-        computingTime = 0
-    }
 
     @Throws(FileNotFoundException::class, IOException::class)
     fun loadData(datasetPath: String) {
@@ -75,7 +65,7 @@ class DatasetModel {
         topicLabels = reader.readNext() as Array<String>
         numberOfTopics = topicLabels.size - 1
 
-        BestSubsetLogger.Companion.log("MODEL - Total number of topics: " + numberOfTopics)
+        BestSubsetLogger.log("MODEL - Total number of topics: $numberOfTopics")
 
         var nextLine = reader.readNext();
         var averagePrecisions = DoubleArray(0)
@@ -101,7 +91,7 @@ class DatasetModel {
             singleSystem.key
         })
 
-        BestSubsetLogger.Companion.log("MODEL - Total number of systems: " + this.averagePrecisions.entries.size)
+        BestSubsetLogger.log("MODEL - Total number of systems: $this.averagePrecisions.entries.size")
 
         /* In the loading phase there is an extensive use of the Map data structure. This has been done to do not lose
         the system and topic labels, which maybe will be useful in the future. */
@@ -177,7 +167,7 @@ class DatasetModel {
 
     }
 
-    fun solve(chosenCorrelationMethod: String, targetToAchieve: String, numberOfIterations: Int): ImmutablePair<List<Solution<BinarySolution>>, Long> {
+    fun solve(chosenCorrelationMethod: String, targetToAchieve: String, numberOfIterations: Int): Pair<List<Solution<BinarySolution>>, Long> {
 
         val correlationStrategy = this.loadCorrelationStrategy(chosenCorrelationMethod)
         val targetStrategy = this.loadTargetStrategy(targetToAchieve)
@@ -199,10 +189,7 @@ class DatasetModel {
                 }
 
                 val topicStatus = BooleanArray(numberOfTopics)
-
-                var iterator: Iterator<*> = topicToChoose.iterator()
-                while (iterator.hasNext()) {
-                    val chosenTopic = iterator.next() as Int
+                for(chosenTopic in topicToChoose) {
                     topicStatus[chosenTopic - 1] = true
                 }
 
@@ -215,8 +202,8 @@ class DatasetModel {
                     }
                 }
 
-                BestSubsetLogger.Companion.log("PROBLEM - Evaluating gene: " + toString)
-                BestSubsetLogger.Companion.log("PROBLEM - Number of selected topics: " + currentCardinality)
+                BestSubsetLogger.log("PROBLEM - Evaluating gene: $toString")
+                BestSubsetLogger.log("PROBLEM - Number of selected topics: $currentCardinality")
 
                 val meanAveragePrecisionsReduced = DoubleArray(averagePrecisions.entries.size)
 
@@ -228,7 +215,7 @@ class DatasetModel {
 
                 val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced,meanAveragePrecisions)
 
-                BestSubsetLogger.Companion.log("PROBLEM - Correlation: " + correlation)
+                BestSubsetLogger.log("PROBLEM - Correlation: $correlation")
 
                 cardinalities[currentCardinality] = currentCardinality + 1
                 correlations[currentCardinality] = correlation
@@ -238,14 +225,17 @@ class DatasetModel {
 
             problem = BestSubsetProblem(numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
             for (i in 0..numberOfTopics - 1) {
-                val solution = BestSubsetSolution(problem as BestSubsetProblem?, numberOfTopics)
+                val solution = BestSubsetSolution(problem as BinaryProblem, numberOfTopics)
                 solution.setVariableValue(0, solution.createNewBitSet(numberOfTopics, variableValues[i]))
                 solution.setObjective(0, correlations[i])
                 solution.setObjective(1, cardinalities[i].toDouble())
                 population.add(solution as Solution<BinarySolution>)
             }
 
-            population.sortWith(kotlin.Comparator({sol1: Solution<BinarySolution>, sol2: Solution<BinarySolution> -> (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)}))
+            population.sortWith(kotlin.Comparator({
+                sol1: Solution<BinarySolution>, sol2: Solution<BinarySolution> ->
+                (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
+            }))
 
         } else {
 
@@ -253,16 +243,21 @@ class DatasetModel {
             crossover = BinaryPruningCrossover(0.9)
             mutation = BitFlipMutation(1.0)
             selection = BinaryTournamentSelection(RankingAndCrowdingDistanceComparator<BinarySolution>())
+
             builder = NSGAIIBuilder(problem, crossover, mutation)
             builder.selectionOperator = selection
             builder.populationSize = averagePrecisions.size
             builder.setMaxEvaluations(numberOfIterations)
+
             algorithm = builder.build()
             algorithmRunner = AlgorithmRunner.Executor(algorithm).execute()
             computingTime = algorithmRunner.computingTime
-            population = algorithm.getResult() as MutableList<Solution<BinarySolution>>
 
-            population.sortWith(kotlin.Comparator({sol1: Solution<BinarySolution>, sol2: Solution<BinarySolution> -> (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)}))
+            population = algorithm.getResult() as MutableList<Solution<BinarySolution>>
+            population.sortWith(kotlin.Comparator({
+                sol1: Solution<BinarySolution>, sol2: Solution<BinarySolution> ->
+                (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
+            }))
 
             when (targetToAchieve) {
                 "Best" -> for (i in population.indices) {
@@ -285,7 +280,7 @@ class DatasetModel {
         }
 
         for (solutionToAnalyze in population) {
-            val topicStatus = (solutionToAnalyze as BestSubsetSolution).topicStatus
+            val topicStatus = (solutionToAnalyze as BestSubsetSolution).retrieveTopicStatus()
             val cardinality = solutionToAnalyze.getObjective(1)
             for (j in topicStatus.indices) {
                 var isInSolutionForCard = topicDistribution[topicLabels[j]] as MutableMap
@@ -298,7 +293,7 @@ class DatasetModel {
             }
         }
 
-        return ImmutablePair<List<Solution<BinarySolution>>, Long>(population, computingTime)
+        return Pair<List<Solution<BinarySolution>>, Long>(population, computingTime)
 
     }
 

@@ -19,13 +19,11 @@ import java.util.LinkedList
 
 class DatasetView : AbstractAlgorithmRunner() {
 
-    fun print(runResult: ImmutablePair<List<Solution<BinarySolution>>, Long>, outputPath: String) {
+    fun print(runResult: Pair<List<Solution<BinarySolution>>, Long>, outputPath: String) {
 
-        BestSubsetLogger.Companion.log("VIEW - Starting to print the result")
+        BestSubsetLogger.log("VIEW - Starting to print the result")
 
-        val population = runResult.left
-        val computingTime = runResult.right
-
+        val (population, computingTime) = runResult
         val populationHelper = SolutionListOutput(population)
 
         populationHelper.setSeparator(",")
@@ -33,8 +31,8 @@ class DatasetView : AbstractAlgorithmRunner() {
                 .setFunFileOutputContext(DefaultFileOutputContext(Constants.OUTPUT_PATH + outputPath + "-Fun.csv"))
                 .print()
 
-        BestSubsetLogger.Companion.log("VIEW - Algorithm computing time: " + computingTime / 1000 + " seconds.")
-        BestSubsetLogger.Companion.log("VIEW - Finished to print the result")
+        BestSubsetLogger.log("VIEW - Algorithm computing time: " + computingTime / 1000 + " seconds.")
+        BestSubsetLogger.log("VIEW - Finished to print the result")
 
     }
 

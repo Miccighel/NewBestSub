@@ -5,24 +5,20 @@ import java.io.IOException
 
 import java.util.logging.*
 
-class BestSubsetLogger {
+object BestSubsetLogger {
 
-    companion object {
+    private lateinit var fileHandler: FileHandler
+    private lateinit var currentLevel: Level
 
-        private lateinit var fileHandler: FileHandler
-        private lateinit var streamHandler: StreamHandler
-        private lateinit var textFormatter: BestSubsetFormatter
-        private var logger = Logger.getLogger(this.javaClass.name)
-        private lateinit var currentLevel: Level
-        private lateinit var modality: String
+    private var textFormatter  = BestSubsetFormatter()
+    private var streamHandler  = StreamHandler(System.out, textFormatter)
+    private var logger =  Logger.getLogger(this.javaClass.name)
 
-        fun loadModality(modalityToUse: String) {
-
-            modality = modalityToUse
-            logger = Logger.getLogger(this.javaClass.name)
+    var modality = "Debug"
+        set(value) {
             logger.useParentHandlers = false
 
-            when (modality) {
+            when (value) {
                 "Debug" -> {
                     logger.level = Level.FINE
                     currentLevel = Level.FINE
@@ -44,21 +40,16 @@ class BestSubsetLogger {
                 println(exception.message)
             }
 
-            textFormatter = BestSubsetFormatter()
-
             fileHandler.formatter = textFormatter
             fileHandler.level = Level.FINER
             logger.addHandler(fileHandler)
-            streamHandler = StreamHandler(System.out, textFormatter)
             streamHandler.formatter = textFormatter
             streamHandler.level = Level.FINE
             logger.addHandler(streamHandler)
-
         }
 
-        fun log(message: String) {
-            logger.log(currentLevel, message)
-        }
+    fun log(message: String) {
+        logger.log(currentLevel, message)
     }
-
 }
+

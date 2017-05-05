@@ -18,8 +18,8 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
         val firstSolution = solutionList[0] as BestSubsetSolution
         val secondSolution = solutionList[1] as BestSubsetSolution
 
-        val firstTopicStatus = firstSolution.getTopicStatus()
-        val secondTopicStatus = secondSolution.getTopicStatus()
+        val firstTopicStatus = firstSolution.retrieveTopicStatus()
+        val secondTopicStatus = secondSolution.retrieveTopicStatus()
 
         val childrenSolution = LinkedList<BinarySolution>()
 
@@ -31,14 +31,14 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
 
         if (JMetalRandom.getInstance().nextDouble() < probability) {
 
-            BestSubsetLogger.Companion.log("CROSSOVER: Starting to apply it")
+            BestSubsetLogger.log("CROSSOVER: Starting to apply it")
 
             for (i in firstTopicStatus.indices) {
                 firstChildren.setBitValue(i, firstTopicStatus[i] && secondTopicStatus[i])
                 secondChildren.setBitValue(i, firstTopicStatus[i] || secondTopicStatus[i])
             }
 
-            if (firstChildren.getNumberOfSelectedTopics() == 0) {
+            if (firstChildren.numberOfSelectedTopics == 0) {
                 var flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * firstChildren.getNumberOfBits(0)).toInt()
                 if (flipIndex == firstChildren.getNumberOfBits(0)) {
                     flipIndex = flipIndex - 1
@@ -51,14 +51,14 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
         childrenSolution[0] = firstChildren
         childrenSolution[1] = secondChildren
 
-        BestSubsetLogger.Companion.log("CROSSOVER - Parent 1: " + firstSolution.getVariableValueString(0))
-        BestSubsetLogger.Companion.log("CROSSOVER - Number of selected topics: " + firstSolution.getNumberOfSelectedTopics())
-        BestSubsetLogger.Companion.log("CROSSOVER - Parent 2: " + secondSolution.getVariableValueString(0))
-        BestSubsetLogger.Companion.log("CROSSOVER - Number of selected topics: " + secondSolution.getNumberOfSelectedTopics())
-        BestSubsetLogger.Companion.log("CROSSOVER - Child 1: " + firstChildren.getVariableValueString(0))
-        BestSubsetLogger.Companion.log("CROSSOVER - Number of selected topics: " + firstChildren.getNumberOfSelectedTopics())
-        BestSubsetLogger.Companion.log("CROSSOVER - Child 2: " + secondChildren.getVariableValueString(0))
-        BestSubsetLogger.Companion.log("CROSSOVER - Number of selected topics: " + secondChildren.getNumberOfSelectedTopics())
+        BestSubsetLogger.log("CROSSOVER - Parent 1: " + firstSolution.getVariableValueString(0))
+        BestSubsetLogger.log("CROSSOVER - Number of selected topics: " + firstSolution.numberOfSelectedTopics)
+        BestSubsetLogger.log("CROSSOVER - Parent 2: " + secondSolution.getVariableValueString(0))
+        BestSubsetLogger.log("CROSSOVER - Number of selected topics: " + secondSolution.numberOfSelectedTopics)
+        BestSubsetLogger.log("CROSSOVER - Child 1: " + firstChildren.getVariableValueString(0))
+        BestSubsetLogger.log("CROSSOVER - Number of selected topics: " + firstChildren.numberOfSelectedTopics)
+        BestSubsetLogger.log("CROSSOVER - Child 2: " + secondChildren.getVariableValueString(0))
+        BestSubsetLogger.log("CROSSOVER - Number of selected topics: " + secondChildren.numberOfSelectedTopics)
 
         return childrenSolution
     }
