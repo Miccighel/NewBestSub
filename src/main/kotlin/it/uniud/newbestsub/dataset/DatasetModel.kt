@@ -12,7 +12,6 @@ import it.uniud.newbestsub.utils.BestSubsetLogger
 import it.uniud.newbestsub.utils.Formula
 import it.uniud.newbestsub.problem.*
 
-import org.apache.commons.lang3.tuple.ImmutablePair
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation
 
@@ -34,17 +33,32 @@ import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
 
 import kotlin.collections.LinkedHashMap
 
+
 class DatasetModel {
 
-    lateinit var systemLabels: Array<String>
-    lateinit var topicLabels: Array<String>
+    var systemLabels = Array(0,{""})
+    var topicLabels = Array(0,{""})
     var numberOfSystems = 0
     var systemSize = 0
     var numberOfTopics = 0
-    var topicSize = 0
     var averagePrecisions: MutableMap<String, DoubleArray> = LinkedHashMap()
     var meanAveragePrecisions = DoubleArray(0)
-    var topicDistribution: MutableMap<String, MutableMap<Double, Boolean>> = LinkedHashMap()
+    val topicDistribution: MutableMap<String, MutableMap<Double, Boolean>> by lazy {
+        var map : MutableMap<String, MutableMap<Double, Boolean>> = LinkedHashMap()
+        for(topicLabel in topicLabels) map.put(topicLabel,TreeMap<Double,Boolean>())
+        for (solutionToAnalyze in population) {
+            val topicStatus = (solutionToAnalyze as BestSubsetSolution).retrieveTopicStatus()
+            val cardinality = solutionToAnalyze.getObjective(1)
+            for (j in topicStatus.indices) {
+                var isInSolutionForCard = map[topicLabels[j]] as MutableMap
+                var status : Boolean = false
+                if(topicStatus[j]) status = true
+                isInSolutionForCard[cardinality] = status
+                map[topicLabels[j]] = isInSolutionForCard
+            }
+        }
+        map
+    }
     var computingTime : Long = 0
 
     private lateinit var problem: Problem<BinarySolution>
@@ -62,19 +76,17 @@ class DatasetModel {
         // The parsing phase of the original .csv dataset file starts there.
 
         val reader = CSVReader(FileReader(datasetPath))
-        topicLabels = reader.readNext() as Array<String>
+        topicLabels = reader.readNext()
         numberOfTopics = topicLabels.size - 1
 
         BestSubsetLogger.log("MODEL - Total number of topics: $numberOfTopics")
 
-        var nextLine = reader.readNext();
+        var nextLine = reader.readNext()
         var averagePrecisions = DoubleArray(0)
         while (nextLine  != null) {
             val systemLabel = nextLine[0]
             averagePrecisions = DoubleArray(nextLine.size - 1)
-            for (i in 1..nextLine.size - 1) {
-                averagePrecisions[i - 1] = java.lang.Double.parseDouble(nextLine[i])
-            }
+            for (i in 1..nextLine.size - 1) averagePrecisions[i - 1] = java.lang.Double.parseDouble(nextLine[i])
             this.averagePrecisions.put(systemLabel, averagePrecisions)
             nextLine = reader.readNext()
         }
@@ -85,31 +97,26 @@ class DatasetModel {
         /* averagePrecisions is a <String,double[]> dictionary where, for each entry, the key is the system label
         and the value is an array that contains the AP values of a single system, for each topic. */
 
-        var iterator: Iterator<Map.Entry<String,DoubleArray>> = this.averagePrecisions.entries.iterator()
-        systemLabels = Array<String>(numberOfSystems,{ _ ->
-            val singleSystem = iterator.next()
-            singleSystem.key
-        })
+        val iterator = this.averagePrecisions.entries.iterator()
+        systemLabels = Array(numberOfSystems,{ _ -> iterator.next().key })
 
-        BestSubsetLogger.log("MODEL - Total number of systems: $this.averagePrecisions.entries.size")
+        BestSubsetLogger.log("MODEL - Total number of systems: ${this.averagePrecisions.entries.size}")
 
         /* In the loading phase there is an extensive use of the Map data structure. This has been done to do not lose
         the system and topic labels, which maybe will be useful in the future. */
 
-        topicLabels = Array<String>(topicLabels.size, { i -> topicLabels[i] }).sliceArray(1..topicLabels.size-1)
+        topicLabels = Array(topicLabels.size, { i -> topicLabels[i] }).sliceArray(1..topicLabels.size-1)
 
         /* The first label is stripped from the topic labels array because it's a fake label. */
 
         meanAveragePrecisions = DoubleArray(this.averagePrecisions.entries.size)
 
         val useColumns = BooleanArray(numberOfTopics)
-        Arrays.fill(useColumns, java.lang.Boolean.TRUE)
+        Arrays.fill(useColumns, true)
 
-        var counter = 0
-        for(singleSystem in this.averagePrecisions.entries) {
-            meanAveragePrecisions[counter] = Formula.getMean(singleSystem.value, useColumns)
+        for((index, singleSystem) in this.averagePrecisions.entries.withIndex()) {
+            meanAveragePrecisions[index] = Formula.getMean(singleSystem.value, useColumns)
             this.systemSize = if (this.systemSize == 0) singleSystem.value.size else this.systemSize
-            counter++
         }
 
     }
@@ -118,7 +125,7 @@ class DatasetModel {
         fun computeCorrelation(firstArray : DoubleArray, secondArray : DoubleArray) : Double = (correlationStrategy.invoke(firstArray,secondArray))
     }
 
-    private fun loadCorrelationStrategy(chosenCorrelationMethod: String): (DoubleArray, DoubleArray) -> Double {
+    private fun loadCorrelationStrategy(chosenCorrelationMethod: String) : (DoubleArray, DoubleArray) -> Double {
 
         val pearsonCorrelation : (DoubleArray, DoubleArray) -> Double = {
             firstArray, secondArray ->
@@ -139,20 +146,20 @@ class DatasetModel {
         }
     }
 
-    class Target(val targetStrategy: (Solution<BestSubsetSolution>, Double) -> BestSubsetSolution) {
+    class Target(val targetStrategy: (BinarySolution, Double) -> BinarySolution) {
         fun adjustTargets(solution : Solution<BestSubsetSolution>, correlation: Double) : Solution<BestSubsetSolution> = (adjustTargets(solution,correlation))
     }
 
-    private fun loadTargetStrategy(targetToAchieve: String): (Solution<BinarySolution>, Double) -> Solution<BinarySolution> {
+    private fun loadTargetStrategy(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
 
-        val bestStrategy : (Solution<BinarySolution>, Double) -> Solution<BinarySolution> = {
+        val bestStrategy : (BinarySolution, Double) -> BinarySolution = {
             solution, correlation ->
             solution.setObjective(0, correlation * -1)
             solution.setObjective(1, (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble())
             solution
         }
 
-        val worstStrategy : (Solution<BinarySolution>, Double) -> Solution<BinarySolution> = {
+        val worstStrategy : (BinarySolution, Double) -> BinarySolution = {
             solution, correlation ->
             solution.setObjective(0, correlation)
             solution.setObjective(1, ((solution as BestSubsetSolution).numberOfSelectedTopics * -1).toDouble())
@@ -177,10 +184,9 @@ class DatasetModel {
             val variableValues = LinkedList<BooleanArray>()
             val cardinalities = IntArray(numberOfTopics)
             val correlations = DoubleArray(numberOfTopics)
-
             val generator = Random()
 
-            for (currentCardinality in 0..numberOfTopics - 1) {
+            for (currentCardinality in 0..numberOfTopics-1) {
 
                 val topicToChoose = HashSet<Int>()
                 while (topicToChoose.size < currentCardinality + 1) {
@@ -189,29 +195,19 @@ class DatasetModel {
                 }
 
                 val topicStatus = BooleanArray(numberOfTopics)
-                for(chosenTopic in topicToChoose) {
-                    topicStatus[chosenTopic - 1] = true
-                }
+                for(chosenTopic in topicToChoose) topicStatus[chosenTopic - 1] = true
+
 
                 var toString = ""
-                for (j in topicStatus.indices) {
-                    if (topicStatus[j]) {
-                        toString += 1
-                    } else {
-                        toString += 0
-                    }
-                }
+                for (j in topicStatus.indices) if (topicStatus[j]) toString += 1 else toString += 0
 
                 BestSubsetLogger.log("PROBLEM - Evaluating gene: $toString")
                 BestSubsetLogger.log("PROBLEM - Number of selected topics: $currentCardinality")
 
                 val meanAveragePrecisionsReduced = DoubleArray(averagePrecisions.entries.size)
 
-                var counter = 0
-                for(singleSystem in this.averagePrecisions.entries) {
-                    meanAveragePrecisionsReduced[counter] = Formula.getMean(singleSystem.value, topicStatus)
-                    counter++
-                }
+                for((index, singleSystem) in this.averagePrecisions.entries.withIndex())
+                    meanAveragePrecisionsReduced[index] = Formula.getMean(singleSystem.value, topicStatus)
 
                 val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced,meanAveragePrecisions)
 
@@ -224,11 +220,14 @@ class DatasetModel {
             }
 
             problem = BestSubsetProblem(numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
+            population = LinkedList()
+
             for (i in 0..numberOfTopics - 1) {
                 val solution = BestSubsetSolution(problem as BinaryProblem, numberOfTopics)
                 solution.setVariableValue(0, solution.createNewBitSet(numberOfTopics, variableValues[i]))
                 solution.setObjective(0, correlations[i])
                 solution.setObjective(1, cardinalities[i].toDouble())
+                @Suppress("UNCHECKED_CAST")
                 population.add(solution as Solution<BinarySolution>)
             }
 
@@ -246,14 +245,15 @@ class DatasetModel {
 
             builder = NSGAIIBuilder(problem, crossover, mutation)
             builder.selectionOperator = selection
-            builder.populationSize = averagePrecisions.size
+            builder.populationSize = 1000
             builder.setMaxEvaluations(numberOfIterations)
 
             algorithm = builder.build()
             algorithmRunner = AlgorithmRunner.Executor(algorithm).execute()
             computingTime = algorithmRunner.computingTime
 
-            population = algorithm.getResult() as MutableList<Solution<BinarySolution>>
+            @Suppress("UNCHECKED_CAST")
+            population = algorithm.result as MutableList<Solution<BinarySolution>>
             population.sortWith(kotlin.Comparator({
                 sol1: Solution<BinarySolution>, sol2: Solution<BinarySolution> ->
                 (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
@@ -261,36 +261,17 @@ class DatasetModel {
 
             when (targetToAchieve) {
                 "Best" -> for (i in population.indices) {
-                    val solutionToFix = population[i]
-                    val correlationToFix = solutionToFix.getObjective(0) * -1
+                    val solutionToFix = population[i]; val correlationToFix = solutionToFix.getObjective(0) * -1
                     solutionToFix.setObjective(0, correlationToFix)
                     population[i] = solutionToFix
                 }
                 "Worst" -> for (i in population.indices) {
-                    val solutionToFix = population[i]
-                    val cardinalityToFix = solutionToFix.getObjective(1) * -1
+                    val solutionToFix = population[i]; val cardinalityToFix = solutionToFix.getObjective(1) * -1
                     solutionToFix.setObjective(1, cardinalityToFix)
                     population[i] = solutionToFix
                 }
             }
-        }
 
-        for(topicLabel in topicLabels) {
-            topicDistribution.put(topicLabel,TreeMap<Double,Boolean>())
-        }
-
-        for (solutionToAnalyze in population) {
-            val topicStatus = (solutionToAnalyze as BestSubsetSolution).retrieveTopicStatus()
-            val cardinality = solutionToAnalyze.getObjective(1)
-            for (j in topicStatus.indices) {
-                var isInSolutionForCard = topicDistribution[topicLabels[j]] as MutableMap
-                var status : Boolean = false
-                if(topicStatus[j]) {
-                    status = true
-                }
-                isInSolutionForCard[cardinality] = status
-                topicDistribution[topicLabels[j]] = isInSolutionForCard
-            }
         }
 
         return Pair<List<Solution<BinarySolution>>, Long>(population, computingTime)

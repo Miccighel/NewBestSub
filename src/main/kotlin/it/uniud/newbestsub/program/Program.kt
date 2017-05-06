@@ -17,13 +17,13 @@ object Program {
         val commandLine: CommandLine
         val parser: CommandLineParser
         val options = loadCommandLineOptions()
-        var datasetController: DatasetController
-        var datasetPath: String
+        val datasetController: DatasetController
+        val datasetPath: String
+        val chosenCorrelationMethod: String
+        val targetToAchieve: String
+        val numberOfIterations: Int
+        val loggingModality: String
         var resultPath: String
-        var chosenCorrelationMethod: String
-        var targetToAchieve: String
-        var numberOfIterations: Int
-        var loggingModality: String
 
         try {
 
@@ -34,26 +34,21 @@ object Program {
 
             if (commandLine.getOptionValue("l") == "Debug" || commandLine.getOptionValue("l") == "File") {
                 loggingModality = commandLine.getOptionValue("l")
-                BestSubsetLogger.modality = loggingModality
+                BestSubsetLogger.loadModality(loggingModality)
                 println("SYSTEM - NewBestSub is starting.")
-                println("SYSTEM - Logging path is : \"" + Constants.LOG_PATH + Constants.LOG_FILE_NAME + "\"")
+                println("SYSTEM - Logging path is : \"${Constants.LOG_PATH + Constants.LOG_FILE_NAME}\"")
                 println("SYSTEM - Wait for the program to complete...")
-            } else {
-                throw ParseException("Value for the option <<l>> or <<log>> is wrong. Check the usage section below.")
-            }
+            } else throw ParseException("Value for the option <<l>> or <<log>> is wrong. Check the usage section below.")
 
             if (commandLine.getOptionValue("c") == "Pearson" || commandLine.getOptionValue("c") == "Kendall") {
                 chosenCorrelationMethod = commandLine.getOptionValue("c")
                 resultPath = resultPath + chosenCorrelationMethod + "-"
-            } else {
-                throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
-            }
+            } else throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
 
             if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst" || commandLine.getOptionValue("t") == "Average") {
                 if (commandLine.getOptionValue("t") == "Average") {
-                    if (commandLine.hasOption("i")) {
+                    if (commandLine.hasOption("i"))
                         throw ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.")
-                    }
                 }
                 targetToAchieve = commandLine.getOptionValue("t")
                 resultPath += targetToAchieve
@@ -66,22 +61,19 @@ object Program {
                     } catch (exception: NumberFormatException) {
                         throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
                     }
-
                 } else {
-                    if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst") {
+                    if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst")
                         throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
-                    } else {
+                    else {
                         datasetController = DatasetController()
                         datasetController.loadData(datasetPath)
                         datasetController.solve(chosenCorrelationMethod, targetToAchieve, 0, resultPath)
                     }
                 }
+            } else throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
 
-            } else {
-                throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
-            }
         } catch (exception: ParseException) {
-            println("EXCEPTION (System) - " + exception.message)
+            println("EXCEPTION (System) ${exception.message}")
             val formatter = HelpFormatter()
             formatter.printHelp("NewBestSub", options)
         }
@@ -91,9 +83,8 @@ object Program {
 
     fun loadCommandLineOptions(): Options {
 
-        var source: Option
         val options = Options()
-        source = Option.builder("fi").longOpt("fileIn").desc("Relative path to the CSV dataset file (do not use any extension in filename) [REQUIRED].").hasArg().argName("SourceFile").required().build()
+        var source = Option.builder("fi").longOpt("fileIn").desc("Relative path to the CSV dataset file (do not use any extension in filename) [REQUIRED].").hasArg().argName("SourceFile").required().build()
         options.addOption(source)
         source = Option.builder("c").longOpt("corr").desc("Indicates the method that must be used to compute correlations. Available methods: Pearson, Kendall. [REQUIRED]").hasArg().argName("Method").required().build()
         options.addOption(source)

@@ -5,20 +5,23 @@ import java.io.IOException
 
 import java.util.logging.*
 
-object BestSubsetLogger {
+class BestSubsetLogger {
 
-    private lateinit var fileHandler: FileHandler
-    private lateinit var currentLevel: Level
+    companion object {
 
-    private var textFormatter  = BestSubsetFormatter()
-    private var streamHandler  = StreamHandler(System.out, textFormatter)
-    private var logger =  Logger.getLogger(this.javaClass.name)
+        private lateinit var fileHandler: FileHandler
+        private lateinit var streamHandler: StreamHandler
+        private lateinit var textFormatter: BestSubsetFormatter
+        private lateinit var currentLevel: Level
+        private lateinit var modality: String
+        private  var logger = Logger.getLogger("BestSubsetLogger")
 
-    var modality = "Debug"
-        set(value) {
+        fun loadModality(modalityToUse: String) {
+
+            modality = modalityToUse
             logger.useParentHandlers = false
 
-            when (value) {
+            when (modality) {
                 "Debug" -> {
                     logger.level = Level.FINE
                     currentLevel = Level.FINE
@@ -30,9 +33,8 @@ object BestSubsetLogger {
             }
 
             val logDirectory = File(Constants.LOG_PATH)
-            if (!logDirectory.exists()) {
+            if (!logDirectory.exists())
                 logDirectory.mkdir()
-            }
 
             try {
                 fileHandler = FileHandler(Constants.LOG_PATH + Constants.LOG_FILE_NAME)
@@ -40,16 +42,21 @@ object BestSubsetLogger {
                 println(exception.message)
             }
 
+            textFormatter = BestSubsetFormatter()
+
             fileHandler.formatter = textFormatter
             fileHandler.level = Level.FINER
             logger.addHandler(fileHandler)
+            streamHandler = StreamHandler(System.out, textFormatter)
             streamHandler.formatter = textFormatter
             streamHandler.level = Level.FINE
             logger.addHandler(streamHandler)
+
         }
 
-    fun log(message: String) {
-        logger.log(currentLevel, message)
+        fun log(message: String) {
+            logger.log(currentLevel, message)
+        }
     }
-}
 
+}

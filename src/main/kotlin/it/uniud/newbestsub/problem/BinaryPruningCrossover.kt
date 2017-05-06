@@ -9,9 +9,7 @@ import java.util.LinkedList
 
 class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<BinarySolution> {
     
-    override fun getNumberOfParents(): Int {
-        return 2
-    }
+    override fun getNumberOfParents(): Int { return 2 }
 
     override fun execute(solutionList: List<BinarySolution>): List<BinarySolution> {
 
@@ -40,9 +38,8 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
 
             if (firstChildren.numberOfSelectedTopics == 0) {
                 var flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * firstChildren.getNumberOfBits(0)).toInt()
-                if (flipIndex == firstChildren.getNumberOfBits(0)) {
-                    flipIndex = flipIndex - 1
-                }
+                if (flipIndex == firstChildren.getNumberOfBits(0))
+                    flipIndex -= 1
                 firstChildren.setBitValue(flipIndex, true)
             }
 
@@ -51,14 +48,14 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
         childrenSolution[0] = firstChildren
         childrenSolution[1] = secondChildren
 
-        BestSubsetLogger.log("CROSSOVER - Parent 1: " + firstSolution.getVariableValueString(0))
-        BestSubsetLogger.log("CROSSOVER - Number of selected topics: " + firstSolution.numberOfSelectedTopics)
-        BestSubsetLogger.log("CROSSOVER - Parent 2: " + secondSolution.getVariableValueString(0))
-        BestSubsetLogger.log("CROSSOVER - Number of selected topics: " + secondSolution.numberOfSelectedTopics)
-        BestSubsetLogger.log("CROSSOVER - Child 1: " + firstChildren.getVariableValueString(0))
-        BestSubsetLogger.log("CROSSOVER - Number of selected topics: " + firstChildren.numberOfSelectedTopics)
-        BestSubsetLogger.log("CROSSOVER - Child 2: " + secondChildren.getVariableValueString(0))
-        BestSubsetLogger.log("CROSSOVER - Number of selected topics: " + secondChildren.numberOfSelectedTopics)
+        BestSubsetLogger.log("CROSSOVER - Parent 1: ${firstSolution.getVariableValueString(0)}")
+        BestSubsetLogger.log("CROSSOVER - Number of selected topics: ${firstSolution.numberOfSelectedTopics}")
+        BestSubsetLogger.log("CROSSOVER - Parent 2: ${secondSolution.getVariableValueString(0)}")
+        BestSubsetLogger.log("CROSSOVER - Number of selected topics: ${secondSolution.numberOfSelectedTopics}")
+        BestSubsetLogger.log("CROSSOVER - Children 1: ${firstChildren.getVariableValueString(0)}")
+        BestSubsetLogger.log("CROSSOVER - Number of selected topics: ${firstChildren.numberOfSelectedTopics}")
+        BestSubsetLogger.log("CROSSOVER - Children 2 1: ${secondChildren.getVariableValueString(0)}")
+        BestSubsetLogger.log("CROSSOVER - Number of selected topics: ${secondChildren.numberOfSelectedTopics}")
 
         return childrenSolution
     }

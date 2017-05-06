@@ -23,17 +23,15 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
         if (JMetalRandom.getInstance().nextDouble() < probability) {
 
             var flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * totalNumberOfTopics).toInt()
-            if (flipIndex == totalNumberOfTopics) {
+            if (flipIndex == totalNumberOfTopics)
                 flipIndex -= 1
-            }
 
             solution.setBitValue(flipIndex, !topicStatus.get(flipIndex))
 
             if (solution.numberOfSelectedTopics == 0) {
                 flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * totalNumberOfTopics).toInt()
-                if (flipIndex == totalNumberOfTopics) {
+                if (flipIndex == totalNumberOfTopics)
                     flipIndex -= 1
-                }
                 solution.setBitValue(flipIndex, !topicStatus.get(flipIndex))
             }
 
@@ -41,9 +39,9 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
 
         val newGene = solution.getVariableValueString(0)
 
-        BestSubsetLogger.log("MUTATION - (Post) Gene: " + solution.getVariableValueString(0))
-        BestSubsetLogger.log("MUTATION - (Post) Number of selected topics: " + solution.numberOfSelectedTopics)
-        BestSubsetLogger.log("MUTATION - Hamming distance: " + Formula.stringComparison(oldGene, newGene))
+        BestSubsetLogger.log("MUTATION - (Post) Gene: $newGene")
+        BestSubsetLogger.log("MUTATION - (Post) Number of selected topics: ${solution.numberOfSelectedTopics}")
+        BestSubsetLogger.log("MUTATION - Hamming distance: ${Formula.stringComparison(oldGene, newGene)}}")
 
         return solution
 
