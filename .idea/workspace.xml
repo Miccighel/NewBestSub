@@ -2,22 +2,48 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="12096839-9992-44ab-bdf6-5f0e2f82a36f" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/.gitignore" afterPath="" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_junit_jupiter_junit_jupiter_api_5_0_0_M4.xml" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_junit_jupiter_junit_jupiter_engine_5_0_0_M4.xml" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_junit_platform_junit_platform_commons_1_0_0_M4.xml" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_junit_platform_junit_platform_engine_1_0_0_M4.xml" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_opentest4j_opentest4j_1_0_0_M2.xml" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/test/kotlin/it/uniud/newbestsub/problem/BitFlipMutationTest.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/NewBestSub.iml" afterPath="$PROJECT_DIR$/.idea/NewBestSub.iml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/emacs.xml" afterPath="$PROJECT_DIR$/.idea/emacs.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/kotlinc.xml" afterPath="$PROJECT_DIR$/.idea/kotlinc.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__com_opencsv_opencsv_3_9.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__com_opencsv_opencsv_3_9.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__commons_beanutils_commons_beanutils_1_9_3.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__commons_beanutils_commons_beanutils_1_9_3.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__commons_cli_commons_cli_1_4.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__commons_cli_commons_cli_1_4.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__commons_collections_commons_collections_3_2_2.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__commons_collections_commons_collections_3_2_2.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__commons_io_commons_io_2_4.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__commons_io_commons_io_2_4.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__commons_logging_commons_logging_1_2.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__commons_logging_commons_logging_1_2.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_apache_commons_commons_lang3_3_5.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_apache_commons_commons_lang3_3_5.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_apache_commons_commons_math3_3_6_1.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_apache_commons_commons_math3_3_6_1.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_apache_maven_doxia_doxia_sink_api_1_0.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_apache_maven_doxia_doxia_sink_api_1_0.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_apache_maven_reporting_maven_reporting_api_3_0.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_apache_maven_reporting_maven_reporting_api_3_0.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_hamcrest_hamcrest_all_1_3.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_hamcrest_hamcrest_all_1_3.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_annotations_13_0.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_annotations_13_0.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_kotlin_kotlin_stdlib_1_1_2_3.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_kotlin_kotlin_stdlib_1_1_2_3.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_kotlin_kotlin_stdlib_jre7_1_1_2_3.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_kotlin_kotlin_stdlib_jre7_1_1_2_3.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_kotlin_kotlin_stdlib_jre8_1_1_2_3.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_kotlin_kotlin_stdlib_jre8_1_1_2_3.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_kotlin_kotlin_test_1_1_2_3.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_jetbrains_kotlin_kotlin_test_1_1_2_3.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_uma_jmetal_jmetal_algorithm_5_2.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_uma_jmetal_jmetal_algorithm_5_2.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_uma_jmetal_jmetal_core_5_2.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_uma_jmetal_jmetal_core_5_2.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_uma_jmetal_jmetal_exec_5_2.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_uma_jmetal_jmetal_exec_5_2.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/libraries/Maven__org_uma_jmetal_jmetal_problem_5_2.xml" afterPath="$PROJECT_DIR$/.idea/libraries/Maven__org_uma_jmetal_jmetal_problem_5_2.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/NewBestSub.iml" afterPath="$PROJECT_DIR$/NewBestSub.iml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pom.xml" afterPath="$PROJECT_DIR$/pom.xml" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/dataset/DatasetController.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetController.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/dataset/DatasetModel.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/dataset/DatasetView.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/problem/BestSubsetProblem.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BestSubsetProblem.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/problem/BestSubsetSolution.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BestSubsetSolution.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/problem/BinaryPruningCrossover.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BinaryPruningCrossover.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/problem/BitFlipMutation.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BitFlipMutation.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/program/Program.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/program/Program.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/utils/BestSubsetFormatter.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/BestSubsetFormatter.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/utils/BestSubsetLogger.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/BestSubsetLogger.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/utils/Constants.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/Constants.kt" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/utils/Formula.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/Formula.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetController.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetController.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BestSubsetProblem.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BestSubsetProblem.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BestSubsetSolution.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BestSubsetSolution.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/program/Program.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/program/Program.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/BestSubsetFormatter.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/BestSubsetFormatter.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/BestSubsetLogger.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/BestSubsetLogger.kt" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/Constants.kt" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/Constants.kt" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -49,8 +75,8 @@
       <file leaf-file-name="DatasetModel.kt" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="286">
-              <caret line="192" column="68" lean-forward="true" selection-start-line="192" selection-start-column="68" selection-end-line="192" selection-end-column="68" />
+            <state relative-caret-position="319">
+              <caret line="256" column="51" lean-forward="true" selection-start-line="256" selection-start-column="51" selection-end-line="256" selection-end-column="51" />
               <folding />
             </state>
           </provider>
@@ -137,7 +163,6 @@
         <option value="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BinaryPruningCrossover.kt" />
         <option value="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BitFlipMutation.kt" />
         <option value="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/utils/Formula.kt" />
-        <option value="$PROJECT_DIR$/pom.xml" />
         <option value="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/dataset/DatasetController.kt" />
         <option value="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/dataset/DatasetView.kt" />
         <option value="$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/problem/BestSubsetProblem.kt" />
@@ -154,8 +179,11 @@
         <option value="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/program/Program.kt" />
         <option value="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/Formula.kt" />
         <option value="$PROJECT_DIR$/res/MQ-Pearson-Best-Fun.csv" />
-        <option value="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" />
         <option value="$PROJECT_DIR$/log/result_log.txt" />
+        <option value="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" />
+        <option value="$PROJECT_DIR$/src/test/java/MyFirstTest.java" />
+        <option value="$PROJECT_DIR$/src/test/kotlin/BitFlipMutationTest.kt" />
+        <option value="$PROJECT_DIR$/pom.xml" />
       </list>
     </option>
   </component>
@@ -182,6 +210,20 @@
         <PATH_ELEMENT>
           <option name="myItemId" value="NewBestSub" />
           <option name="myItemType" value="org.jetbrains.idea.maven.navigator.MavenProjectsStructure$ProjectNode" />
+        </PATH_ELEMENT>
+      </PATH>
+      <PATH>
+        <PATH_ELEMENT>
+          <option name="myItemId" value="" />
+          <option name="myItemType" value="org.jetbrains.idea.maven.navigator.MavenProjectsStructure$RootNode" />
+        </PATH_ELEMENT>
+        <PATH_ELEMENT>
+          <option name="myItemId" value="NewBestSub" />
+          <option name="myItemType" value="org.jetbrains.idea.maven.navigator.MavenProjectsStructure$ProjectNode" />
+        </PATH_ELEMENT>
+        <PATH_ELEMENT>
+          <option name="myItemId" value="Lifecycle" />
+          <option name="myItemType" value="org.jetbrains.idea.maven.navigator.MavenProjectsStructure$LifecycleNode" />
         </PATH_ELEMENT>
       </PATH>
     </treeState>
@@ -229,9 +271,9 @@
       <foldersAlwaysOnTop value="true" />
     </navigator>
     <panes>
-      <pane id="PackagesPane" />
       <pane id="Scope" />
       <pane id="Scratches" />
+      <pane id="PackagesPane" />
       <pane id="ProjectPane">
         <subPane>
           <PATH>
@@ -255,6 +297,48 @@
             </PATH_ELEMENT>
             <PATH_ELEMENT>
               <option name="myItemId" value="src" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="test" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="kotlin" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="newbestsub" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="problem" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+          </PATH>
+          <PATH>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="NewBestSub" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.ProjectViewProjectNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="NewBestSub" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="src" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="test" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="kotlin" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="newbestsub" />
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
           </PATH>
@@ -348,10 +432,14 @@
     <property name="project.structure.last.edited" value="Artifacts" />
     <property name="project.structure.proportion" value="0.15" />
     <property name="project.structure.side.proportion" value="0.2" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/src/test/kotlin" />
   </component>
   <component name="RecentsManager">
+    <key name="MoveKotlinTopLevelDeclarationsDialog.RECENTS_KEY">
+      <recent name="it.uniud.newbestsub.problem" />
+    </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub\src\test\kotlin" />
       <recent name="$PROJECT_DIR$/src/main" />
     </key>
   </component>
@@ -367,7 +455,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Application.NewBestSub (con build)">
+  <component name="RunManager" selected="JUnit.NewBestSub (test)">
     <configuration default="true" type="#org.jetbrains.idea.devkit.run.PluginConfigurationType" factoryName="Plugin">
       <module name="" />
       <option name="VM_PARAMETERS" value="-Xmx512m -Xms256m -XX:MaxPermSize=250m -ea" />
@@ -852,9 +940,34 @@
       <envs />
       <method />
     </configuration>
-    <list size="2">
+    <configuration default="false" name="NewBestSub (test)" type="JUnit" factoryName="JUnit">
+      <extension name="coverage" enabled="false" merge="false" sample_coverage="true" runner="idea" />
+      <module name="NewBestSub" />
+      <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
+      <option name="ALTERNATIVE_JRE_PATH" />
+      <option name="PACKAGE_NAME" />
+      <option name="MAIN_CLASS_NAME" value="" />
+      <option name="METHOD_NAME" value="" />
+      <option name="TEST_OBJECT" value="directory" />
+      <option name="VM_PARAMETERS" value="-ea" />
+      <option name="PARAMETERS" value="" />
+      <option name="WORKING_DIRECTORY" value="file://$MODULE_DIR$" />
+      <option name="ENV_VARIABLES" />
+      <option name="PASS_PARENT_ENVS" value="true" />
+      <option name="TEST_SEARCH_SCOPE">
+        <value defaultName="singleModule" />
+      </option>
+      <envs />
+      <dir value="$PROJECT_DIR$/src/test/kotlin" />
+      <patterns />
+      <method>
+        <option name="Make" enabled="false" />
+      </method>
+    </configuration>
+    <list size="3">
       <item index="0" class="java.lang.String" itemvalue="JAR Application.NewBestSub (senza build)" />
       <item index="1" class="java.lang.String" itemvalue="Application.NewBestSub (con build)" />
+      <item index="2" class="java.lang.String" itemvalue="JUnit.NewBestSub (test)" />
     </list>
   </component>
   <component name="ShelveChangesManager" show_recycled="false">
@@ -934,11 +1047,20 @@
       <workItem from="1494095148497" duration="2406000" />
       <workItem from="1494097587082" duration="1798000" />
       <workItem from="1494099765807" duration="3827000" />
+      <workItem from="1494283468271" duration="2406000" />
     </task>
     <servers />
   </component>
+  <component name="TestHistory">
+    <history-entry file="NewBestSub_(test) - 2017.05.09 at 01h 15m 43s.xml">
+      <configuration name="NewBestSub (test)" configurationId="JUnit" />
+    </history-entry>
+    <history-entry file="NewBestSub_(test) - 2017.05.09 at 01h 24m 21s.xml">
+      <configuration name="NewBestSub (test)" configurationId="JUnit" />
+    </history-entry>
+  </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="193973000" />
+    <option name="totallyTimeSpent" value="196379000" />
   </component>
   <component name="TodoView">
     <todo-panel id="selected-file">
@@ -951,26 +1073,27 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
+    <editor active="true" />
     <layout>
       <window_info id="Palette" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.18510158" sideWeight="0.49574015" order="5" side_tool="false" content_ui="tabs" />
       <window_info id="Nl-Palette" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
-      <window_info id="Messages" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.24526198" sideWeight="0.49093816" order="1" side_tool="false" content_ui="tabs" />
+      <window_info id="Messages" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.24526198" sideWeight="0.46535182" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Palette&#9;" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Image Layers" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Analysis" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.29431438" sideWeight="0.5010661" order="4" side_tool="true" content_ui="tabs" />
       <window_info id="Maven Projects" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.15351813" sideWeight="0.50812405" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3295711" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
-      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.18394649" sideWeight="0.54957354" order="2" side_tool="true" content_ui="tabs" x="21" y="414" width="1878" height="222" />
+      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.24526198" sideWeight="0.5346482" order="2" side_tool="true" content_ui="tabs" x="21" y="414" width="1878" height="222" />
       <window_info id="Properties" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
-      <window_info id="Terminal" active="true" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.18394649" sideWeight="0.45042643" order="0" side_tool="false" content_ui="tabs" />
+      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.18394649" sideWeight="0.44829425" order="0" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Remote Host" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.1684435" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.17643923" sideWeight="0.46994534" order="7" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.17803837" sideWeight="0.65774804" order="7" side_tool="false" content_ui="combo" />
       <window_info id="Database" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.17697228" sideWeight="0.5" order="8" side_tool="false" content_ui="tabs" />
-      <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.17643923" sideWeight="0.5300546" order="5" side_tool="true" content_ui="tabs" />
+      <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.17803837" sideWeight="0.34225196" order="5" side_tool="true" content_ui="tabs" />
       <window_info id="Ant Build" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="9" side_tool="false" content_ui="tabs" />
       <window_info id="UI Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Theme Preview" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
@@ -1011,8 +1134,6 @@
     <option name="FILTER_TARGETS" value="false" />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/res/AP96-Pearson-Best-Var-Par.csv" />
-    <entry file="file://$PROJECT_DIR$/res/AP96-Pearson-Worst-Fun-Par.csv" />
     <entry file="file://$PROJECT_DIR$/res/AP96-Pearson-Worst-Var-Tot.csv" />
     <entry file="file://$PROJECT_DIR$/res/AP96-Pearson-Worst-Var-Par.csv" />
     <entry file="file://$PROJECT_DIR$/res/AP96-Pearson-Worst-Fun-Tot.csv" />
@@ -1045,14 +1166,6 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/.gitignore" />
     <entry file="file://$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/utils/BestSubsetFormatter.kt" />
-    <entry file="file://$PROJECT_DIR$/pom.xml">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-343">
-          <caret line="161" column="54" lean-forward="false" selection-start-line="161" selection-start-column="54" selection-end-line="161" selection-end-column="54" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/utils/Constants.kt" />
     <entry file="file://$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/utils/Formula.kt" />
     <entry file="file://$PROJECT_DIR$/src/main/java/it/uniud/newbestsub/problem/BestSubsetProblem.kt" />
@@ -1161,7 +1274,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-2000">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
         </state>
       </provider>
     </entry>
@@ -1169,7 +1281,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
         </state>
       </provider>
     </entry>
@@ -1177,43 +1288,53 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/res/MQ-Pearson-Best-Fun.csv">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-929">
-          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
+    <entry file="file://$PROJECT_DIR$/res/MQ-Pearson-Best-Fun.csv" />
     <entry file="file://$PROJECT_DIR$/log/result_log.txt">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="136">
-          <caret line="8" column="72" lean-forward="true" selection-start-line="8" selection-start-column="72" selection-end-line="8" selection-end-column="72" />
-          <folding />
-        </state>
-      </provider>
       <provider editor-type-id="LargeFileEditor">
         <state relative-caret-position="0">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
         </state>
       </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="286">
-          <caret line="192" column="68" lean-forward="true" selection-start-line="192" selection-start-column="68" selection-end-line="192" selection-end-column="68" />
+        <state relative-caret-position="136">
+          <caret line="8" column="72" lean-forward="true" selection-start-line="8" selection-start-column="72" selection-end-line="8" selection-end-column="72" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/res/Robust-Pearson-Best-Fun.csv" />
+    <entry file="file://$PROJECT_DIR$/src/test/java/MyFirstTest.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="187">
+          <caret line="11" column="1" lean-forward="false" selection-start-line="11" selection-start-column="1" selection-end-line="11" selection-end-column="1" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/res/Robust-Pearson-Best-Fun.csv">
+    <entry file="file://$PROJECT_DIR$/src/test/kotlin/it/uniud/newbestsub/problem/BitFlipMutationTest.kt">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-16297">
-          <caret line="9" column="5" lean-forward="false" selection-start-line="9" selection-start-column="5" selection-end-line="9" selection-end-column="5" />
+        <state relative-caret-position="238">
+          <caret line="16" column="1" lean-forward="false" selection-start-line="16" selection-start-column="1" selection-end-line="16" selection-end-column="1" />
+          <folding>
+            <element signature="e#37#202#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pom.xml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="340">
+          <caret line="215" column="31" lean-forward="false" selection-start-line="215" selection-start-column="31" selection-end-line="215" selection-end-column="31" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="319">
+          <caret line="256" column="51" lean-forward="true" selection-start-line="256" selection-start-column="51" selection-end-line="256" selection-end-column="51" />
           <folding />
         </state>
       </provider>

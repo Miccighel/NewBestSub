@@ -1,0 +1,17 @@
+package it.uniud.newbestsub.problem
+
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInfo
+
+class BitFlipMutationTest {
+
+    @Test
+    @DisplayName("My 1st JUnit 5 test! 😎")
+    fun myFirstTest(testInfo: TestInfo) {
+        assertEquals(2, 1 + 1, "1 + 1 should equal 2")
+        assertEquals("My 1st JUnit 5 test! 😎", testInfo.displayName) { "TestInfo is injected correctly" }
+    }
+
+}
