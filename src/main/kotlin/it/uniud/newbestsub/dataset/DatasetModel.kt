@@ -30,6 +30,7 @@ import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.solution.Solution
 import org.uma.jmetal.util.AlgorithmRunner
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
+import java.io.File
 
 import kotlin.collections.LinkedHashMap
 
@@ -70,7 +71,6 @@ class DatasetModel {
     private lateinit var algorithm: Algorithm<List<BinarySolution>>
     private lateinit var algorithmRunner: AlgorithmRunner
 
-    @Throws(FileNotFoundException::class, IOException::class)
     fun loadData(datasetPath: String) {
 
         // The parsing phase of the original .csv dataset file starts there.
@@ -81,15 +81,14 @@ class DatasetModel {
 
         BestSubsetLogger.log("MODEL - Total number of topics: $numberOfTopics")
 
-        var nextLine = reader.readNext()
         var averagePrecisions = DoubleArray(0)
-        while (nextLine  != null) {
-            val systemLabel = nextLine[0]
+
+        reader.readAll().forEach({
+            nextLine ->
             averagePrecisions = DoubleArray(nextLine.size - 1)
             for (i in 1..nextLine.size - 1) averagePrecisions[i - 1] = java.lang.Double.parseDouble(nextLine[i])
-            this.averagePrecisions.put(systemLabel, averagePrecisions)
-            nextLine = reader.readNext()
-        }
+            this.averagePrecisions.put(nextLine[0], averagePrecisions)
+        })
 
         numberOfSystems = this.averagePrecisions.entries.size
         systemSize = averagePrecisions.size

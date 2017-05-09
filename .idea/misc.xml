@@ -12,43 +12,7 @@
     <option name="afterRebuildTask">
       <set>
         <MavenCompilerTask>
-          <option name="goal" value="deploy" />
-          <option name="projectPath" value="$PROJECT_DIR$/pom.xml" />
-        </MavenCompilerTask>
-        <MavenCompilerTask>
-          <option name="goal" value="install" />
-          <option name="projectPath" value="$PROJECT_DIR$/pom.xml" />
-        </MavenCompilerTask>
-        <MavenCompilerTask>
           <option name="goal" value="package" />
-          <option name="projectPath" value="$PROJECT_DIR$/pom.xml" />
-        </MavenCompilerTask>
-        <MavenCompilerTask>
-          <option name="goal" value="site" />
-          <option name="projectPath" value="$PROJECT_DIR$/pom.xml" />
-        </MavenCompilerTask>
-        <MavenCompilerTask>
-          <option name="goal" value="verify" />
-          <option name="projectPath" value="$PROJECT_DIR$/pom.xml" />
-        </MavenCompilerTask>
-      </set>
-    </option>
-    <option name="beforeRebuildTask">
-      <set>
-        <MavenCompilerTask>
-          <option name="goal" value="clean" />
-          <option name="projectPath" value="$PROJECT_DIR$/pom.xml" />
-        </MavenCompilerTask>
-        <MavenCompilerTask>
-          <option name="goal" value="compile" />
-          <option name="projectPath" value="$PROJECT_DIR$/pom.xml" />
-        </MavenCompilerTask>
-        <MavenCompilerTask>
-          <option name="goal" value="test" />
-          <option name="projectPath" value="$PROJECT_DIR$/pom.xml" />
-        </MavenCompilerTask>
-        <MavenCompilerTask>
-          <option name="goal" value="validate" />
           <option name="projectPath" value="$PROJECT_DIR$/pom.xml" />
         </MavenCompilerTask>
       </set>

@@ -9,6 +9,7 @@ import it.uniud.newbestsub.utils.Constants
 import org.apache.commons.cli.*
 
 import java.io.File
+import java.io.FileNotFoundException
 
 object Program {
 
@@ -25,57 +26,66 @@ object Program {
         val loggingModality: String
         var resultPath: String
 
+        println("SYSTEM - NewBestSub is starting.")
+
         try {
 
             parser = DefaultParser()
             commandLine = parser.parse(options, arguments)
             datasetPath = Constants.INPUT_PATH + commandLine.getOptionValue("fi") + ".csv"
-            resultPath = commandLine.getOptionValue("fi") + "-"
 
-            if (commandLine.getOptionValue("l") == "Debug" || commandLine.getOptionValue("l") == "File") {
-                loggingModality = commandLine.getOptionValue("l")
-                BestSubsetLogger.loadModality(loggingModality)
-                println("SYSTEM - NewBestSub is starting.")
-                println("SYSTEM - Logging path is : \"${Constants.LOG_PATH + Constants.LOG_FILE_NAME}\"")
-                println("SYSTEM - Wait for the program to complete...")
-            } else throw ParseException("Value for the option <<l>> or <<log>> is wrong. Check the usage section below.")
+            if(!File(datasetPath).exists()) {
+                throw FileNotFoundException("Dataset file does not exists. Be sure that path is correct.")
+            } else {
 
-            if (commandLine.getOptionValue("c") == "Pearson" || commandLine.getOptionValue("c") == "Kendall") {
-                chosenCorrelationMethod = commandLine.getOptionValue("c")
-                resultPath = resultPath + chosenCorrelationMethod + "-"
-            } else throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
+                resultPath = commandLine.getOptionValue("fi") + "-"
 
-            if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst" || commandLine.getOptionValue("t") == "Average") {
-                if (commandLine.getOptionValue("t") == "Average") {
-                    if (commandLine.hasOption("i"))
-                        throw ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.")
-                }
-                targetToAchieve = commandLine.getOptionValue("t")
-                resultPath += targetToAchieve
-                if (commandLine.hasOption("i") && commandLine.getOptionValue("t") != "Average") {
-                    try {
-                        numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
-                        datasetController = DatasetController()
-                        datasetController.loadData(datasetPath)
-                        datasetController.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations, resultPath)
-                    } catch (exception: NumberFormatException) {
-                        throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
+                if (commandLine.getOptionValue("l") == "Debug" || commandLine.getOptionValue("l") == "File") {
+                    loggingModality = commandLine.getOptionValue("l")
+                    BestSubsetLogger.loadModality(loggingModality)
+                    println("SYSTEM - Logging path is : \"${Constants.LOG_PATH + Constants.LOG_FILE_NAME}\"")
+                    println("SYSTEM - Wait for the program to complete...")
+                } else throw ParseException("Value for the option <<l>> or <<log>> is wrong. Check the usage section below.")
+
+                if (commandLine.getOptionValue("c") == "Pearson" || commandLine.getOptionValue("c") == "Kendall") {
+                    chosenCorrelationMethod = commandLine.getOptionValue("c")
+                    resultPath = resultPath + chosenCorrelationMethod + "-"
+                } else throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
+
+                if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst" || commandLine.getOptionValue("t") == "Average") {
+                    if (commandLine.getOptionValue("t") == "Average") {
+                        if (commandLine.hasOption("i"))
+                            throw ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.")
                     }
-                } else {
-                    if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst")
-                        throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
-                    else {
-                        datasetController = DatasetController()
-                        datasetController.loadData(datasetPath)
-                        datasetController.solve(chosenCorrelationMethod, targetToAchieve, 0, resultPath)
+                    targetToAchieve = commandLine.getOptionValue("t")
+                    resultPath += targetToAchieve
+                    if (commandLine.hasOption("i") && commandLine.getOptionValue("t") != "Average") {
+                        try {
+                            numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
+                            datasetController = DatasetController()
+                            datasetController.loadData(datasetPath)
+                            datasetController.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations, resultPath)
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
+                        }
+                    } else {
+                        if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst")
+                            throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
+                        else {
+                            datasetController = DatasetController()
+                            datasetController.loadData(datasetPath)
+                            datasetController.solve(chosenCorrelationMethod, targetToAchieve, 0, resultPath)
+                        }
                     }
-                }
-            } else throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
+                } else throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
+            }
 
         } catch (exception: ParseException) {
-            println("EXCEPTION (System) ${exception.message}")
+            println("EXCEPTION (System) - ${exception.message}")
             val formatter = HelpFormatter()
             formatter.printHelp("NewBestSub", options)
+        } catch (exception: FileNotFoundException) {
+            println("EXCEPTION (System) - ${exception.message}")
         }
 
         println("SYSTEM - NewBestSub is closing.")

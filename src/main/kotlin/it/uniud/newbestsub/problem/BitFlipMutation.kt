@@ -41,7 +41,7 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
 
         BestSubsetLogger.log("MUTATION - (Post) Gene: $newGene")
         BestSubsetLogger.log("MUTATION - (Post) Number of selected topics: ${solution.numberOfSelectedTopics}")
-        BestSubsetLogger.log("MUTATION - Hamming distance: ${Formula.stringComparison(oldGene, newGene)}}")
+        BestSubsetLogger.log("MUTATION - Hamming distance: ${Formula.stringComparison(oldGene, newGene)}")
 
         return solution
 

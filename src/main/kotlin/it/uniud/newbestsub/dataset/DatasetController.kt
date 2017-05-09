@@ -9,8 +9,8 @@ import java.io.IOException
 
 class DatasetController {
 
-    var model: DatasetModel = DatasetModel()
-    var view: DatasetView = DatasetView()
+    private var model: DatasetModel = DatasetModel()
+    private var view: DatasetView = DatasetView()
 
     fun loadData(datasetPath: String) {
 
