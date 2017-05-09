@@ -93,8 +93,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
     override fun getVariableValueString(index: Int): String {
         var toReturn = ""
-        val topicStatusValues = getVariableValue(0)
-        for (i in 0..topicStatusValues.binarySetLength - 1) if (topicStatusValues.get(i)) toReturn += "1" else toReturn += "0"
+        for (i in 0..getVariableValue(index).binarySetLength - 1) if (getVariableValue(index).get(i)) toReturn += "1" else toReturn += "0"
         return toReturn
     }
 

@@ -13,8 +13,8 @@ class BestSubsetLogger {
         private lateinit var streamHandler: StreamHandler
         private lateinit var textFormatter: BestSubsetFormatter
         private lateinit var currentLevel: Level
-        private  var modality = ""
-        private  var logger = Logger.getLogger("BestSubsetLogger")
+        private var modality = ""
+        private var logger = Logger.getLogger("BestSubsetLogger")
 
         fun loadModality(modalityToUse: String) {
 
