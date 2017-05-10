@@ -20,12 +20,8 @@ class DatasetController {
         val outputDirectory = File(Constants.OUTPUT_PATH)
         if (!outputDirectory.exists()) {
             BestSubsetLogger.log("CONTROLLER - Starting to create output directory.")
-            if (outputDirectory.mkdir()) {
-                BestSubsetLogger.log("CONTROLLER - Output directory created. Path is: \"${outputDirectory.name}\".")
-            }
-        } else {
-            BestSubsetLogger.log("CONTROLLER - Output directory already exists. Path is: \"${outputDirectory.name}\".")
-        }
+            if (outputDirectory.mkdir()) BestSubsetLogger.log("CONTROLLER - Output directory created. Path is: \"${outputDirectory.name}\".")
+        } else BestSubsetLogger.log("CONTROLLER - Output directory already exists. Path is: \"${outputDirectory.name}\".")
         try {
             model.loadData(datasetPath)
         } catch (exception: FileNotFoundException) {

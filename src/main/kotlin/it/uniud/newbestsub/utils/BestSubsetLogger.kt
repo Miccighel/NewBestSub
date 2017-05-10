@@ -33,8 +33,7 @@ class BestSubsetLogger {
             }
 
             val logDirectory = File(Constants.LOG_PATH)
-            if (!logDirectory.exists())
-                logDirectory.mkdir()
+            if (!logDirectory.exists()) logDirectory.mkdir()
 
             try {
                 fileHandler = FileHandler(Constants.LOG_PATH + Constants.LOG_FILE_NAME)

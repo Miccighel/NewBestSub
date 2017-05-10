@@ -34,9 +34,7 @@ object Program {
             commandLine = parser.parse(options, arguments)
             datasetPath = Constants.INPUT_PATH + commandLine.getOptionValue("fi") + ".csv"
 
-            if(!File(datasetPath).exists()) {
-                throw FileNotFoundException("Dataset file does not exists. Be sure that path is correct.")
-            } else {
+            if(!File(datasetPath).exists()) throw FileNotFoundException("Dataset file does not exists. Be sure that path is correct.") else {
 
                 resultPath = commandLine.getOptionValue("fi") + "-"
 
@@ -54,8 +52,7 @@ object Program {
 
                 if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst" || commandLine.getOptionValue("t") == "Average") {
                     if (commandLine.getOptionValue("t") == "Average") {
-                        if (commandLine.hasOption("i"))
-                            throw ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.")
+                        if (commandLine.hasOption("i")) throw ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.")
                     }
                     targetToAchieve = commandLine.getOptionValue("t")
                     resultPath += targetToAchieve

@@ -29,10 +29,7 @@ class BestSubsetProblem(
         return solution.getNumberOfBits(0)
     }
 
-    override fun createSolution(): BestSubsetSolution {
-        solution = BestSubsetSolution(this, numberOfTopics)
-        return solution
-    }
+    override fun createSolution(): BestSubsetSolution { solution = BestSubsetSolution(this, numberOfTopics); return solution }
 
     override fun evaluate(solution: BinarySolution) {
 

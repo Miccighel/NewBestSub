@@ -15,7 +15,7 @@ class DatasetView : AbstractAlgorithmRunner() {
 
         BestSubsetLogger.log("VIEW - Starting to print the result")
 
-        val (population, computingTime) = runResult; val populationHelper = SolutionListOutput(population)
+        val (population, computingTime) = runResult; val populationHelper: SolutionListOutput = SolutionListOutput(population)
 
         populationHelper
                 .setSeparator(",")

@@ -26,16 +26,12 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
             if (pointProbability > columnKeepProbability) {
                 topicStatus[i] = true
                 numberOfSelectedTopics++
-            } else {
-                topicStatus[i] = false
-            }
+            } else topicStatus[i] = false
         }
 
         if (numberOfSelectedTopics == 0) {
             var flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * topicStatus.size).toInt()
-            if (flipIndex == topicStatus.size) {
-                flipIndex -= 1
-            }
+            if (flipIndex == topicStatus.size) flipIndex -= 1
             topicStatus[flipIndex] = true
             numberOfSelectedTopics++
         }
@@ -81,13 +77,11 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
         setVariableValue(0, topicStatusValues)
     }
 
-    override fun getNumberOfBits(index: Int): Int {
-        return getVariableValue(index).binarySetLength
-    }
+    override fun getNumberOfBits(index: Int): Int { return getVariableValue(index).binarySetLength }
 
     override fun getTotalNumberOfBits(): Int {
         var sum = 0
-        for (i in 0..numberOfVariables - 1) sum += getVariableValue(i).binarySetLength
+        (0..numberOfVariables - 1).forEach { index -> sum += getVariableValue(index).binarySetLength }
         return sum
     }
 
@@ -98,9 +92,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
     }
 
     override fun compareTo(other: BestSubsetSolution): Int {
-        if (this.getObjective(1) > other.getObjective(1)) return 1 else {
-            if (this.getObjective(1) == other.getObjective(1)) return 0 else return -1
-        }
+        if (this.getObjective(1) > other.getObjective(1)) return 1 else return if (this.getObjective(1) == other.getObjective(1)) 0 else -1
     }
 
 }

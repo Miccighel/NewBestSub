@@ -25,6 +25,7 @@ import org.uma.jmetal.operator.impl.selection.BinaryTournamentSelection
 import org.uma.jmetal.algorithm.Algorithm
 import org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAIIBuilder
 import org.uma.jmetal.problem.BinaryProblem
+import org.uma.jmetal.problem.IntegerDoubleProblem
 
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.solution.Solution
@@ -45,13 +46,13 @@ class DatasetModel {
     var averagePrecisions: MutableMap<String, DoubleArray> = LinkedHashMap()
     var meanAveragePrecisions = DoubleArray(0)
     val topicDistribution: MutableMap<String, MutableMap<Double, Boolean>> by lazy {
-        var map : MutableMap<String, MutableMap<Double, Boolean>> = LinkedHashMap()
+        val map : MutableMap<String, MutableMap<Double, Boolean>> = LinkedHashMap()
         for(topicLabel in topicLabels) map.put(topicLabel,TreeMap<Double,Boolean>())
         for (solutionToAnalyze in population) {
             val topicStatus = (solutionToAnalyze as BestSubsetSolution).retrieveTopicStatus()
             val cardinality = solutionToAnalyze.getObjective(1)
             for (j in topicStatus.indices) {
-                var isInSolutionForCard = map[topicLabels[j]] as MutableMap
+                val isInSolutionForCard = map[topicLabels[j]] as MutableMap
                 var status : Boolean = false
                 if(topicStatus[j]) status = true
                 isInSolutionForCard[cardinality] = status
@@ -120,10 +121,6 @@ class DatasetModel {
 
     }
 
-    class Correlation(val correlationStrategy: (DoubleArray, DoubleArray) -> Double) {
-        fun computeCorrelation(firstArray : DoubleArray, secondArray : DoubleArray) : Double = (correlationStrategy.invoke(firstArray,secondArray))
-    }
-
     private fun loadCorrelationStrategy(chosenCorrelationMethod: String) : (DoubleArray, DoubleArray) -> Double {
 
         val pearsonCorrelation : (DoubleArray, DoubleArray) -> Double = {
@@ -143,10 +140,6 @@ class DatasetModel {
             "Kendall" -> return kendallCorrelation
             else -> return pearsonCorrelation
         }
-    }
-
-    class Target(val targetStrategy: (BinarySolution, Double) -> BinarySolution) {
-        fun adjustTargets(solution : Solution<BestSubsetSolution>, correlation: Double) : Solution<BestSubsetSolution> = (adjustTargets(solution,correlation))
     }
 
     private fun loadTargetStrategy(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
@@ -230,10 +223,10 @@ class DatasetModel {
                 population.add(solution as Solution<BinarySolution>)
             }
 
-            population.sortWith(kotlin.Comparator({
+            population.sortWith(kotlin.Comparator {
                 sol1: Solution<BinarySolution>, sol2: Solution<BinarySolution> ->
                 (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
-            }))
+            })
 
         } else {
 
@@ -244,7 +237,7 @@ class DatasetModel {
 
             builder = NSGAIIBuilder(problem, crossover, mutation)
             builder.selectionOperator = selection
-            builder.populationSize = 1000
+            builder.populationSize = 10000
             builder.setMaxEvaluations(numberOfIterations)
 
             algorithm = builder.build()

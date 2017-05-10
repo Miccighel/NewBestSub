@@ -5,12 +5,7 @@ object Formula {
     fun stringComparison(firstString: String, secondString: String): Int {
         var distance = 0
         var i = 0
-        while (i < firstString.length) {
-            if (secondString[i] != firstString[i]) {
-                distance++
-            }
-            i++
-        }
+        while (i < firstString.length) { if (secondString[i] != firstString[i]) distance++; i++ }
         return distance
     }
 

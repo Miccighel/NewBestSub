@@ -38,8 +38,7 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
 
             if (firstChildren.numberOfSelectedTopics == 0) {
                 var flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * firstChildren.getNumberOfBits(0)).toInt()
-                if (flipIndex == firstChildren.getNumberOfBits(0))
-                    flipIndex -= 1
+                if (flipIndex == firstChildren.getNumberOfBits(0)) flipIndex -= 1
                 firstChildren.setBitValue(flipIndex, true)
             }
 
