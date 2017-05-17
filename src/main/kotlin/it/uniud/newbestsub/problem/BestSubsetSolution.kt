@@ -1,6 +1,8 @@
 package it.uniud.newbestsub.problem
 
 import it.uniud.newbestsub.utils.BestSubsetLogger
+import org.apache.commons.lang3.builder.EqualsBuilder
+import org.apache.commons.lang3.builder.HashCodeBuilder
 import org.uma.jmetal.problem.BinaryProblem
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.solution.impl.AbstractGenericSolution
@@ -21,7 +23,8 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
         val columnKeepProbability = JMetalRandom.getInstance().nextDouble()
 
-        for (i in 0..numberOfTopics - 1) {
+        (0..numberOfTopics - 1).forEach {
+            i ->
             val pointProbability = JMetalRandom.getInstance().nextDouble()
             if (pointProbability > columnKeepProbability) {
                 topicStatus[i] = true
@@ -47,8 +50,8 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
         topicStatus = solution.topicStatus
         numberOfSelectedTopics = solution.numberOfSelectedTopics
 
-        for (i in 0..problem.numberOfVariables - 1) setVariableValue(i, solution.getVariableValue(i).clone() as BinarySet)
-        for (i in 0..problem.numberOfObjectives - 1) setObjective(i, solution.getObjective(i))
+        (0..problem.numberOfVariables - 1).forEach { i -> setVariableValue(i, solution.getVariableValue(i).clone() as BinarySet) }
+        (0..problem.numberOfObjectives - 1).forEach { i -> setObjective(i, solution.getObjective(i)) }
 
     }
 
@@ -58,7 +61,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
     fun createNewBitSet(numberOfBits: Int, values: BooleanArray): BinarySet {
         val bitSet = BinarySet(numberOfBits)
-        for (i in 0..numberOfBits - 1) if (values[i]) bitSet.set(i) else bitSet.clear(i)
+        (0..numberOfBits - 1).forEach { i -> if (values[i]) bitSet.set(i) else bitSet.clear(i) }
         return bitSet
     }
 
@@ -77,7 +80,9 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
         setVariableValue(0, topicStatusValues)
     }
 
-    override fun getNumberOfBits(index: Int): Int { return getVariableValue(index).binarySetLength }
+    override fun getNumberOfBits(index: Int): Int {
+        return getVariableValue(index).binarySetLength
+    }
 
     override fun getTotalNumberOfBits(): Int {
         var sum = 0
@@ -87,12 +92,27 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
     override fun getVariableValueString(index: Int): String {
         var toReturn = ""
-        for (i in 0..getVariableValue(index).binarySetLength - 1) if (getVariableValue(index).get(i)) toReturn += "1" else toReturn += "0"
+        (0..getVariableValue(index).binarySetLength - 1).forEach { i -> if (getVariableValue(index).get(i)) toReturn += "1" else toReturn += "0" }
         return toReturn
     }
 
     override fun compareTo(other: BestSubsetSolution): Int {
         if (this.getObjective(1) > other.getObjective(1)) return 1 else return if (this.getObjective(1) == other.getObjective(1)) 0 else -1
+    }
+
+    override fun equals(other: Any?): Boolean {
+        val aSolution = other as BestSubsetSolution
+        return EqualsBuilder()
+                .append(this.getObjective(0), aSolution.getObjective(0))
+                .append(this.getObjective(1), aSolution.getObjective(1))
+                .isEquals
+    }
+
+    override fun hashCode(): Int {
+        return HashCodeBuilder(17, 37)
+                .append(this.getObjective(0))
+                .append(this.getObjective(1))
+                .toHashCode()
     }
 
 }

@@ -10,7 +10,7 @@ import org.uma.jmetal.solution.BinarySolution
 class BestSubsetProblem(
 
         private var numberOfTopics: Int,
-        private var averagePrecisions: Map<String, DoubleArray>,
+        private var averagePrecisions: MutableMap<String, DoubleArray>,
         private var meanAveragePrecisions: DoubleArray,
         private var correlationStrategy: (DoubleArray, DoubleArray) -> Double,
         private var targetToAchieve: (BinarySolution, Double) -> BinarySolution
@@ -25,9 +25,7 @@ class BestSubsetProblem(
         name = "BestSubsetProblem"
     }
 
-    public override fun getBitsPerVariable(index: Int): Int {
-        return solution.getNumberOfBits(0)
-    }
+    public override fun getBitsPerVariable(index: Int): Int { return solution.getNumberOfBits(0) }
 
     override fun createSolution(): BestSubsetSolution { solution = BestSubsetSolution(this, numberOfTopics); return solution }
 
@@ -39,11 +37,10 @@ class BestSubsetProblem(
         BestSubsetLogger.log("PROBLEM - Number of selected topics: ${solution.numberOfSelectedTopics}")
 
         val meanAveragePrecisionsReduced = DoubleArray(averagePrecisions.entries.size)
-        var counter = 0
 
-        for(singleSystem in averagePrecisions) {
-            meanAveragePrecisionsReduced[counter] = Formula.getMean(singleSystem.value, solution.retrieveTopicStatus())
-            counter++
+        averagePrecisions.entries.forEachIndexed{
+            index, singleSystem ->
+            meanAveragePrecisionsReduced[index] = Formula.getMean(singleSystem.value, solution.retrieveTopicStatus())
         }
 
         // logger.log("PROBLEM - Mean Average Precisions: " + Arrays.toString(meanAveragePrecisions));
@@ -51,7 +48,7 @@ class BestSubsetProblem(
 
         val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced, meanAveragePrecisions)
         BestSubsetLogger.log("PROBLEM - Correlation: $correlation")
-        targetToAchieve.invoke(solution, correlation)
+        targetToAchieve(solution, correlation)
 
     }
 

@@ -52,6 +52,13 @@
         </contributor>
     </contributors>
 
+    <repositories>
+        <repository>
+            <id>central</id>
+            <url>http://jcenter.bintray.com</url>
+        </repository>
+    </repositories>
+
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
@@ -59,6 +66,7 @@
         <kotlin.version>1.1.2-3</kotlin.version>
         <junit.platform.version>1.0.0-M4</junit.platform.version>
         <junit.jupiter.version>5.0.0-M4</junit.jupiter.version>
+        <kotlin.compiler.incremental>true</kotlin.compiler.incremental>
     </properties>
 
     <dependencies>
@@ -164,6 +172,12 @@
             <artifactId>kotlin-test</artifactId>
             <version>${kotlin.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.jetbrains.kotlinx</groupId>
+            <artifactId>benchmarks</artifactId>
+            <version>0.15</version>
+            <type>pom</type>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -250,6 +264,11 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <args>
+                        <arg>-Xcoroutines=enable</arg>
+                    </args>
+                </configuration>
             </plugin>
 
             <plugin>

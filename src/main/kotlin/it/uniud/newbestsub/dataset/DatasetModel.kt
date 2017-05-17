@@ -1,73 +1,62 @@
 package it.uniud.newbestsub.dataset
 
 import com.opencsv.CSVReader
-
-import java.io.FileNotFoundException
-import java.io.FileReader
-import java.io.IOException
-
-import java.util.*
-
+import it.uniud.newbestsub.problem.BestSubsetProblem
+import it.uniud.newbestsub.problem.BestSubsetSolution
+import it.uniud.newbestsub.problem.BinaryPruningCrossover
+import it.uniud.newbestsub.problem.BitFlipMutation
 import it.uniud.newbestsub.utils.BestSubsetLogger
 import it.uniud.newbestsub.utils.Formula
-import it.uniud.newbestsub.problem.*
-
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation
-
-import org.uma.jmetal.problem.Problem
-
+import org.uma.jmetal.algorithm.Algorithm
+import org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAIIBuilder
 import org.uma.jmetal.operator.CrossoverOperator
 import org.uma.jmetal.operator.MutationOperator
 import org.uma.jmetal.operator.SelectionOperator
 import org.uma.jmetal.operator.impl.selection.BinaryTournamentSelection
-
-import org.uma.jmetal.algorithm.Algorithm
-import org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAIIBuilder
 import org.uma.jmetal.problem.BinaryProblem
-import org.uma.jmetal.problem.IntegerDoubleProblem
-
+import org.uma.jmetal.problem.Problem
 import org.uma.jmetal.solution.BinarySolution
-import org.uma.jmetal.solution.Solution
 import org.uma.jmetal.util.AlgorithmRunner
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
-import java.io.File
-
+import java.io.FileReader
+import java.util.*
 import kotlin.collections.LinkedHashMap
 
 
 class DatasetModel {
 
-    var systemLabels = Array(0,{""})
-    var topicLabels = Array(0,{""})
+    var systemLabels = Array(0, { "" })
+    var topicLabels = Array(0, { "" })
     var numberOfSystems = 0
     var systemSize = 0
     var numberOfTopics = 0
     var averagePrecisions: MutableMap<String, DoubleArray> = LinkedHashMap()
     var meanAveragePrecisions = DoubleArray(0)
     val topicDistribution: MutableMap<String, MutableMap<Double, Boolean>> by lazy {
-        val map : MutableMap<String, MutableMap<Double, Boolean>> = LinkedHashMap()
-        for(topicLabel in topicLabels) map.put(topicLabel,TreeMap<Double,Boolean>())
+        val map: MutableMap<String, MutableMap<Double, Boolean>> = LinkedHashMap()
+        for (topicLabel in topicLabels) map.put(topicLabel, TreeMap<Double, Boolean>())
         for (solutionToAnalyze in population) {
             val topicStatus = (solutionToAnalyze as BestSubsetSolution).retrieveTopicStatus()
             val cardinality = solutionToAnalyze.getObjective(1)
             for (j in topicStatus.indices) {
                 val isInSolutionForCard = map[topicLabels[j]] as MutableMap
-                var status : Boolean = false
-                if(topicStatus[j]) status = true
+                var status: Boolean = false
+                if (topicStatus[j]) status = true
                 isInSolutionForCard[cardinality] = status
                 map[topicLabels[j]] = isInSolutionForCard
             }
         }
         map
     }
-    var computingTime : Long = 0
+    var computingTime: Long = 0
 
     private lateinit var problem: Problem<BinarySolution>
     private lateinit var crossover: CrossoverOperator<BinarySolution>
     private lateinit var mutation: MutationOperator<BinarySolution>
     private lateinit var selection: SelectionOperator<List<BinarySolution>, BinarySolution>
-    private lateinit var population: MutableList<Solution<BinarySolution>>
+    private lateinit var population: MutableList<BinarySolution>
     private lateinit var builder: NSGAIIBuilder<BinarySolution>
     private lateinit var algorithm: Algorithm<List<BinarySolution>>
     private lateinit var algorithmRunner: AlgorithmRunner
@@ -84,12 +73,12 @@ class DatasetModel {
 
         var averagePrecisions = DoubleArray(0)
 
-        reader.readAll().forEach({
+        reader.readAll().forEach {
             nextLine ->
             averagePrecisions = DoubleArray(nextLine.size - 1)
-            for (i in 1..nextLine.size - 1) averagePrecisions[i - 1] = java.lang.Double.parseDouble(nextLine[i])
+            (1..nextLine.size - 1).forEach { i -> averagePrecisions[i - 1] = java.lang.Double.parseDouble(nextLine[i]) }
             this.averagePrecisions.put(nextLine[0], averagePrecisions)
-        })
+        }
 
         numberOfSystems = this.averagePrecisions.entries.size
         systemSize = averagePrecisions.size
@@ -105,7 +94,7 @@ class DatasetModel {
         /* In the loading phase there is an extensive use of the Map data structure. This has been done to do not lose
         the system and topic labels, which maybe will be useful in the future. */
 
-        topicLabels = Array(topicLabels.size, { i -> topicLabels[i] }).sliceArray(1..topicLabels.size-1)
+        topicLabels = Array(topicLabels.size, { i -> topicLabels[i] }).sliceArray(1..topicLabels.size - 1)
 
         /* The first label is stripped from the topic labels array because it's a fake label. */
 
@@ -114,22 +103,23 @@ class DatasetModel {
         val useColumns = BooleanArray(numberOfTopics)
         Arrays.fill(useColumns, true)
 
-        for((index, singleSystem) in this.averagePrecisions.entries.withIndex()) {
+        this.averagePrecisions.entries.forEachIndexed {
+            index, singleSystem ->
             meanAveragePrecisions[index] = Formula.getMean(singleSystem.value, useColumns)
             this.systemSize = if (this.systemSize == 0) singleSystem.value.size else this.systemSize
         }
 
     }
 
-    private fun loadCorrelationStrategy(chosenCorrelationMethod: String) : (DoubleArray, DoubleArray) -> Double {
+    private fun loadCorrelationStrategy(chosenCorrelationMethod: String): (DoubleArray, DoubleArray) -> Double {
 
-        val pearsonCorrelation : (DoubleArray, DoubleArray) -> Double = {
+        val pearsonCorrelation: (DoubleArray, DoubleArray) -> Double = {
             firstArray, secondArray ->
             val pcorr = PearsonsCorrelation()
             pcorr.correlation(firstArray, secondArray)
         }
 
-        val kendallCorrelation : (DoubleArray, DoubleArray) -> Double = {
+        val kendallCorrelation: (DoubleArray, DoubleArray) -> Double = {
             firstArray, secondArray ->
             val pcorr = KendallsCorrelation()
             pcorr.correlation(firstArray, secondArray)
@@ -144,14 +134,14 @@ class DatasetModel {
 
     private fun loadTargetStrategy(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
 
-        val bestStrategy : (BinarySolution, Double) -> BinarySolution = {
+        val bestStrategy: (BinarySolution, Double) -> BinarySolution = {
             solution, correlation ->
             solution.setObjective(0, correlation * -1)
             solution.setObjective(1, (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble())
             solution
         }
 
-        val worstStrategy : (BinarySolution, Double) -> BinarySolution = {
+        val worstStrategy: (BinarySolution, Double) -> BinarySolution = {
             solution, correlation ->
             solution.setObjective(0, correlation)
             solution.setObjective(1, ((solution as BestSubsetSolution).numberOfSelectedTopics * -1).toDouble())
@@ -166,7 +156,7 @@ class DatasetModel {
 
     }
 
-    fun solve(chosenCorrelationMethod: String, targetToAchieve: String, numberOfIterations: Int): Pair<List<Solution<BinarySolution>>, Long> {
+    fun solve(chosenCorrelationMethod: String, targetToAchieve: String, numberOfIterations: Int): Pair<List<BinarySolution>, Long> {
 
         val correlationStrategy = this.loadCorrelationStrategy(chosenCorrelationMethod)
         val targetStrategy = this.loadTargetStrategy(targetToAchieve)
@@ -178,7 +168,7 @@ class DatasetModel {
             val correlations = DoubleArray(numberOfTopics)
             val generator = Random()
 
-            for (currentCardinality in 0..numberOfTopics-1) {
+            for (currentCardinality in 0..numberOfTopics - 1) {
 
                 val topicToChoose = HashSet<Int>()
                 while (topicToChoose.size < currentCardinality + 1) {
@@ -187,8 +177,7 @@ class DatasetModel {
                 }
 
                 val topicStatus = BooleanArray(numberOfTopics)
-                for(chosenTopic in topicToChoose) topicStatus[chosenTopic - 1] = true
-
+                for (chosenTopic in topicToChoose) topicStatus[chosenTopic - 1] = true
 
                 var toString = ""
                 for (j in topicStatus.indices) if (topicStatus[j]) toString += 1 else toString += 0
@@ -198,10 +187,10 @@ class DatasetModel {
 
                 val meanAveragePrecisionsReduced = DoubleArray(averagePrecisions.entries.size)
 
-                for((index, singleSystem) in this.averagePrecisions.entries.withIndex())
+                for ((index, singleSystem) in this.averagePrecisions.entries.withIndex())
                     meanAveragePrecisionsReduced[index] = Formula.getMean(singleSystem.value, topicStatus)
 
-                val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced,meanAveragePrecisions)
+                val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced, meanAveragePrecisions)
 
                 BestSubsetLogger.log("PROBLEM - Correlation: $correlation")
 
@@ -214,19 +203,15 @@ class DatasetModel {
             problem = BestSubsetProblem(numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
             population = LinkedList()
 
-            for (i in 0..numberOfTopics - 1) {
+            (0..numberOfTopics - 1).forEach {
+                i ->
                 val solution = BestSubsetSolution(problem as BinaryProblem, numberOfTopics)
                 solution.setVariableValue(0, solution.createNewBitSet(numberOfTopics, variableValues[i]))
                 solution.setObjective(0, correlations[i])
                 solution.setObjective(1, cardinalities[i].toDouble())
                 @Suppress("UNCHECKED_CAST")
-                population.add(solution as Solution<BinarySolution>)
+                population.add(solution as BinarySolution)
             }
-
-            population.sortWith(kotlin.Comparator {
-                sol1: Solution<BinarySolution>, sol2: Solution<BinarySolution> ->
-                (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
-            })
 
         } else {
 
@@ -237,7 +222,7 @@ class DatasetModel {
 
             builder = NSGAIIBuilder(problem, crossover, mutation)
             builder.selectionOperator = selection
-            builder.populationSize = 10000
+            builder.populationSize = 1000
             builder.setMaxEvaluations(numberOfIterations)
 
             algorithm = builder.build()
@@ -245,20 +230,22 @@ class DatasetModel {
             computingTime = algorithmRunner.computingTime
 
             @Suppress("UNCHECKED_CAST")
-            population = algorithm.result as MutableList<Solution<BinarySolution>>
-            population.sortWith(kotlin.Comparator({
-                sol1: Solution<BinarySolution>, sol2: Solution<BinarySolution> ->
-                (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
-            }))
+            population = algorithm.result as MutableList<BinarySolution>
+            val populationWithNoDups = LinkedHashSet<BestSubsetSolution>()
+            population.forEach { aSolution -> (populationWithNoDups::add)(aSolution as BestSubsetSolution) }
+            @Suppress("UNCHECKED_CAST")
+            population = populationWithNoDups.toList() as MutableList<BinarySolution>
 
             when (targetToAchieve) {
                 "Best" -> for (i in population.indices) {
-                    val solutionToFix = population[i]; val correlationToFix = solutionToFix.getObjective(0) * -1
+                    val solutionToFix = population[i];
+                    val correlationToFix = solutionToFix.getObjective(0) * -1
                     solutionToFix.setObjective(0, correlationToFix)
                     population[i] = solutionToFix
                 }
                 "Worst" -> for (i in population.indices) {
-                    val solutionToFix = population[i]; val cardinalityToFix = solutionToFix.getObjective(1) * -1
+                    val solutionToFix = population[i];
+                    val cardinalityToFix = solutionToFix.getObjective(1) * -1
                     solutionToFix.setObjective(1, cardinalityToFix)
                     population[i] = solutionToFix
                 }
@@ -266,7 +253,12 @@ class DatasetModel {
 
         }
 
-        return Pair<List<Solution<BinarySolution>>, Long>(population, computingTime)
+        population.sortWith(kotlin.Comparator {
+            sol1: BinarySolution, sol2: BinarySolution ->
+            (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
+        })
+
+        return Pair<List<BinarySolution>, Long>(population, computingTime)
 
     }
 

@@ -11,7 +11,7 @@
           <option name="pluginClasspaths">
             <array />
           </option>
-          <option name="coroutinesWarn" value="true" />
+          <option name="coroutinesEnable" value="true" />
           <option name="pluginOptions">
             <array />
           </option>
@@ -179,6 +179,12 @@
     <orderEntry type="library" name="Maven: org.jetbrains.kotlin:kotlin-test:1.1.2-3" level="project" />
     <orderEntry type="library" name="Maven: org.jetbrains.kotlin:kotlin-stdlib:1.1.2-3" level="project" />
     <orderEntry type="library" name="Maven: org.jetbrains:annotations:13.0" level="project" />
+    <orderEntry type="library" name="Maven: org.openjdk.jmh:jmh-core:1.18" level="project" />
+    <orderEntry type="library" name="Maven: net.sf.jopt-simple:jopt-simple:4.6" level="project" />
+    <orderEntry type="library" name="Maven: com.typesafe.akka:akka-actor:2.0.2" level="project" />
+    <orderEntry type="library" name="Maven: org.scala-lang:scala-library:2.9.2" level="project" />
+    <orderEntry type="library" name="Maven: org.jetbrains.kotlinx:kotlinx-coroutines-core:0.15" level="project" />
+    <orderEntry type="library" name="Maven: org.jetbrains.kotlinx:kotlinx-coroutines-core:tests:0.15" level="project" />
     <orderEntry type="library" scope="TEST" name="Maven: org.junit.jupiter:junit-jupiter-api:5.0.0-M4" level="project" />
     <orderEntry type="library" scope="TEST" name="Maven: org.opentest4j:opentest4j:1.0.0-M2" level="project" />
     <orderEntry type="library" scope="TEST" name="Maven: org.junit.platform:junit-platform-commons:1.0.0-M4" level="project" />

@@ -11,7 +11,7 @@ import org.uma.jmetal.util.fileoutput.impl.DefaultFileOutputContext
 
 class DatasetView : AbstractAlgorithmRunner() {
 
-    fun print(runResult: Pair<List<Solution<BinarySolution>>, Long>, outputPath: String) {
+    fun print(runResult: Pair<List<BinarySolution>, Long>, outputPath: String) {
 
         BestSubsetLogger.log("VIEW - Starting to print the result")
 
