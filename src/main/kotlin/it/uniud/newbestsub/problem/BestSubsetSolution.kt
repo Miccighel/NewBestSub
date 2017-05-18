@@ -1,8 +1,8 @@
 package it.uniud.newbestsub.problem
 
-import it.uniud.newbestsub.utils.BestSubsetLogger
 import org.apache.commons.lang3.builder.EqualsBuilder
 import org.apache.commons.lang3.builder.HashCodeBuilder
+import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.problem.BinaryProblem
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.solution.impl.AbstractGenericSolution
@@ -13,6 +13,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
     var topicStatus: BooleanArray
     var numberOfSelectedTopics: Int = 0
+    private val logger = LogManager.getLogger()
 
     constructor(problem: BinaryProblem, numberOfTopics: Int) : super(problem) {
 
@@ -41,8 +42,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
         setVariableValue(0, createNewBitSet(topicStatus.size, topicStatus))
 
-        BestSubsetLogger.log("SOLUTION - (New) Gene: ${getVariableValueString(0)}")
-        BestSubsetLogger.log("SOLUTION - (New) Number of selected topics: $numberOfSelectedTopics")
+        logger.debug("Number of selected topics: $numberOfSelectedTopics - Gene: ${getVariableValueString(0)}")
     }
 
     constructor(solution: BestSubsetSolution) : super(solution.problem) {

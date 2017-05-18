@@ -5,10 +5,10 @@ import it.uniud.newbestsub.problem.BestSubsetProblem
 import it.uniud.newbestsub.problem.BestSubsetSolution
 import it.uniud.newbestsub.problem.BinaryPruningCrossover
 import it.uniud.newbestsub.problem.BitFlipMutation
-import it.uniud.newbestsub.utils.BestSubsetLogger
 import it.uniud.newbestsub.utils.Formula
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation
+import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.algorithm.Algorithm
 import org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAIIBuilder
 import org.uma.jmetal.operator.CrossoverOperator
@@ -23,7 +23,6 @@ import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
 import java.io.FileReader
 import java.util.*
 import kotlin.collections.LinkedHashMap
-
 
 class DatasetModel {
 
@@ -51,6 +50,7 @@ class DatasetModel {
         map
     }
     var computingTime: Long = 0
+    private val logger = LogManager.getLogger()
 
     private lateinit var problem: Problem<BinarySolution>
     private lateinit var crossover: CrossoverOperator<BinarySolution>
@@ -69,7 +69,7 @@ class DatasetModel {
         topicLabels = reader.readNext()
         numberOfTopics = topicLabels.size - 1
 
-        BestSubsetLogger.log("MODEL - Total number of topics: $numberOfTopics")
+        //BestSubsetLogger.log("MODEL - Total number of topics: $numberOfTopics")
 
         var averagePrecisions = DoubleArray(0)
 
@@ -87,9 +87,9 @@ class DatasetModel {
         and the value is an array that contains the AP values of a single system, for each topic. */
 
         val iterator = this.averagePrecisions.entries.iterator()
-        systemLabels = Array(numberOfSystems,{ _ -> iterator.next().key })
+        systemLabels = Array(numberOfSystems, { _ -> iterator.next().key })
 
-        BestSubsetLogger.log("MODEL - Total number of systems: ${this.averagePrecisions.entries.size}")
+        //BestSubsetLogger.log("MODEL - Total number of systems: ${this.averagePrecisions.entries.size}")
 
         /* In the loading phase there is an extensive use of the Map data structure. This has been done to do not lose
         the system and topic labels, which maybe will be useful in the future. */
@@ -156,10 +156,12 @@ class DatasetModel {
 
     }
 
-    fun solve(chosenCorrelationMethod: String, targetToAchieve: String, numberOfIterations: Int): Pair<List<BinarySolution>, Long> {
+    fun solve(chosenCorrelationMethod: String, targetToAchieve: String, numberOfIterations: Int): Pair<List<BinarySolution>, Triple<String, String, Long>> {
 
         val correlationStrategy = this.loadCorrelationStrategy(chosenCorrelationMethod)
         val targetStrategy = this.loadTargetStrategy(targetToAchieve)
+
+        logger.info("Computation started on \"${Thread.currentThread().name}\" with target \"$targetToAchieve\". Wait please...")
 
         if (targetToAchieve == "Average") {
 
@@ -182,9 +184,6 @@ class DatasetModel {
                 var toString = ""
                 for (j in topicStatus.indices) if (topicStatus[j]) toString += 1 else toString += 0
 
-                BestSubsetLogger.log("PROBLEM - Evaluating gene: $toString")
-                BestSubsetLogger.log("PROBLEM - Number of selected topics: $currentCardinality")
-
                 val meanAveragePrecisionsReduced = DoubleArray(averagePrecisions.entries.size)
 
                 for ((index, singleSystem) in this.averagePrecisions.entries.withIndex())
@@ -192,7 +191,7 @@ class DatasetModel {
 
                 val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced, meanAveragePrecisions)
 
-                BestSubsetLogger.log("PROBLEM - Correlation: $correlation")
+                logger.debug("Correlation: $correlation - Number of selected topics: $currentCardinality - Evaluating gene: $toString")
 
                 cardinalities[currentCardinality] = currentCardinality + 1
                 correlations[currentCardinality] = correlation
@@ -238,13 +237,13 @@ class DatasetModel {
 
             when (targetToAchieve) {
                 "Best" -> for (i in population.indices) {
-                    val solutionToFix = population[i];
+                    val solutionToFix = population[i]
                     val correlationToFix = solutionToFix.getObjective(0) * -1
                     solutionToFix.setObjective(0, correlationToFix)
                     population[i] = solutionToFix
                 }
                 "Worst" -> for (i in population.indices) {
-                    val solutionToFix = population[i];
+                    val solutionToFix = population[i]
                     val cardinalityToFix = solutionToFix.getObjective(1) * -1
                     solutionToFix.setObjective(1, cardinalityToFix)
                     population[i] = solutionToFix
@@ -258,7 +257,7 @@ class DatasetModel {
             (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
         })
 
-        return Pair<List<BinarySolution>, Long>(population, computingTime)
+        return Pair<List<BinarySolution>, Triple<String, String, Long>>(population, Triple(targetToAchieve, Thread.currentThread().name, computingTime))
 
     }
 

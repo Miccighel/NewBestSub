@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Properties>
+        <Property name="baseLogFileName">${sys:baseLogFileName}</Property>
+    </Properties>
+    <Appenders>
+        <Console name="Console-Debug" target="SYSTEM_OUT">
+            <PatternLayout pattern="[%d{HH:mm:ss} %-8.8t %-22C{1} %-8M] %highlight{%m%n}"/>
+        </Console>
+        <Console name="Console-Info" target="SYSTEM_OUT">
+            <PatternLayout pattern="[%d{HH:mm:ss} %-8.8t %-22C{1} %-8M] %highlight{%m%n}"/>
+        </Console>
+        <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log" append="false">
+            <PatternLayout pattern="[%d{HH:mm:ss} %-8t %-22C{1} %-8M] %m%n"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy size="5 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+    </Appenders>
+    <Loggers>
+        <Root level="error">
+            <AppenderRef ref="Console-Debug"/>
+        </Root>
+        <Logger name="it.uniud.newbestsub.dataset" additivity="false">
+            <AppenderRef ref="Console-Debug" level="Debug"/>
+            <AppenderRef ref="Rolling" level="Debug"/>
+        </Logger>
+        <Logger name="it.uniud.newbestsub.problem" additivity="false">
+            <AppenderRef ref="Console-Debug" level="Debug"/>
+            <AppenderRef ref="Rolling" level="Debug"/>
+        </Logger>
+        <Logger name="it.uniud.newbestsub.program.Program" additivity="false">
+            <AppenderRef ref="Console-Info"/>
+        </Logger>
+    </Loggers>
+</Configuration>

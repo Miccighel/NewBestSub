@@ -1,83 +1,93 @@
 package it.uniud.newbestsub.dataset
 
-import it.uniud.newbestsub.utils.BestSubsetLogger
 import it.uniud.newbestsub.utils.Constants
 import kotlinx.coroutines.experimental.CommonPool
 import kotlinx.coroutines.experimental.async
 import kotlinx.coroutines.experimental.runBlocking
-import scala.util.parsing.combinator.testing.Str
-
+import org.apache.logging.log4j.LogManager
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 
-
 class DatasetController {
 
     private var model: DatasetModel = DatasetModel()
+    private var modelBest: DatasetModel = DatasetModel()
+    private var modelWorst: DatasetModel = DatasetModel()
+    private var modelAverage: DatasetModel = DatasetModel()
     private var view: DatasetView = DatasetView()
+    private var logger = LogManager.getLogger()
 
     fun loadData(datasetPath: String) {
 
-        BestSubsetLogger.log("CONTROLLER - Dataset loading has been started.")
-        BestSubsetLogger.log("CONTROLLER - Path to dataset file is: \"$datasetPath\".")
+        logger.info("Dataset loading started.")
+        logger.info("Path: \"$datasetPath\".")
 
         val outputDirectory = File(Constants.OUTPUT_PATH)
         if (!outputDirectory.exists()) {
-            BestSubsetLogger.log("CONTROLLER - Starting to create output directory.")
-            if (outputDirectory.mkdir()) BestSubsetLogger.log("CONTROLLER - Output directory created. Path is: \"${outputDirectory.name}\".")
-        } else BestSubsetLogger.log("CONTROLLER - Output directory already exists. Path is: \"${outputDirectory.name}\".")
+            logger.info("Checking if output dir. exists.")
+            if (outputDirectory.mkdir()) {
+                logger.info("Output dir. created.")
+                logger.info("Path: \"${outputDirectory.name}\".")
+            }
+        } else {
+            logger.warn("Output dir. already exists.")
+            logger.warn("Path: \"${outputDirectory.name}\".")
+        }
         try {
             model.loadData(datasetPath)
+            modelBest.loadData(datasetPath)
+            modelWorst.loadData(datasetPath)
+            modelAverage.loadData(datasetPath)
         } catch (exception: FileNotFoundException) {
-            BestSubsetLogger.log("EXCEPTION (Controller) - Dataset file wasn't found. Be sure that your file is inside a \"data\" folder.")
+            logger.warn("Dataset not found. Is file inside a \"data\" dir.?")
         } catch (exception: IOException) {
-            BestSubsetLogger.log(exception.message as String)
+            logger.warn(exception.message as String)
         }
 
-        BestSubsetLogger.log("CONTROLLER - Dataset loading has been completed successfully.")
+        logger.info("Dataset loading completed.")
     }
 
     fun solve(chosenCorrelationMethod: String, targetToAchieve: String, numberOfIterations: Int, resultPath: String) {
 
-        BestSubsetLogger.log("CONTROLLER - Starting to solve the problem")
-        BestSubsetLogger.log("CONTROLLER - Chosen method to compute correlation is: $chosenCorrelationMethod.")
-        BestSubsetLogger.log("CONTROLLER - Target to achieve is: $targetToAchieve.")
-        BestSubsetLogger.log("CONTROLLER - Number of iterations to do is: " + numberOfIterations)
-        BestSubsetLogger.log("CONTROLLER - Path to the result files are: \"${Constants.OUTPUT_PATH}$resultPath-Fun.csv\" and \"${Constants.OUTPUT_PATH}$resultPath-Var.csv\".")
+        logger.info("Problem resolution started.")
+        logger.info("Correlation: $chosenCorrelationMethod.")
+        logger.info("Target: $targetToAchieve.")
+        logger.info("Number of iterations: $numberOfIterations.")
+        logger.info("Output path:")
+        logger.info("${Constants.OUTPUT_PATH}$resultPath-Fun.csv")
+        logger.info("${Constants.OUTPUT_PATH}$resultPath-Var.csv")
 
-        val result = model.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations)
+        view.print(model.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations), resultPath)
 
-        view.print(result, resultPath)
-
-        BestSubsetLogger.log("CONTROLLER - Finished to solve the problem.")
+        logger.info("Finished to solve the problem.")
     }
 
-    fun solve(chosenCorrelationMethod: String, numberOfIterations: Int, resultPath: String) = runBlocking {
+    fun solve(chosenCorrelationMethod: String, numberOfIterations: Int, resultPath: String) {
 
-        BestSubsetLogger.log("CONTROLLER - Starting to solve the problem")
-        BestSubsetLogger.log("CONTROLLER - Chosen method to compute correlation is: $chosenCorrelationMethod.")
-        BestSubsetLogger.log("CONTROLLER - Target to achieve is: All.")
-        BestSubsetLogger.log("CONTROLLER - Number of iterations to do is: " + numberOfIterations)
-        BestSubsetLogger.log("CONTROLLER - Path to the result files are: \"${Constants.OUTPUT_PATH}$resultPath"+"Best-Fun.csv\" and \"${Constants.OUTPUT_PATH}$resultPath"+"Best-Var.csv\".")
-        BestSubsetLogger.log("CONTROLLER - Path to the result files are: \"${Constants.OUTPUT_PATH}$resultPath"+"Worst-Fun.csv\" and \"${Constants.OUTPUT_PATH}$resultPath"+"Worst-Var.csv\".")
-        BestSubsetLogger.log("CONTROLLER - Path to the result files are: \"${Constants.OUTPUT_PATH}$resultPath"+"Average-Fun.csv\" and \"${Constants.OUTPUT_PATH}$resultPath"+"Average-Var.csv\".")
+        logger.info("Problem resolution started.")
+        logger.info("Correlation: $chosenCorrelationMethod.")
+        logger.info("Target: \"All\".")
+        logger.info("Number of iterations: $numberOfIterations.")
+        logger.info("Output path:")
+        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Best-Fun.csv")
+        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Best-Var.csv")
+        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Worst-Fun.csv")
+        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Worst-Var.csv")
+        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Average-Fun.csv")
+        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Average-Var.csv")
 
-        val bestResult = async(CommonPool) {
-            model.solve(chosenCorrelationMethod, "Best", numberOfIterations)
-        }.await()
-        val worstResult = async(CommonPool) {
-            model.solve(chosenCorrelationMethod, "Worst", numberOfIterations)
-        }.await()
-        val averageResult = async(CommonPool) {
-            model.solve(chosenCorrelationMethod, "Worst", numberOfIterations)
-        }.await()
+        val bestResult = { async(CommonPool) { modelBest.solve(chosenCorrelationMethod, "Best", numberOfIterations) } }.invoke()
+        val worstResult = { async(CommonPool) { modelWorst.solve(chosenCorrelationMethod, "Worst", numberOfIterations) } }.invoke()
+        val averageResult = { async(CommonPool) { modelAverage.solve(chosenCorrelationMethod, "Average", numberOfIterations) } }.invoke()
 
-        view.print(bestResult, resultPath + "Best")
-        view.print(worstResult, resultPath + "Worst")
-        view.print(averageResult, resultPath + "Average")
+        runBlocking {
+            view.print(bestResult.await(), resultPath + "Best")
+            view.print(worstResult.await(), resultPath + "Worst")
+            view.print(averageResult.await(), resultPath + "Average")
+        }
 
-        BestSubsetLogger.log("CONTROLLER - Finished to solve the problem.")
+        logger.info("Problem resolution completed.")
     }
 
 }

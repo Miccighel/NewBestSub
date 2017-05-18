@@ -3,9 +3,7 @@ package it.uniud.newbestsub.problem
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-
 import org.uma.jmetal.solution.BinarySolution
-
 import java.util.Random
 import kotlin.collections.LinkedHashMap
 import kotlin.collections.set
@@ -62,13 +60,14 @@ class BestSubsetSolutionTest {
     @DisplayName("GetTotalNumberOfBits")
 
     fun getTotalNumberOfBitsTest() {
-        var sum = 0
-        for(index in 0..testSol.numberOfVariables-1) sum += testSol.getVariableValue(index).binarySetLength
+        var sum = 0; (0..testSol.numberOfVariables - 1).forEachIndexed { index, _ -> sum += testSol.getVariableValue(index).binarySetLength }
         assertEquals(true, sum == testSol.totalNumberOfBits, "Computed number of different values: $sum - Retrieved number of different values: ${testSol.totalNumberOfBits}")
     }
 
     @Test
     @DisplayName("Copy")
 
-    fun copyTest() { assertEquals(true, testSol.copy() == testSol) }
+    fun copyTest() {
+        assertEquals(true, testSol.copy() == testSol)
+    }
 }

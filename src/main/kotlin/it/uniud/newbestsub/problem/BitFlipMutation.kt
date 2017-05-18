@@ -1,15 +1,14 @@
 package it.uniud.newbestsub.problem
 
-import it.uniud.newbestsub.utils.BestSubsetLogger
 import it.uniud.newbestsub.utils.Formula
-
+import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.MutationOperator
-
 import org.uma.jmetal.solution.BinarySolution
-
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
 class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution> {
+
+    private val logger = LogManager.getLogger()
 
     override fun execute(solution: BinarySolution): BinarySolution {
 
@@ -17,8 +16,8 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
         val totalNumberOfTopics = solution.getNumberOfBits(0)
         val oldGene = solution.getVariableValueString(0)
 
-        BestSubsetLogger.log("MUTATION - (Pre) Gene: ${solution.getVariableValueString(0)}")
-        BestSubsetLogger.log("MUTATION - (Pre) Number of selected topics: ${(solution as BestSubsetSolution).numberOfSelectedTopics}")
+        logger.debug("(Pre) Number of selected topics: ${(solution as BestSubsetSolution).numberOfSelectedTopics} - " +
+                "(Pre) Gene: ${solution.getVariableValueString(0)}")
 
         if (JMetalRandom.getInstance().nextDouble() < probability) {
 
@@ -36,9 +35,8 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
 
         val newGene = solution.getVariableValueString(0)
 
-        BestSubsetLogger.log("MUTATION - (Post) Gene: $newGene")
-        BestSubsetLogger.log("MUTATION - (Post) Number of selected topics: ${solution.numberOfSelectedTopics}")
-        BestSubsetLogger.log("MUTATION - Hamming distance: ${Formula.stringComparison(oldGene, newGene)}")
+        logger.debug("(Post) Number of selected topics: ${solution.numberOfSelectedTopics} - " + "(Post) Gene: $newGene")
+        logger.debug("Hamming distance: ${Formula.stringComparison(oldGene, newGene)}")
 
         return solution
 
