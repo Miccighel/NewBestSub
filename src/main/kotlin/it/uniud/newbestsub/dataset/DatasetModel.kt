@@ -249,7 +249,6 @@ class DatasetModel {
                     population[i] = solutionToFix
                 }
             }
-
         }
 
         population.sortWith(kotlin.Comparator {
