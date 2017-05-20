@@ -2,11 +2,11 @@ package it.uniud.newbestsub.program
 
 import it.uniud.newbestsub.dataset.DatasetController
 import it.uniud.newbestsub.utils.Constants
+import it.uniud.newbestsub.utils.Tools.updateLogger
 import org.apache.commons.cli.*
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
-import org.apache.logging.log4j.core.LoggerContext
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -21,10 +21,10 @@ object Program {
         val datasetPath: String
         val chosenCorrelationMethod: String
         val targetToAchieve: String
-        val numberOfIterations: Int
+        var numberOfIterations: Int
         var resultPath: String
         val loggingLevel: Level
-        val logger: Logger
+        var logger: Logger
 
         try {
 
@@ -52,58 +52,31 @@ object Program {
 
                 if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst" || commandLine.getOptionValue("t") == "Average" || commandLine.getOptionValue("t") == "All") {
                     targetToAchieve = commandLine.getOptionValue("t")
-                    if (commandLine.getOptionValue("t") != "Average") {
+                    numberOfIterations = 0
+                    if (targetToAchieve != "Average") {
                         if (!commandLine.hasOption("i")) throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
                         try {
                             numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
-                            if (commandLine.getOptionValue("t") == "All") {
-                                System.setProperty("baseLogFileName", Constants.LOG_PATH + resultPath + "All.log")
-                                val currentContext = (LogManager.getContext(false) as LoggerContext)
-                                val currentConfiguration = currentContext.configuration
-                                val loggerConfig = currentConfiguration.getLoggerConfig(LogManager.ROOT_LOGGER_NAME)
-                                loggerConfig.level = loggingLevel
-                                logger = LogManager.getLogger()
-                                currentContext.updateLoggers()
-                                logger.info("NewBestSub execution started.")
-                                datasetController = DatasetController()
-                                datasetController.loadData(datasetPath)
-                                datasetController.solve(chosenCorrelationMethod, numberOfIterations, resultPath)
-                                logger.info("NewBestSub execution terminated.")
-                            } else {
-                                resultPath += targetToAchieve
-                                System.setProperty("baseLogFileName", Constants.LOG_PATH + resultPath + ".log")
-                                val currentContext = (LogManager.getContext(false) as LoggerContext)
-                                val currentConfiguration = currentContext.configuration
-                                val loggerConfig = currentConfiguration.getLoggerConfig(LogManager.ROOT_LOGGER_NAME)
-                                loggerConfig.level = loggingLevel
-                                logger = LogManager.getLogger()
-                                currentContext.updateLoggers()
-                                logger.info("NewBestSub execution started.")
-                                datasetController = DatasetController()
-                                datasetController.loadData(datasetPath)
-                                datasetController.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations, resultPath)
-                                logger.info("NewBestSub execution terminated.")
-                            }
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
                         }
                     } else {
                         if (commandLine.hasOption("i")) throw ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.")
+                    }
+                    if(targetToAchieve != "All") {
                         resultPath += targetToAchieve
                         System.setProperty("baseLogFileName", Constants.LOG_PATH + resultPath + ".log")
-                        val currentContext = (LogManager.getContext(false) as LoggerContext)
-                        val currentConfiguration = currentContext.configuration
-                        val loggerConfig = currentConfiguration.getLoggerConfig(LogManager.ROOT_LOGGER_NAME)
-                        loggerConfig.level = loggingLevel
-                        logger = LogManager.getLogger()
-                        currentContext.updateLoggers()
-                        logger.info("NewBestSub execution started.")
-                        datasetController = DatasetController()
-                        datasetController.loadData(datasetPath)
-                        datasetController.solve(chosenCorrelationMethod, targetToAchieve, 0, resultPath)
-                        logger.info("NewBestSub execution terminated.")
+                    } else System.setProperty("baseLogFileName", Constants.LOG_PATH + resultPath + "All.log")
+                    logger = updateLogger(LogManager.getLogger(),loggingLevel)
+                    logger.info("NewBestSub execution started.")
+                    datasetController = DatasetController()
+                    datasetController.loadData(datasetPath)
+                    when (targetToAchieve) {
+                        "All" -> datasetController.solve(chosenCorrelationMethod, numberOfIterations, resultPath)
+                        "Average" -> datasetController.solve(chosenCorrelationMethod, targetToAchieve, 0, resultPath)
+                        else -> datasetController.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations, resultPath)
                     }
-
+                    logger.info("NewBestSub execution terminated.")
                 } else throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
             }
 
@@ -133,6 +106,7 @@ object Program {
         return options
 
     }
+
 }
 
 

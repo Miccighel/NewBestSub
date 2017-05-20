@@ -42,7 +42,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
         setVariableValue(0, createNewBitSet(topicStatus.size, topicStatus))
 
-        logger.debug("Number of selected topics: $numberOfSelectedTopics - Gene: ${getVariableValueString(0)}")
+        logger.debug("<Num. Sel. Topics: $numberOfSelectedTopics, Gene: ${getVariableValueString(0)}>")
     }
 
     constructor(solution: BestSubsetSolution) : super(solution.problem) {

@@ -47,10 +47,10 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
         childrenSolution[0] = firstChildren
         childrenSolution[1] = secondChildren
 
-        logger.debug("Number of selected topics: ${firstSolution.numberOfSelectedTopics} - Parent 1: ${firstSolution.getVariableValueString(0)}")
-        logger.debug("Number of selected topics: ${secondSolution.numberOfSelectedTopics} - Parent 2: ${secondSolution.getVariableValueString(0)}")
-        logger.debug("Number of selected topics: ${firstChildren.numberOfSelectedTopics} - Children 1: ${firstChildren.getVariableValueString(0)}")
-        logger.debug("Number of selected topics: ${firstChildren.numberOfSelectedTopics} - Children 2: ${secondChildren.getVariableValueString(0)}")
+        logger.debug("<Num. Sel. Topics: ${firstSolution.numberOfSelectedTopics}, Parent 1: ${firstSolution.getVariableValueString(0)}>")
+        logger.debug("<Num. Sel. Topics: ${secondSolution.numberOfSelectedTopics}, Parent 2: ${secondSolution.getVariableValueString(0)}>")
+        logger.debug("<Num. Sel. Topics: ${firstChildren.numberOfSelectedTopics}, Children 1: ${firstChildren.getVariableValueString(0)}>")
+        logger.debug("<Num. Sel. Topics: ${secondChildren.numberOfSelectedTopics}, Children 2: ${secondChildren.getVariableValueString(0)}>")
 
         return childrenSolution
     }

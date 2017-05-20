@@ -1,6 +1,6 @@
 package it.uniud.newbestsub.problem
 
-import it.uniud.newbestsub.utils.Formula
+import it.uniud.newbestsub.utils.Tools
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.problem.impl.AbstractBinaryProblem
 import org.uma.jmetal.solution.BinarySolution
@@ -40,14 +40,12 @@ class BestSubsetProblem(
 
         averagePrecisions.entries.forEachIndexed {
             index, singleSystem ->
-            meanAveragePrecisionsReduced[index] = Formula.getMean(singleSystem.value, solution.retrieveTopicStatus())
+            meanAveragePrecisionsReduced[index] = Tools.getMean(singleSystem.value, solution.retrieveTopicStatus())
         }
 
         val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced, meanAveragePrecisions)
 
-        logger.debug("Correlation: $correlation - " +
-                "Number of selected topics: " + "${solution.numberOfSelectedTopics} - " +
-                "Evaluating gene: ${solution.getVariableValueString(0)}")
+        logger.debug("<Correlation: $correlation, " + "Num. Sel. Topics: " + "${solution.numberOfSelectedTopics}, " + "Ev. Gene: ${solution.getVariableValueString(0)}>")
 
         targetToAchieve(solution, correlation)
 

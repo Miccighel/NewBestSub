@@ -5,7 +5,7 @@ import it.uniud.newbestsub.problem.BestSubsetProblem
 import it.uniud.newbestsub.problem.BestSubsetSolution
 import it.uniud.newbestsub.problem.BinaryPruningCrossover
 import it.uniud.newbestsub.problem.BitFlipMutation
-import it.uniud.newbestsub.utils.Formula
+import it.uniud.newbestsub.utils.Tools
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation
 import org.apache.logging.log4j.LogManager
@@ -105,7 +105,7 @@ class DatasetModel {
 
         this.averagePrecisions.entries.forEachIndexed {
             index, singleSystem ->
-            meanAveragePrecisions[index] = Formula.getMean(singleSystem.value, useColumns)
+            meanAveragePrecisions[index] = Tools.getMean(singleSystem.value, useColumns)
             this.systemSize = if (this.systemSize == 0) singleSystem.value.size else this.systemSize
         }
 
@@ -187,7 +187,7 @@ class DatasetModel {
                 val meanAveragePrecisionsReduced = DoubleArray(averagePrecisions.entries.size)
 
                 for ((index, singleSystem) in this.averagePrecisions.entries.withIndex())
-                    meanAveragePrecisionsReduced[index] = Formula.getMean(singleSystem.value, topicStatus)
+                    meanAveragePrecisionsReduced[index] = Tools.getMean(singleSystem.value, topicStatus)
 
                 val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced, meanAveragePrecisions)
 

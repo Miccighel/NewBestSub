@@ -1,6 +1,6 @@
 package it.uniud.newbestsub.problem
 
-import it.uniud.newbestsub.utils.Formula
+import it.uniud.newbestsub.utils.Tools
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.MutationOperator
 import org.uma.jmetal.solution.BinarySolution
@@ -16,8 +16,8 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
         val totalNumberOfTopics = solution.getNumberOfBits(0)
         val oldGene = solution.getVariableValueString(0)
 
-        logger.debug("(Pre) Number of selected topics: ${(solution as BestSubsetSolution).numberOfSelectedTopics} - " +
-                "(Pre) Gene: ${solution.getVariableValueString(0)}")
+        logger.debug("<(Pre) Num. Sel. Topics: ${(solution as BestSubsetSolution).numberOfSelectedTopics}, " +
+                "<(Pre) Gene: ${solution.getVariableValueString(0)}>")
 
         if (JMetalRandom.getInstance().nextDouble() < probability) {
 
@@ -35,8 +35,7 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
 
         val newGene = solution.getVariableValueString(0)
 
-        logger.debug("(Post) Number of selected topics: ${solution.numberOfSelectedTopics} - " + "(Post) Gene: $newGene")
-        logger.debug("Hamming distance: ${Formula.stringComparison(oldGene, newGene)}")
+        logger.debug("<Hamming Distance: ${Tools.stringComparison(oldGene, newGene)}, (Post) Num. Sel. Topics: ${solution.numberOfSelectedTopics}, " + "(Post) Gene: $newGene>")
 
         return solution
 
