@@ -1,6 +1,5 @@
 package it.uniud.newbestsub.problem
 
-import org.apache.logging.log4j.Logger
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test

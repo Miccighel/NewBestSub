@@ -36,9 +36,4 @@ object Tools {
         return logger
     }
 
-    fun updateLogger(logger: Logger) : Logger {
-        val currentContext = (LogManager.getContext(false) as LoggerContext)
-        currentContext.updateLoggers()
-        return logger
-    }
 }
