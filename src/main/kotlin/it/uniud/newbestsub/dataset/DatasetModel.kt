@@ -156,14 +156,14 @@ class DatasetModel {
 
     }
 
-    fun solve(chosenCorrelationMethod: String, targetToAchieve: String, numberOfIterations: Int): Pair<List<BinarySolution>, Triple<String, String, Long>> {
+    fun solve(parameters: Parameters): Pair<List<BinarySolution>, Triple<String, String, Long>> {
 
-        val correlationStrategy = this.loadCorrelationStrategy(chosenCorrelationMethod)
-        val targetStrategy = this.loadTargetStrategy(targetToAchieve)
+        val correlationStrategy = this.loadCorrelationStrategy(parameters.chosenCorrelationMethod)
+        val targetStrategy = this.loadTargetStrategy(parameters.targetToAchieve)
 
-        logger.info("Computation started on \"${Thread.currentThread().name}\" with target \"$targetToAchieve\". Wait please...")
+        logger.info("Computation started on \"${Thread.currentThread().name}\" with target \"${parameters.targetToAchieve}\". Wait please...")
 
-        if (targetToAchieve == "Average") {
+        if (parameters.targetToAchieve == "Average") {
 
             val variableValues = LinkedList<BooleanArray>()
             val cardinalities = IntArray(numberOfTopics)
@@ -221,8 +221,8 @@ class DatasetModel {
 
             builder = NSGAIIBuilder(problem, crossover, mutation)
             builder.selectionOperator = selection
-            builder.populationSize = 1000
-            builder.setMaxEvaluations(numberOfIterations)
+            builder.populationSize = parameters.populationSize
+            builder.setMaxEvaluations(parameters.numberOfIterations)
 
             algorithm = builder.build()
             algorithmRunner = AlgorithmRunner.Executor(algorithm).execute()
@@ -235,7 +235,7 @@ class DatasetModel {
             @Suppress("UNCHECKED_CAST")
             population = populationWithNoDups.toList() as MutableList<BinarySolution>
 
-            when (targetToAchieve) {
+            when (parameters.targetToAchieve) {
                 "Best" -> for (i in population.indices) {
                     val solutionToFix = population[i]
                     val correlationToFix = solutionToFix.getObjective(0) * -1
@@ -256,7 +256,7 @@ class DatasetModel {
             (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
         })
 
-        return Pair<List<BinarySolution>, Triple<String, String, Long>>(population, Triple(targetToAchieve, Thread.currentThread().name, computingTime))
+        return Pair<List<BinarySolution>, Triple<String, String, Long>>(population, Triple(parameters.targetToAchieve, Thread.currentThread().name, computingTime))
 
     }
 

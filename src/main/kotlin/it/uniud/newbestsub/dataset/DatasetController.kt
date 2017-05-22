@@ -48,46 +48,45 @@ class DatasetController {
         logger.info("Dataset loading completed.")
     }
 
-    fun solve(chosenCorrelationMethod: String, targetToAchieve: String, numberOfIterations: Int, resultPath: String) {
+    fun solve(parameters: Parameters, resultPath: String) {
 
         logger.info("Problem resolution started.")
-        logger.info("Correlation: $chosenCorrelationMethod.")
-        logger.info("Target: $targetToAchieve.")
-        logger.info("Number of iterations: $numberOfIterations.")
+        logger.info("Correlation: ${parameters.chosenCorrelationMethod}.")
+        logger.info("Target: ${parameters.targetToAchieve}.")
+        logger.info("Number of iterations: ${parameters.numberOfIterations}.")
         logger.info("Output path:")
-        logger.info("${Constants.OUTPUT_PATH}$resultPath-Fun.csv")
-        logger.info("${Constants.OUTPUT_PATH}$resultPath-Var.csv")
 
-        view.print(model.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations), resultPath)
+        if (parameters.targetToAchieve == "All") {
 
-        logger.info("Finished to solve the problem.")
-    }
+            logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Best-Fun.csv")
+            logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Best-Var.csv")
+            logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Worst-Fun.csv")
+            logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Worst-Var.csv")
+            logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Average-Fun.csv")
+            logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Average-Var.csv")
 
-    fun solve(chosenCorrelationMethod: String, numberOfIterations: Int, resultPath: String) {
+            val bestParameters = Parameters(parameters.chosenCorrelationMethod, "Best", parameters.numberOfIterations, parameters.populationSize)
+            val worstParameters = Parameters(parameters.chosenCorrelationMethod, "Worst", parameters.numberOfIterations, parameters.populationSize)
+            val averageParameters = Parameters(parameters.chosenCorrelationMethod, "Average", parameters.numberOfIterations, parameters.populationSize)
+            val bestResult = { async(CommonPool) { modelBest.solve(bestParameters) } }.invoke()
+            val worstResult = { async(CommonPool) { modelWorst.solve(worstParameters) } }.invoke()
+            val averageResult = { async(CommonPool) { modelAverage.solve(averageParameters) } }.invoke()
 
-        logger.info("Problem resolution started.")
-        logger.info("Correlation: $chosenCorrelationMethod.")
-        logger.info("Target: \"All\".")
-        logger.info("Number of iterations: $numberOfIterations.")
-        logger.info("Output path:")
-        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Best-Fun.csv")
-        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Best-Var.csv")
-        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Worst-Fun.csv")
-        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Worst-Var.csv")
-        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Average-Fun.csv")
-        logger.info("${Constants.OUTPUT_PATH}$resultPath" + "Average-Var.csv")
+            runBlocking {
+                view.print(bestResult.await(), resultPath + "Best")
+                view.print(worstResult.await(), resultPath + "Worst")
+                view.print(averageResult.await(), resultPath + "Average")
+            }
 
-        val bestResult = { async(CommonPool) { modelBest.solve(chosenCorrelationMethod, "Best", numberOfIterations) } }.invoke()
-        val worstResult = { async(CommonPool) { modelWorst.solve(chosenCorrelationMethod, "Worst", numberOfIterations) } }.invoke()
-        val averageResult = { async(CommonPool) { modelAverage.solve(chosenCorrelationMethod, "Average", numberOfIterations) } }.invoke()
+        } else {
 
-        runBlocking {
-            view.print(bestResult.await(), resultPath + "Best")
-            view.print(worstResult.await(), resultPath + "Worst")
-            view.print(averageResult.await(), resultPath + "Average")
+            logger.info("${Constants.OUTPUT_PATH}$resultPath-Fun.csv")
+            logger.info("${Constants.OUTPUT_PATH}$resultPath-Var.csv")
+            view.print(model.solve(parameters), resultPath)
+
         }
 
-        logger.info("Problem resolution completed.")
-    }
+        logger.info("Finished to solve the problem.")
 
+    }
 }

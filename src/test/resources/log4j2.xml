@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Properties>
+        <Property name="baseLogFileName">${sys:baseLogFileName}</Property>
+    </Properties>
+    <Appenders>
+        <Console name="Console-Debug" target="SYSTEM_OUT">
+            <PatternLayout pattern="%style{%highlight{%-5.5p}}{Bright} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-8M] %style{%highlight{%m%n}}{Bright}"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Root level="error">
+            <AppenderRef ref="Console-Debug"/>
+        </Root>
+    </Loggers>
+</Configuration>

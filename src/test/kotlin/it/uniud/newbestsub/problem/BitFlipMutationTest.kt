@@ -1,6 +1,5 @@
 package it.uniud.newbestsub.problem
 
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.uma.jmetal.solution.BinarySolution
@@ -9,18 +8,18 @@ import kotlin.test.assertEquals
 
 class BitFlipMutationTest {
 
-    private lateinit var testProb: BestSubsetProblem
-    private lateinit var testSol: BinarySolution
-    private lateinit var testCorr: (DoubleArray, DoubleArray) -> Double
-    private lateinit var testTarg: (BinarySolution, Double) -> BinarySolution
-    private var testAvgPrec: MutableMap<String, DoubleArray> = LinkedHashMap()
-    private var testMut = BitFlipMutation(1.0)
+    @Test
+    @DisplayName("Execute")
 
-    @BeforeEach
-    @DisplayName("BitFlipMutation - Initialize Tests")
+    fun testExecute() {
 
-    fun initTest() {
+        val testAvgPrec : MutableMap<String, DoubleArray> = LinkedHashMap()
+        var testSol : BinarySolution
+        val testCorr = { _ : DoubleArray, _ : DoubleArray -> 0.0 }
+        val testTarg = { sol : BinarySolution, _ : Double-> sol }
+        val testMut = BitFlipMutation(1.0)
         val length = 10
+
         for (index in 0..length) {
             val fakeAvgPrec = DoubleArray(length)
             val random = Random()
@@ -29,18 +28,11 @@ class BitFlipMutationTest {
             }
             testAvgPrec["Test $index"] = fakeAvgPrec
         }
-        testCorr = { _, _ -> 0.0 }
-        testTarg = { sol, _ -> sol }
-    }
 
-    @Test
-    @DisplayName("Execute")
-
-    fun testExecute() {
-        testProb = BestSubsetProblem(testAvgPrec.size, testAvgPrec, DoubleArray(0), testCorr, testTarg)
+        val testProb = BestSubsetProblem(testAvgPrec.size, testAvgPrec, DoubleArray(0), testCorr, testTarg)
         testSol = BestSubsetSolution(testProb, testAvgPrec.size)
         val oldStatus = testSol.getVariableValueString(0)
-        testSol = testMut.execute(testSol)
+        testSol = testMut.execute(testSol) as BestSubsetSolution
         val newStatus = testSol.getVariableValueString(0)
         assertEquals(false, oldStatus == newStatus, "Old topic status values: $oldStatus - New topic status values: $newStatus")
     }

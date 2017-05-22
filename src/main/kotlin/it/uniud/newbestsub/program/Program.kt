@@ -1,6 +1,7 @@
 package it.uniud.newbestsub.program
 
 import it.uniud.newbestsub.dataset.DatasetController
+import it.uniud.newbestsub.dataset.Parameters
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools.updateLogger
 import org.apache.commons.cli.*
@@ -22,6 +23,7 @@ object Program {
         val chosenCorrelationMethod: String
         val targetToAchieve: String
         var numberOfIterations: Int
+        var populationSize: Int
         var resultPath: String
         val loggingLevel: Level
         var logger: Logger
@@ -53,29 +55,32 @@ object Program {
                 if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst" || commandLine.getOptionValue("t") == "Average" || commandLine.getOptionValue("t") == "All") {
                     targetToAchieve = commandLine.getOptionValue("t")
                     numberOfIterations = 0
+                    populationSize = 0
                     if (targetToAchieve != "Average") {
                         if (!commandLine.hasOption("i")) throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
+                        if (!commandLine.hasOption("p")) throw ParseException("Value for the option <<p>> or <<pop>> is missing. Check the usage section below.")
                         try {
                             numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
                         }
+                        try {
+                            populationSize = Integer.parseInt(commandLine.getOptionValue("p"))
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<p>> or <<pop>> is not an integer. Check the usage section below")
+                        }
                     } else {
                         if (commandLine.hasOption("i")) throw ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.")
                     }
-                    if(targetToAchieve != "All") {
+                    if (targetToAchieve != "All") {
                         resultPath += targetToAchieve
                         System.setProperty("baseLogFileName", Constants.LOG_PATH + resultPath + ".log")
                     } else System.setProperty("baseLogFileName", Constants.LOG_PATH + resultPath + "All.log")
-                    logger = updateLogger(LogManager.getLogger(),loggingLevel)
+                    logger = updateLogger(LogManager.getLogger(), loggingLevel)
                     logger.info("NewBestSub execution started.")
                     datasetController = DatasetController()
                     datasetController.loadData(datasetPath)
-                    when (targetToAchieve) {
-                        "All" -> datasetController.solve(chosenCorrelationMethod, numberOfIterations, resultPath)
-                        "Average" -> datasetController.solve(chosenCorrelationMethod, targetToAchieve, 0, resultPath)
-                        else -> datasetController.solve(chosenCorrelationMethod, targetToAchieve, numberOfIterations, resultPath)
-                    }
+                    datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize), resultPath)
                     logger.info("NewBestSub execution terminated.")
                 } else throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
             }
@@ -102,6 +107,8 @@ object Program {
         source = Option.builder("l").longOpt("log").desc("Indicates the required level of logging. Available levels: Verbose, Limited, Off. [REQUIRED]").required().hasArg().argName("Log Level").build()
         options.addOption(source)
         source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It must be an integer value. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Number").build()
+        options.addOption(source)
+        source = Option.builder("p").longOpt("pop").desc("Indicates the size of the initial population to be generated. It must be an integer value. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Number").build()
         options.addOption(source)
         return options
 
