@@ -13,10 +13,12 @@ class BitFlipMutationTest {
 
     fun testExecute() {
 
-        val testAvgPrec : MutableMap<String, DoubleArray> = LinkedHashMap()
-        var testSol : BinarySolution
-        val testCorr = { _ : DoubleArray, _ : DoubleArray -> 0.0 }
-        val testTarg = { sol : BinarySolution, _ : Double-> sol }
+        println("[BitFlipMutationTest execute] - Test begins.")
+
+        val testAvgPrec: MutableMap<String, DoubleArray> = LinkedHashMap()
+        var testSol: BinarySolution
+        val testCorr = { _: DoubleArray, _: DoubleArray -> 0.0 }
+        val testTarg = { sol: BinarySolution, _: Double -> sol }
         val testMut = BitFlipMutation(1.0)
         val length = 10
 
@@ -34,7 +36,10 @@ class BitFlipMutationTest {
         val oldStatus = testSol.getVariableValueString(0)
         testSol = testMut.execute(testSol) as BestSubsetSolution
         val newStatus = testSol.getVariableValueString(0)
-        assertEquals(false, oldStatus == newStatus, "Old topic status values: $oldStatus - New topic status values: $newStatus")
+        println("[BitFlipMutationTest execute] - Testing: <Old. Topic Stat. Val.: $oldStatus, New. Topic Stat. Val.: $newStatus>.")
+        assertEquals(false, oldStatus == newStatus, "<Old. Topic Stat. Val.: $oldStatus, New. Topic Stat. Val.: $newStatus>")
+
+        println("[BitFlipMutationTest execute] - Test ends.")
     }
 
 }

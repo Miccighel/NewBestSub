@@ -8,13 +8,15 @@ import org.apache.logging.log4j.LogManager
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.util.*
 
 class DatasetController {
 
-    private var model: DatasetModel = DatasetModel()
+    var model: DatasetModel = DatasetModel()
     private var modelBest: DatasetModel = DatasetModel()
     private var modelWorst: DatasetModel = DatasetModel()
     private var modelAverage: DatasetModel = DatasetModel()
+    private var models: List<DatasetModel> = LinkedList()
     private var view: DatasetView = DatasetView()
     private var logger = LogManager.getLogger()
 
@@ -24,15 +26,17 @@ class DatasetController {
         logger.info("Path: \"$datasetPath\".")
 
         val outputDirectory = File(Constants.OUTPUT_PATH)
+        logger.info("Checking if output dir. exists.")
         if (!outputDirectory.exists()) {
-            logger.info("Checking if output dir. exists.")
-            if (outputDirectory.mkdir()) {
-                logger.info("Output dir. created.")
+            logger.info("Output dir. not exists.")
+            if (outputDirectory.mkdirs()) {
+                logger.info("Output dir. created successfully.")
                 logger.info("Path: \"${outputDirectory.name}\".")
             }
         } else {
-            logger.warn("Output dir. already exists.")
-            logger.warn("Path: \"${outputDirectory.name}\".")
+            logger.info("Output dir. already exists.")
+            logger.info("Output dir. creation skipped.")
+            logger.info("Path: \"${outputDirectory.name}\".")
         }
         try {
             model.loadData(datasetPath)
@@ -78,11 +82,17 @@ class DatasetController {
                 view.print(averageResult.await(), resultPath + "Average")
             }
 
+            models = listOf(modelBest, modelWorst, modelAverage)
+            view.finalize(models, resultPath + "All-Final")
+
         } else {
 
             logger.info("${Constants.OUTPUT_PATH}$resultPath-Fun.csv")
             logger.info("${Constants.OUTPUT_PATH}$resultPath-Var.csv")
             view.print(model.solve(parameters), resultPath)
+
+            models = listOf(model)
+            view.finalize(models, resultPath + "${parameters.targetToAchieve}-Final")
 
         }
 

@@ -11,7 +11,7 @@ class DatasetView : AbstractAlgorithmRunner() {
 
     private val logger = LogManager.getLogger()
 
-    fun print(runResult: Pair<List<BinarySolution>, Triple<String, String, Long>>, outputPath: String) {
+    fun print(runResult: Pair<List<BinarySolution>, Triple<String, String, Long>>, resultPath: String) {
 
         val (population, info) = runResult
         val (targetToAchieve, threadName, computingTime) = info
@@ -21,11 +21,18 @@ class DatasetView : AbstractAlgorithmRunner() {
 
         populationHelper
                 .setSeparator(",")
-                .setVarFileOutputContext(DefaultFileOutputContext(Constants.OUTPUT_PATH + outputPath + "-Var.csv"))
-                .setFunFileOutputContext(DefaultFileOutputContext(Constants.OUTPUT_PATH + outputPath + "-Fun.csv"))
+                .setVarFileOutputContext(DefaultFileOutputContext(Constants.OUTPUT_PATH + resultPath + "-Var.csv"))
+                .setFunFileOutputContext(DefaultFileOutputContext(Constants.OUTPUT_PATH + resultPath + "-Fun.csv"))
                 .print()
 
         logger.info("Result for execution on \"$threadName\" with target \"$targetToAchieve\" available.")
+
+    }
+
+    fun finalize(models: List<DatasetModel>, resultPath: String) {
+
+        var m = models
+        var n = resultPath
 
     }
 

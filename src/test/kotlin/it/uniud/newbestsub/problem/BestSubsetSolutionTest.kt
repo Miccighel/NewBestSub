@@ -40,6 +40,9 @@ class BestSubsetSolutionTest {
     @DisplayName("SetBitValue")
 
     fun setBitValueTest() {
+
+        println("[BestSubsetSolutionTest setBitValue] - Test begins.")
+
         val oldSelTop = testSol.numberOfSelectedTopics
         val oldTopStat = testSol.retrieveTopicStatus()
         var oldSum = 0; oldTopStat.forEach { value -> oldSum += if (value) 1 else 0 }
@@ -49,25 +52,39 @@ class BestSubsetSolutionTest {
         val newTopStat = testSol.retrieveTopicStatus()
         var newSum = 0; newTopStat.forEach { value -> newSum += if (value) 1 else 0 }
         if (!valueToSet) {
-            assertEquals(true, oldSum != newSum, "Old sum of topic status values: $oldSum - New sum of topic status values: $newSum")
+            println("[BestSubsetSolutionTest setBitValue] - Testing: <Old Sum Topic Stat. Val.: $oldSum, New Sum Topic Stat. Val: $newSum>.")
+            assertEquals(true, oldSum != newSum, "<Old Sum Topic Stat. Val.: $oldSum, New Sum Topic Stat. Val: $newSum>")
         } else {
-            assertEquals(true, oldSum != newSum, "Old sum of topic status values: $oldSum - New sum of topic status values: $newSum")
-            assertEquals(oldSelTop + 1, newSelTop, "Old number of selected topics: $oldSelTop - New number of selected topics: $newSelTop")
+            println("[BestSubsetSolutionTest setBitValue] - Testing: <Old Sum Topic Stat. Val.: $oldSum, New Sum Topic Stat. Val: $newSum>.")
+            assertEquals(oldSelTop + 1, newSelTop, "<Old Num. Sel. Topics: $oldSelTop, New Num. Sel. Topics: $newSelTop>.")
         }
+
+        println("[BestSubsetSolutionTest setBitValue] - Test ends.")
     }
 
     @Test
     @DisplayName("GetTotalNumberOfBits")
 
     fun getTotalNumberOfBitsTest() {
+
+        println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test begins.")
+
         var sum = 0; (0..testSol.numberOfVariables - 1).forEachIndexed { index, _ -> sum += testSol.getVariableValue(index).binarySetLength }
-        assertEquals(true, sum == testSol.totalNumberOfBits, "Computed number of different values: $sum - Retrieved number of different values: ${testSol.totalNumberOfBits}")
+        println("[BestSubsetSolutionTest setBitValue] - Testing: <Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits}>.")
+        assertEquals(true, sum == testSol.totalNumberOfBits, "<Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits}>.")
+
+        println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test ends.")
+
     }
 
     @Test
     @DisplayName("Copy")
 
     fun copyTest() {
+
+        println("[BestSubsetSolutionTest copy] - Test begins.")
         assertEquals(true, testSol.copy() == testSol)
+        println("[BestSubsetSolutionTest copy] - Test ends.")
+
     }
 }
