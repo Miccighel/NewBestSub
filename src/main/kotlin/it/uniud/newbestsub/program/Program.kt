@@ -22,11 +22,11 @@ object Program {
         val datasetPath: String
         val chosenCorrelationMethod: String
         val targetToAchieve: String
-        var numberOfIterations: Int
+        val numberOfIterations: Int
         var populationSize: Int
         var resultPath: String
         val loggingLevel: Level
-        var logger: Logger
+        val logger: Logger
 
         try {
 
@@ -54,23 +54,15 @@ object Program {
 
                 if (commandLine.getOptionValue("t") == "Best" || commandLine.getOptionValue("t") == "Worst" || commandLine.getOptionValue("t") == "Average" || commandLine.getOptionValue("t") == "All") {
                     targetToAchieve = commandLine.getOptionValue("t")
-                    numberOfIterations = 0
+                    numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
                     populationSize = 0
                     if (targetToAchieve != "Average") {
-                        if (!commandLine.hasOption("i")) throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
                         if (!commandLine.hasOption("p")) throw ParseException("Value for the option <<p>> or <<pop>> is missing. Check the usage section below.")
-                        try {
-                            numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
-                        } catch (exception: NumberFormatException) {
-                            throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
-                        }
                         try {
                             populationSize = Integer.parseInt(commandLine.getOptionValue("p"))
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<p>> or <<pop>> is not an integer. Check the usage section below")
                         }
-                    } else {
-                        if (commandLine.hasOption("i")) throw ParseException("Option <<i>> or <<iter>> is not necessary. Please remove it and launch the program again. Check the usage section below.")
                     }
                     if (targetToAchieve != "All") {
                         resultPath += targetToAchieve
@@ -106,7 +98,7 @@ object Program {
         options.addOption(source)
         source = Option.builder("l").longOpt("log").desc("Indicates the required level of logging. Available levels: Verbose, Limited, Off. [REQUIRED]").required().hasArg().argName("Log Level").build()
         options.addOption(source)
-        source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It must be an integer value. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Number").build()
+        source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It must be an integer value. [REQUIRED]").required().hasArg().argName("Number").build()
         options.addOption(source)
         source = Option.builder("p").longOpt("pop").desc("Indicates the size of the initial population to be generated. It must be an integer value. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Number").build()
         options.addOption(source)

@@ -5,6 +5,7 @@ import it.uniud.newbestsub.problem.BestSubsetProblem
 import it.uniud.newbestsub.problem.BestSubsetSolution
 import it.uniud.newbestsub.problem.BinaryPruningCrossover
 import it.uniud.newbestsub.problem.BitFlipMutation
+import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation
@@ -29,34 +30,21 @@ class DatasetModel {
     var systemLabels = Array(0, { "" })
     var topicLabels = Array(0, { "" })
     var numberOfSystems = 0
-    var systemSize = 0
     var numberOfTopics = 0
+    var targetToAchieve = ""
+    var correlationMethod = ""
     var averagePrecisions: MutableMap<String, DoubleArray> = LinkedHashMap()
     var meanAveragePrecisions = DoubleArray(0)
-    val topicDistribution: MutableMap<String, MutableMap<Double, Boolean>> by lazy {
-        val map: MutableMap<String, MutableMap<Double, Boolean>> = LinkedHashMap()
-        for (topicLabel in topicLabels) map.put(topicLabel, TreeMap<Double, Boolean>())
-        for (solutionToAnalyze in population) {
-            val topicStatus = (solutionToAnalyze as BestSubsetSolution).retrieveTopicStatus()
-            val cardinality = solutionToAnalyze.getObjective(1)
-            for (j in topicStatus.indices) {
-                val isInSolutionForCard = map[topicLabels[j]] as MutableMap
-                var status: Boolean = false
-                if (topicStatus[j]) status = true
-                isInSolutionForCard[cardinality] = status
-                map[topicLabels[j]] = isInSolutionForCard
-            }
-        }
-        map
-    }
+    var topicDistribution: MutableMap<String, MutableMap<Double, Boolean>> = LinkedHashMap()
     var computingTime: Long = 0
+
     private val logger = LogManager.getLogger()
 
     private lateinit var problem: Problem<BinarySolution>
     private lateinit var crossover: CrossoverOperator<BinarySolution>
     private lateinit var mutation: MutationOperator<BinarySolution>
     private lateinit var selection: SelectionOperator<List<BinarySolution>, BinarySolution>
-    private lateinit var population: MutableList<BinarySolution>
+    lateinit var population: MutableList<BinarySolution>
     private lateinit var builder: NSGAIIBuilder<BinarySolution>
     private lateinit var algorithm: Algorithm<List<BinarySolution>>
     private lateinit var algorithmRunner: AlgorithmRunner
@@ -71,17 +59,14 @@ class DatasetModel {
 
         //BestSubsetLogger.log("MODEL - Total number of topics: $numberOfTopics")
 
-        var averagePrecisions = DoubleArray(0)
-
         reader.readAll().forEach {
             nextLine ->
-            averagePrecisions = DoubleArray(nextLine.size - 1)
+            val averagePrecisions = DoubleArray(nextLine.size - 1)
             (1..nextLine.size - 1).forEach { i -> averagePrecisions[i - 1] = java.lang.Double.parseDouble(nextLine[i]) }
             this.averagePrecisions.put(nextLine[0], averagePrecisions)
         }
 
         numberOfSystems = this.averagePrecisions.entries.size
-        systemSize = averagePrecisions.size
 
         /* averagePrecisions is a <String,double[]> dictionary where, for each entry, the key is the system label
         and the value is an array that contains the AP values of a single system, for each topic. */
@@ -106,26 +91,24 @@ class DatasetModel {
         this.averagePrecisions.entries.forEachIndexed {
             index, singleSystem ->
             meanAveragePrecisions[index] = Tools.getMean(singleSystem.value, useColumns)
-            this.systemSize = if (this.systemSize == 0) singleSystem.value.size else this.systemSize
         }
 
     }
 
-    private fun loadCorrelationStrategy(chosenCorrelationMethod: String): (DoubleArray, DoubleArray) -> Double {
+    private fun loadCorrelationStrategy(correlationMethod: String): (DoubleArray, DoubleArray) -> Double {
 
         val pearsonCorrelation: (DoubleArray, DoubleArray) -> Double = {
             firstArray, secondArray ->
             val pcorr = PearsonsCorrelation()
             pcorr.correlation(firstArray, secondArray)
         }
-
         val kendallCorrelation: (DoubleArray, DoubleArray) -> Double = {
             firstArray, secondArray ->
             val pcorr = KendallsCorrelation()
             pcorr.correlation(firstArray, secondArray)
         }
-
-        when (chosenCorrelationMethod) {
+        this.correlationMethod = correlationMethod
+        when (correlationMethod) {
             "Pearson" -> return pearsonCorrelation
             "Kendall" -> return kendallCorrelation
             else -> return pearsonCorrelation
@@ -140,61 +123,82 @@ class DatasetModel {
             solution.setObjective(1, (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble())
             solution
         }
-
         val worstStrategy: (BinarySolution, Double) -> BinarySolution = {
             solution, correlation ->
             solution.setObjective(0, correlation)
             solution.setObjective(1, ((solution as BestSubsetSolution).numberOfSelectedTopics * -1).toDouble())
             solution
         }
-
+        this.targetToAchieve = targetToAchieve
         when (targetToAchieve) {
             "Best" -> return bestStrategy
             "Worst" -> return worstStrategy
             else -> return bestStrategy
         }
+    }
 
+    fun findCorrelationForCardinality(cardinality: Double): Double? {
+        population.forEach { aSolution -> if (aSolution.getObjective(1) == cardinality) return aSolution.getObjective(0) }
+        return null
+    }
+
+    fun isTopicInASolutionOfCardinality(topicLabel: String, cardinality: Double): Boolean {
+        val answer = topicDistribution[topicLabel]?.get(cardinality)
+        if (answer != null) return answer else return false
     }
 
     fun solve(parameters: Parameters): Pair<List<BinarySolution>, Triple<String, String, Long>> {
 
-        val correlationStrategy = this.loadCorrelationStrategy(parameters.chosenCorrelationMethod)
+        val correlationStrategy = this.loadCorrelationStrategy(parameters.correlationMethod)
         val targetStrategy = this.loadTargetStrategy(parameters.targetToAchieve)
 
         logger.info("Computation started on \"${Thread.currentThread().name}\" with target \"${parameters.targetToAchieve}\". Wait please...")
 
-        if (parameters.targetToAchieve == "Average") {
+        if (targetToAchieve == "Average") {
 
             val variableValues = LinkedList<BooleanArray>()
             val cardinalities = IntArray(numberOfTopics)
             val correlations = DoubleArray(numberOfTopics)
-            val generator = Random()
 
             for (currentCardinality in 0..numberOfTopics - 1) {
 
-                val topicToChoose = HashSet<Int>()
-                while (topicToChoose.size < currentCardinality + 1) {
-                    val next = generator.nextInt(numberOfTopics) + 1
-                    topicToChoose.add(next)
+                val correlationsToSum = DoubleArray(Constants.AVERAGE_EXP_REPETITIONS)
+                var correlationsSum = 0.0
+                var meanCorrelation: Double
+                var topicStatusToString = ""
+                var topicStatus = BooleanArray(0)
+                val generator = Random()
+
+                (0..Constants.AVERAGE_EXP_REPETITIONS - 1).forEach {
+                    currentIteration ->
+
+                    val topicToChoose = HashSet<Int>()
+                    while (topicToChoose.size < currentCardinality + 1) {
+                        val next = generator.nextInt(numberOfTopics) + 1
+                        topicToChoose.add(next)
+                    }
+
+                    topicStatus = BooleanArray(numberOfTopics)
+                    for (chosenTopic in topicToChoose) topicStatus[chosenTopic - 1] = true
+
+                    topicStatusToString = ""
+                    for (j in topicStatus.indices) if (topicStatus[j]) topicStatusToString += 1 else topicStatusToString += 0
+
+                    val meanAveragePrecisionsReduced = DoubleArray(averagePrecisions.entries.size)
+
+                    for ((index, singleSystem) in this.averagePrecisions.entries.withIndex())
+                        meanAveragePrecisionsReduced[index] = Tools.getMean(singleSystem.value, topicStatus)
+
+                    correlationsToSum[currentIteration] = correlationStrategy.invoke(meanAveragePrecisionsReduced, meanAveragePrecisions)
                 }
 
-                val topicStatus = BooleanArray(numberOfTopics)
-                for (chosenTopic in topicToChoose) topicStatus[chosenTopic - 1] = true
+                correlationsToSum.forEach { value -> correlationsSum += value }
+                meanCorrelation = correlationsSum / Constants.AVERAGE_EXP_REPETITIONS
 
-                var toString = ""
-                for (j in topicStatus.indices) if (topicStatus[j]) toString += 1 else toString += 0
-
-                val meanAveragePrecisionsReduced = DoubleArray(averagePrecisions.entries.size)
-
-                for ((index, singleSystem) in this.averagePrecisions.entries.withIndex())
-                    meanAveragePrecisionsReduced[index] = Tools.getMean(singleSystem.value, topicStatus)
-
-                val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced, meanAveragePrecisions)
-
-                logger.debug("Correlation: $correlation - Number of selected topics: $currentCardinality - Evaluating gene: $toString")
+                logger.debug("<Correlation: $meanCorrelation, Number of selected topics: $currentCardinality, Last gene evaluated: $topicStatusToString>")
 
                 cardinalities[currentCardinality] = currentCardinality + 1
-                correlations[currentCardinality] = correlation
+                correlations[currentCardinality] = meanCorrelation
                 variableValues.add(topicStatus)
 
             }
@@ -248,6 +252,19 @@ class DatasetModel {
                     solutionToFix.setObjective(1, cardinalityToFix)
                     population[i] = solutionToFix
                 }
+            }
+        }
+
+        for (topicLabel in topicLabels) topicDistribution.put(topicLabel, TreeMap<Double, Boolean>())
+        for (solutionToAnalyze in population) {
+            val topicStatus = (solutionToAnalyze as BestSubsetSolution).retrieveTopicStatus()
+            val cardinality = solutionToAnalyze.getObjective(1)
+            for (j in topicStatus.indices) {
+                val isInSolutionForCard = topicDistribution[topicLabels[j]] as MutableMap
+                var status: Boolean = false
+                if (topicStatus[j]) status = true
+                isInSolutionForCard[cardinality] = status
+                topicDistribution[topicLabels[j]] = isInSolutionForCard
             }
         }
 
