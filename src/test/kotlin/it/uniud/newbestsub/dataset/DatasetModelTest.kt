@@ -16,7 +16,7 @@ class DatasetModelTest {
 
         val testDatContr = DatasetController()
         testDatContr.loadData("src/test/resources/AP96.csv")
-        val testParams = Parameters("Pearson", "Best", 100000, 1000)
+        val testParams = Parameters("Pearson", "Best", 100000, 1000, listOf(1,5,25,99))
         val testRes = testDatContr.model.solve(testParams).first
         val computedCards = IntArray(testRes.size)
         testRes.forEachIndexed { index, aSol -> computedCards[index] = aSol.getObjective(1).toInt() }

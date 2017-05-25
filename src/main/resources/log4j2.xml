@@ -11,7 +11,7 @@
             <PatternLayout pattern="%style{%highlight{%-5.5p}}{Bright} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{BG_Cyan,Bright}"/>
         </Console>
         <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log" append="false">
-            <PatternLayout pattern="%-5.5p [%d{HH:mm:ss} %-8t %-18.-18C{1} %-8M] %m%n"/>
+            <PatternLayout pattern="%-5.5p [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M %m%n"/>
             <Policies>
                 <SizeBasedTriggeringPolicy size="5 MB"/>
             </Policies>
