@@ -7,5 +7,5 @@ object Constants {
     val INPUT_PATH = "data/"
     val OUTPUT_PATH = "res/${SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(Date())}/"
     val LOG_PATH = "log/${SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(Date())}/"
-    val AVERAGE_EXP_REPETITIONS = 100
+    val AVERAGE_EXPERIMENT_REPETITIONS = 100
 }

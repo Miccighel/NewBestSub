@@ -22,7 +22,6 @@ import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.util.AlgorithmRunner
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
 import java.io.FileReader
-import java.lang.Math.round
 import java.util.*
 import kotlin.collections.LinkedHashMap
 
@@ -167,7 +166,7 @@ class DatasetModel {
                 var topicStatus = BooleanArray(0)
                 val generator = Random()
 
-                DoubleArray(Constants.AVERAGE_EXP_REPETITIONS, {
+                val correlationsToSum = Array(Constants.AVERAGE_EXPERIMENT_REPETITIONS, {
                     val topicToChoose = HashSet<Int>()
                     while (topicToChoose.size < currentCardinality + 1) topicToChoose.add(generator.nextInt(numberOfTopics) + 1)
 
@@ -182,27 +181,24 @@ class DatasetModel {
                         meanAveragePrecisionsReduced[index] = Tools.getMean(singleSystem.value, topicStatus)
 
                     correlationStrategy.invoke(meanAveragePrecisionsReduced, meanAveragePrecisions)
-                }).forEach {
-                    singleCorrelation ->
-                    correlationsSum += singleCorrelation
-                }
+                })
 
-                meanCorrelation = correlationsSum / Constants.AVERAGE_EXP_REPETITIONS
+                correlationsToSum.forEach { singleCorrelation -> correlationsSum += singleCorrelation }
+                correlationsToSum.sort()
+                meanCorrelation = correlationsSum / Constants.AVERAGE_EXPERIMENT_REPETITIONS
+
+                percentiles.entries.forEach {
+                    (percentileToFind, foundPercentiles) ->
+                    val percentileValue = correlationsToSum[Math.ceil((percentileToFind / 100.0) * correlations.size).toInt()]
+                    percentiles[percentileToFind] = foundPercentiles.plus(percentileValue)
+                    logger.debug("<Cardinality: $currentCardinality, Percentile: $percentileToFind, Value: $percentileValue>")
+                }
 
                 logger.debug("<Correlation: $meanCorrelation, Number of selected topics: $currentCardinality, Last gene evaluated: $topicStatusToString>")
 
                 cardinalities.add(currentCardinality + 1)
                 correlations.add(meanCorrelation)
                 variableValues.add(topicStatus)
-
-                correlations.sort()
-
-                percentiles.entries.forEach {
-                    (percentileToFind, foundPercentiles) ->
-                    val percentileValue = correlations[Math.ceil((percentileToFind / 100.0) * correlations.size - 1).toInt()]
-                    percentiles[percentileToFind] = foundPercentiles.plus(percentileValue)
-                    logger.debug("<Cardinality: $currentCardinality, Percentile: $percentileToFind, Value: $percentileValue>")
-                }
             }
 
             problem = BestSubsetProblem(numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
