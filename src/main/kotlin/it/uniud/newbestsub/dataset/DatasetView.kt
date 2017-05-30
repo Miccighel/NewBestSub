@@ -15,20 +15,9 @@ class DatasetView : AbstractAlgorithmRunner() {
 
     fun print(runResult: Pair<List<BinarySolution>, Triple<String, String, Long>>, resultPath: String) {
 
-        val (population, info) = runResult
+        val (_, info) = runResult
         val (targetToAchieve, threadName, computingTime) = info
-        val populationHelper: SolutionListOutput = SolutionListOutput(population)
-
-        logger.info("Printing result for execution on \"$threadName\" with target \"$targetToAchieve\" completed in ${computingTime}ms.")
-
-        populationHelper
-                .setVarFileOutputContext(DefaultFileOutputContext("${Constants.OUTPUT_PATH}$resultPath-Var.csv"))
-                .setFunFileOutputContext(DefaultFileOutputContext("${Constants.OUTPUT_PATH}$resultPath-Fun.csv"))
-                .print()
-
-        logger.info("Result for execution on \"$threadName\" with target \"$targetToAchieve\" available at:")
-        logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Var.csv\"")
-        logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Fun.csv\"")
+        logger.info("Execution on \"$threadName\" with target \"$targetToAchieve\" completed in ${computingTime}ms.")
 
     }
 

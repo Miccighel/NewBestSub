@@ -1,5 +1,6 @@
 package it.uniud.newbestsub.dataset
 
+import it.uniud.newbestsub.utils.Constants
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -16,7 +17,7 @@ class DatasetModelTest {
 
         val testDatContr = DatasetController()
         testDatContr.loadData("src/test/resources/AP96.csv")
-        val testParams = Parameters("Pearson", "Best", 100000, 1000, listOf(1,5,25,99))
+        val testParams = Parameters(Constants.CORRELATION_KENDALL, Constants.TARGET_BEST, 100000, 1000, listOf(1,5,25,99))
         val testRes = testDatContr.model.solve(testParams).first
         val computedCards = IntArray(testRes.size)
         testRes.forEachIndexed { index, aSol -> computedCards[index] = aSol.getObjective(1).toInt() }

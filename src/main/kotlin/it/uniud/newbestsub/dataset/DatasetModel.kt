@@ -53,8 +53,6 @@ class DatasetModel {
 
     fun loadData(datasetPath: String) {
 
-        // The parsing phase of the original .csv dataset file starts there.
-
         val reader = CSVReader(FileReader(datasetPath))
         topicLabels = reader.readNext()
         numberOfTopics = topicLabels.size - 1
@@ -68,15 +66,10 @@ class DatasetModel {
 
         numberOfSystems = this.averagePrecisions.entries.size
 
-        /* averagePrecisions is a <String,double[]> dictionary where, for each entry, the key is the system label
-        and the value is an array that contains the AP values of a single system, for each topic. */
-
         val iterator = this.averagePrecisions.entries.iterator()
         systemLabels = Array(numberOfSystems, { _ -> iterator.next().key })
 
         topicLabels = topicLabels.sliceArray(1..topicLabels.size - 1)
-
-        /* The first label is stripped from the topic labels array because it's a fake label. */
 
         meanAveragePrecisions = DoubleArray(this.averagePrecisions.entries.size)
 
@@ -89,6 +82,34 @@ class DatasetModel {
         }
 
         topicLabels.forEach { topicLabel -> topicDistribution.put(topicLabel, TreeMap<Double, Boolean>()) }
+    }
+
+    fun expandData(averagePrecisions: Map<String, DoubleArray>, topicLabels: Array<String>) {
+
+        this.numberOfTopics += topicLabels.size
+        this.topicLabels = (this.topicLabels.toList() + topicLabels.toList()).toTypedArray()
+
+        this.averagePrecisions.entries.forEach {
+            (systemLabel, averagePrecisionValues) ->
+            this.averagePrecisions[systemLabel] = (averagePrecisionValues.toList() + (averagePrecisions[systemLabel] ?: DoubleArray(0, { 0.0 })).toList()).toDoubleArray()
+        }
+
+        numberOfSystems = this.averagePrecisions.entries.size
+
+        val iterator = this.averagePrecisions.entries.iterator()
+        systemLabels = Array(numberOfSystems, { _ -> iterator.next().key })
+
+        meanAveragePrecisions = DoubleArray(this.averagePrecisions.entries.size)
+
+        val useColumns = BooleanArray(numberOfTopics)
+        Arrays.fill(useColumns, true)
+
+        this.averagePrecisions.entries.forEachIndexed {
+            index, singleSystem ->
+            meanAveragePrecisions[index] = Tools.getMean(singleSystem.value, useColumns)
+        }
+
+        this.topicLabels.forEach { topicLabel -> topicDistribution.put(topicLabel, TreeMap<Double, Boolean>()) }
     }
 
     private fun loadCorrelationStrategy(correlationMethod: String): (DoubleArray, DoubleArray) -> Double {
@@ -105,8 +126,8 @@ class DatasetModel {
         }
         this.correlationMethod = correlationMethod
         when (correlationMethod) {
-            "Pearson" -> return pearsonCorrelation
-            "Kendall" -> return kendallCorrelation
+            Constants.CORRELATION_PEARSON -> return pearsonCorrelation
+            Constants.CORRELATION_KENDALL -> return kendallCorrelation
             else -> return pearsonCorrelation
         }
     }
@@ -127,8 +148,8 @@ class DatasetModel {
         }
         this.targetToAchieve = targetToAchieve
         when (targetToAchieve) {
-            "Best" -> return bestStrategy
-            "Worst" -> return worstStrategy
+            Constants.TARGET_BEST -> return bestStrategy
+            Constants.TARGET_WORST -> return worstStrategy
             else -> return bestStrategy
         }
     }
@@ -150,7 +171,7 @@ class DatasetModel {
 
         logger.info("Computation started on \"${Thread.currentThread().name}\" with target \"${parameters.targetToAchieve}\". Wait please...")
 
-        if (targetToAchieve == "Average") {
+        if (targetToAchieve == Constants.TARGET_AVERAGE) {
 
             val variableValues = LinkedList<BooleanArray>()
             val cardinalities = LinkedList<Int>()
@@ -166,7 +187,7 @@ class DatasetModel {
                 var topicStatus = BooleanArray(0)
                 val generator = Random()
 
-                val correlationsToSum = Array(Constants.AVERAGE_EXPERIMENT_REPETITIONS, {
+                val correlationsToSum = Array(numberOfTopics, {
                     val topicToChoose = HashSet<Int>()
                     while (topicToChoose.size < currentCardinality + 1) topicToChoose.add(generator.nextInt(numberOfTopics) + 1)
 
@@ -185,11 +206,12 @@ class DatasetModel {
 
                 correlationsToSum.forEach { singleCorrelation -> correlationsSum += singleCorrelation }
                 correlationsToSum.sort()
-                meanCorrelation = correlationsSum / Constants.AVERAGE_EXPERIMENT_REPETITIONS
+                meanCorrelation = correlationsSum / numberOfTopics
 
                 percentiles.entries.forEach {
                     (percentileToFind, foundPercentiles) ->
-                    val percentileValue = correlationsToSum[Math.ceil((percentileToFind / 100.0) * correlations.size).toInt()]
+                    val percentilePosition = Math.ceil((percentileToFind / 100.0) * correlations.size).toInt()
+                    val percentileValue = correlationsToSum[percentilePosition]
                     percentiles[percentileToFind] = foundPercentiles.plus(percentileValue)
                     logger.debug("<Cardinality: $currentCardinality, Percentile: $percentileToFind, Value: $percentileValue>")
                 }
@@ -234,8 +256,8 @@ class DatasetModel {
             population = population.distinct().toMutableList()
 
             when (parameters.targetToAchieve) {
-                "Best" -> population.forEach { solutionToFix -> solutionToFix.setObjective(0, solutionToFix.getObjective(0) * -1) }
-                "Worst" -> population.forEach { solutionToFix -> solutionToFix.setObjective(1, solutionToFix.getObjective(1) * -1) }
+                Constants.TARGET_BEST -> population.forEach { solutionToFix -> solutionToFix.setObjective(0, solutionToFix.getObjective(0) * -1) }
+                Constants.TARGET_WORST -> population.forEach { solutionToFix -> solutionToFix.setObjective(1, solutionToFix.getObjective(1) * -1) }
             }
         }
 
