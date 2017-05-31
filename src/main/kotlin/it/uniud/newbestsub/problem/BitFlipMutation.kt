@@ -40,5 +40,4 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
         return solution
 
     }
-
 }

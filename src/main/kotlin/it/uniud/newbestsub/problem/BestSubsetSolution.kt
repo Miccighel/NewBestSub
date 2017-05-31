@@ -11,7 +11,7 @@ import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
 class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, BinarySolution, Comparable<BestSubsetSolution> {
 
-    var topicStatus: BooleanArray
+    var topicStatus : Array<Boolean>
     var numberOfSelectedTopics: Int = 0
     private val logger = LogManager.getLogger()
 
@@ -19,19 +19,19 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
         initializeObjectiveValues()
 
-        topicStatus = BooleanArray(numberOfTopics)
         numberOfSelectedTopics = 0
 
         val columnKeepProbability = JMetalRandom.getInstance().nextDouble()
 
-        (0..numberOfTopics - 1).forEach {
-            i ->
+        topicStatus = Array(numberOfTopics, {
+            val result : Boolean
             val pointProbability = JMetalRandom.getInstance().nextDouble()
             if (pointProbability > columnKeepProbability) {
-                topicStatus[i] = true
+                result = true
                 numberOfSelectedTopics++
-            } else topicStatus[i] = false
-        }
+            } else result = false
+            result
+        })
 
         if (numberOfSelectedTopics == 0) {
             var flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * topicStatus.size).toInt()
@@ -59,7 +59,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
         return BestSubsetSolution(this)
     }
 
-    fun createNewBitSet(numberOfBits: Int, values: BooleanArray): BinarySet {
+    fun createNewBitSet(numberOfBits: Int, values: Array<Boolean>): BinarySet {
         val bitSet = BinarySet(numberOfBits)
         (0..numberOfBits - 1).forEach { i -> if (values[i]) bitSet.set(i) else bitSet.clear(i) }
         return bitSet
@@ -114,5 +114,4 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
                 .append(this.getObjective(1))
                 .toHashCode()
     }
-
 }

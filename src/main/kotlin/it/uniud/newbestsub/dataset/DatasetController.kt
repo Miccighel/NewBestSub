@@ -9,15 +9,17 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.util.*
+import kotlin.collections.LinkedHashMap
 
 class DatasetController {
 
-    var model: DatasetModel = DatasetModel()
-    private var modelBest: DatasetModel = DatasetModel()
-    private var modelWorst: DatasetModel = DatasetModel()
-    private var modelAverage: DatasetModel = DatasetModel()
-    var models: List<DatasetModel> = LinkedList()
-    private var view: DatasetView = DatasetView()
+    var model = DatasetModel()
+    private var modelBest = DatasetModel()
+    private var modelWorst = DatasetModel()
+    private var modelAverage = DatasetModel()
+    var models = emptyList<DatasetModel>()
+    private var view = DatasetView()
+    private lateinit var parameters: Parameters
     private var logger = LogManager.getLogger()
 
     init {
@@ -58,16 +60,33 @@ class DatasetController {
 
     fun solve(parameters: Parameters, resultPath: String) {
 
+        this.parameters = parameters
+
         logger.info("Printing common execution parameters.")
 
         logger.info("Correlation: ${parameters.correlationMethod}.")
         logger.info("Target: ${parameters.targetToAchieve}.")
         logger.info("Number of iterations: ${parameters.numberOfIterations}.")
+        logger.info("Population size: ${parameters.populationSize}.")
+
+        if (parameters.targetToAchieve == Constants.TARGET_ALL || parameters.targetToAchieve == Constants.TARGET_AVERAGE) {
+            var percentilesToFind = ""
+            parameters.percentiles.forEach { percentile -> percentilesToFind += "$percentile%, " }
+            percentilesToFind = percentilesToFind.substring(0, percentilesToFind.length - 2)
+            logger.info("Percentiles: $percentilesToFind.")
+        }
+
         logger.info("Output path:")
 
         if (parameters.targetToAchieve == Constants.TARGET_ALL) {
 
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv\" (Aggregated data)")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_BEST}-Fun.csv\" (Target function values)")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_BEST}-Var.csv\" (Variable values)")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_WORST}-Fun.csv\" (Target function values)")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_WORST}-Var.csv\" (Variable values)")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_AVERAGE}-Fun.csv\" (Target function values)")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_AVERAGE}-Var.csv\" (Variable values)")
 
             val bestParameters = Parameters(parameters.correlationMethod, Constants.TARGET_BEST, parameters.numberOfIterations, parameters.populationSize, parameters.percentiles)
             val worstParameters = Parameters(parameters.correlationMethod, Constants.TARGET_WORST, parameters.numberOfIterations, parameters.populationSize, parameters.percentiles)
@@ -93,6 +112,8 @@ class DatasetController {
         } else {
 
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Final.csv\" (Aggregated data)")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Fun.csv\" (Target function values)")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Var.csv\" (Variable values)")
 
             view.print(model.solve(parameters), resultPath)
 
@@ -113,11 +134,11 @@ class DatasetController {
 
     fun aggregate(models: List<DatasetModel>): List<Array<String>> {
 
-        val incompleteData = LinkedList<Array<String>>()
-        val aggregatedData = LinkedList<Array<String>>()
-        val header = LinkedList<String>()
+        val incompleteData = mutableListOf<Array<String>>()
+        val aggregatedData = mutableListOf<Array<String>>()
+        val header = mutableListOf<String>()
         val topicLabels = models[0].topicLabels
-        var percentiles: MutableMap<Int, List<Double>> = LinkedHashMap()
+        var percentiles = linkedMapOf<Int, List<Double>>()
 
         header.add("Cardinality")
         models.forEach {
@@ -125,12 +146,17 @@ class DatasetController {
             header.add(model.targetToAchieve)
             if (model.targetToAchieve == Constants.TARGET_AVERAGE) percentiles = model.percentiles
         }
-        topicLabels.forEach { topicLabel -> header.add(topicLabel) }
-        percentiles.keys.forEach { percentile -> header.add(" Percentile: $percentile") }
 
-        logger.info("Common data between models.")
+        topicLabels.forEach { topicLabel -> header.add(topicLabel) }
+        percentiles.keys.forEach { percentile -> header.add(" Percentile: $percentile%") }
+
+        aggregatedData.add(header.toTypedArray())
+
+        logger.info("Printing common data between models.")
         logger.info("Topics number: ${models[0].numberOfTopics}")
         logger.info("Systems number: ${models[0].numberOfSystems}")
+
+        val computedCardinalities = mutableMapOf(Constants.TARGET_BEST to 0, Constants.TARGET_WORST to 0, Constants.TARGET_AVERAGE to 0)
 
         (0..models[0].numberOfTopics - 1).forEach {
             index ->
@@ -140,15 +166,32 @@ class DatasetController {
             models.forEach {
                 model ->
                 val correlationValueForCurrentCardinality = model.findCorrelationForCardinality(currentCardinality)
-                if (correlationValueForCurrentCardinality != null) currentLine.add(correlationValueForCurrentCardinality.toString()) else currentLine.add("UNAVAILABLE")
+                if (correlationValueForCurrentCardinality != null) {
+                    currentLine.add(correlationValueForCurrentCardinality.toString())
+                    computedCardinalities[model.targetToAchieve] = computedCardinalities[model.targetToAchieve]?.plus(1) ?: 0
+                } else currentLine.add(Constants.CARDINALITY_NOT_AVAILABLE)
             }
             incompleteData.add(currentLine.toTypedArray())
         }
 
+        if (parameters.targetToAchieve != Constants.TARGET_ALL) {
+            logger.info("Cardinalities for target \"${parameters.targetToAchieve}\": ${computedCardinalities[parameters.targetToAchieve]}/${models[0].numberOfTopics}.")
+        } else {
+            logger.info("Cardinalities for target \"${Constants.TARGET_BEST}\": ${computedCardinalities[Constants.TARGET_BEST]}/${models[0].numberOfTopics}.")
+            logger.info("Cardinalities for target \"${Constants.TARGET_WORST}\": ${computedCardinalities[Constants.TARGET_WORST]}/${models[0].numberOfTopics}.")
+            logger.info("Cardinalities for target \"${Constants.TARGET_AVERAGE}\": ${computedCardinalities[Constants.TARGET_AVERAGE]}/${models[0].numberOfTopics}.")
+        }
+
         incompleteData.forEach {
             aLine ->
-            val currentCardinality = aLine[0].toDouble()
             var newDataEntry = aLine
+            val currentCardinality = newDataEntry[0].toDouble()
+
+            percentiles.entries.forEach {
+                (_, percentileValues) ->
+                newDataEntry = newDataEntry.plus(percentileValues[currentCardinality.toInt() - 1].toString())
+            }
+
             topicLabels.forEach {
                 currentLabel ->
                 var topicPresence = ""
@@ -156,53 +199,35 @@ class DatasetController {
                     model ->
                     val isTopicInASolutionOfCurrentCard = model.isTopicInASolutionOfCardinality(currentLabel, currentCardinality)
                     when (model.targetToAchieve) {
-                        Constants.TARGET_BEST -> if (isTopicInASolutionOfCurrentCard) topicPresence += "b"
-                        Constants.TARGET_WORST -> if (isTopicInASolutionOfCurrentCard) topicPresence += "w"
+                        Constants.TARGET_BEST -> if (isTopicInASolutionOfCurrentCard) topicPresence += "B"
+                        Constants.TARGET_WORST -> if (isTopicInASolutionOfCurrentCard) topicPresence += "W"
                     }
                 }
-                if (topicPresence == "") topicPresence += "n"
+                if (topicPresence == "") topicPresence += "N"
                 newDataEntry = newDataEntry.plus(topicPresence)
-            }
-
-            percentiles.entries.forEach {
-                (_, percentileValues) ->
-                newDataEntry = newDataEntry.plus(percentileValues[currentCardinality.toInt() - 1].toString())
             }
             aggregatedData.add(newDataEntry)
         }
+
         incompleteData.clear()
-
-        var computedCardinalitiesForBest = 0
-        var computedCardinalitiesForWorst = 0
-        var computedCardinalitiesForAverage = 0
-
-        aggregatedData.forEach{
-            aLine ->
-            if (aLine[1]!="UNAVAILABLE") computedCardinalitiesForBest++
-            if (aLine[2]!="UNAVAILABLE") computedCardinalitiesForWorst++
-            if (aLine[3]!="UNAVAILABLE") computedCardinalitiesForAverage++
-        }
-
-        logger.info("Computed cardinalities for target \"${Constants.TARGET_BEST}\": $computedCardinalitiesForBest/${models[0].numberOfTopics}")
-        logger.info("Computed cardinalities for target \"${Constants.TARGET_WORST}\": $computedCardinalitiesForWorst/${models[0].numberOfTopics}")
-        logger.info("Computed cardinalities for target \"${Constants.TARGET_AVERAGE}\": $computedCardinalitiesForAverage/${models[0].numberOfTopics}")
-
-        aggregatedData.addFirst(header.toTypedArray())
-
         return aggregatedData
     }
 
-    fun expandData(coefficient: Int) {
+    fun expandData(expansionCoefficient: Int, target: String) {
+
         val random = Random()
-        val averagePrecisions = model.averagePrecisions
-        val topicLabels = Array(coefficient, {(random.nextInt(998 + 1 - 100) + 100).toString() })
-        averagePrecisions.keys.forEach {
+        val systemLabels = model.systemLabels
+        val topicLabels = Array(expansionCoefficient, { "${random.nextInt(998 + 1 - 100) + 100} (F)" })
+        val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
+
+        systemLabels.forEach {
             systemLabel ->
-            averagePrecisions[systemLabel] = DoubleArray(coefficient, { Math.random() })
+            randomizedAveragePrecisions[systemLabel] = DoubleArray(expansionCoefficient, { Math.random() })
         }
-        models.forEach {
-            model ->
-            model.expandData(averagePrecisions, topicLabels)
-        }
+        if (target == Constants.TARGET_ALL)
+            models.forEach { model -> model.expandData(randomizedAveragePrecisions, topicLabels) }
+        else
+            model.expandData(randomizedAveragePrecisions, topicLabels)
     }
+
 }

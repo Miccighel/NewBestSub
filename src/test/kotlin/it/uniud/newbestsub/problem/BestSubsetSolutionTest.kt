@@ -4,9 +4,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.uma.jmetal.solution.BinarySolution
-import java.util.Random
-import kotlin.collections.LinkedHashMap
-import kotlin.collections.set
 import kotlin.test.assertEquals
 
 class BestSubsetSolutionTest {
@@ -21,7 +18,7 @@ class BestSubsetSolutionTest {
     @DisplayName("BestSubsetSolution - Initialize Tests")
 
     fun initTest() {
-        val length = 10
+        /*val length = 10
         for (index in 0..length) {
             val fakeAvgPrec = DoubleArray(length)
             val random = Random()
@@ -33,7 +30,7 @@ class BestSubsetSolutionTest {
         testCorr = { _, _ -> 0.0 }
         testTarg = { sol, _ -> sol }
         testProb = BestSubsetProblem(testAvgPrec.size, testAvgPrec, DoubleArray(0), testCorr, testTarg)
-        testSol = BestSubsetSolution(testProb, testAvgPrec.size)
+        testSol = BestSubsetSolution(testProb, testAvgPrec.size)*/
     }
 
     @Test

@@ -2,9 +2,6 @@ package it.uniud.newbestsub.problem
 
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.uma.jmetal.solution.BinarySolution
-import java.util.*
-import kotlin.test.assertEquals
 
 class BitFlipMutationTest {
 
@@ -13,7 +10,7 @@ class BitFlipMutationTest {
 
     fun testExecute() {
 
-        println("[BitFlipMutationTest execute] - Test begins.")
+        /*println("[BitFlipMutationTest execute] - Test begins.")
 
         val testAvgPrec: MutableMap<String, DoubleArray> = LinkedHashMap()
         var testSol: BinarySolution
@@ -39,7 +36,7 @@ class BitFlipMutationTest {
         println("[BitFlipMutationTest execute] - Testing: <Old. Topic Stat. Val.: $oldStatus, New. Topic Stat. Val.: $newStatus>.")
         assertEquals(false, oldStatus == newStatus, "<Old. Topic Stat. Val.: $oldStatus, New. Topic Stat. Val.: $newStatus>")
 
-        println("[BitFlipMutationTest execute] - Test ends.")
+        println("[BitFlipMutationTest execute] - Test ends.")*/
     }
 
 }

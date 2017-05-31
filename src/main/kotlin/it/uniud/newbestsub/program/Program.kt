@@ -50,51 +50,78 @@ object Program {
                 } else throw ParseException("Value for the option <<l>> or <<log>> is wrong. Check the usage section below.")
 
                 if (commandLine.getOptionValue("c") == Constants.CORRELATION_PEARSON || commandLine.getOptionValue("c") == Constants.CORRELATION_KENDALL) {
+
                     chosenCorrelationMethod = commandLine.getOptionValue("c")
                     resultPath = resultPath + chosenCorrelationMethod + "-"
+
                 } else throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
 
                 if (commandLine.getOptionValue("t") == Constants.TARGET_BEST || commandLine.getOptionValue("t") == Constants.TARGET_WORST || commandLine.getOptionValue("t") == Constants.TARGET_AVERAGE || commandLine.getOptionValue("t") == Constants.TARGET_ALL) {
+
                     targetToAchieve = commandLine.getOptionValue("t")
                     numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
                     populationSize = 0
                     percentiles = List(0, { 0 })
+
                     if (targetToAchieve != Constants.TARGET_AVERAGE) {
+
                         if (!commandLine.hasOption("po")) throw ParseException("Value for the option <<po>> or <<pop>> is missing. Check the usage section below.")
                         try {
-                            populationSize = commandLine.getOptionValue("po").toInt()
+                            populationSize = Integer.parseInt(commandLine.getOptionValue("po"))
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<po>> or <<pop>> is not an integer. Check the usage section below")
                         }
+
                     }
                     if (targetToAchieve != Constants.TARGET_ALL) {
+
                         resultPath += targetToAchieve
                         System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath.log")
+
                     } else System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath${Constants.TARGET_ALL}.log")
+
                     if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
+
                         val percentilesToParse = commandLine.getOptionValues("pe").toList()
-                        percentiles = percentilesToParse.zip(List(percentilesToParse.size, { "" }), { percentileToParse, _ -> percentileToParse.toInt() })
+
+                        try {
+                            percentiles = percentilesToParse.zip(List(percentilesToParse.size, { "" }), { percentileToParse, _ -> Integer.parseInt(percentileToParse) })
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
+                        }
+
                     }
+
                     logger = updateLogger(LogManager.getLogger(), loggingLevel)
                     logger.info("NewBestSub execution started.")
+
                     datasetController = DatasetController()
                     datasetController.loadData(datasetPath)
+
                     if (commandLine.hasOption('e')) {
+
                         expansionCoefficient = commandLine.getOptionValue('e').toInt()
                         val trueTopicNumber = datasetController.model.numberOfTopics
                         val baseResultPath: String
                         var expandedResultPath: String
-                        logger.info("Data expansion: <New Topic Number: $trueTopicNumber, Earlier Topic Number: $trueTopicNumber, Expansion Coefficient: $expansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_EXPANSION}, Original Topic Number: $trueTopicNumber>")
+
+                        logger.info("Base execution (true data)")
+
                         if (targetToAchieve != Constants.TARGET_ALL) baseResultPath = "$resultPath-${datasetController.model.numberOfTopics}" else baseResultPath = "$resultPath${datasetController.model.numberOfTopics}-"
+
                         datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), baseResultPath)
+
                         do {
                             logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + expansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $expansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_EXPANSION}, Original Topic Number: $trueTopicNumber>")
-                            datasetController.expandData(expansionCoefficient)
+                            datasetController.expandData(expansionCoefficient, targetToAchieve)
                             if (targetToAchieve != Constants.TARGET_ALL) expandedResultPath = "$resultPath-${datasetController.models[0].numberOfTopics}" else expandedResultPath = "$resultPath${datasetController.models[0].numberOfTopics}-"
                             datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), expandedResultPath)
                         } while (datasetController.models[0].numberOfTopics < Constants.MAXIMUM_EXPANSION)
+
                     } else datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), resultPath)
+
                     logger.info("NewBestSub execution terminated.")
+
                 } else throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
             }
 
