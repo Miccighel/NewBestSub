@@ -1,8 +1,5 @@
 package it.uniud.newbestsub.utils
 
-import java.text.SimpleDateFormat
-import java.util.*
-
 object Constants {
     val INPUT_PATH = "data/"
     val OUTPUT_PATH = "res/"
@@ -15,5 +12,6 @@ object Constants {
     val TARGET_ALL = "All"
     val CORRELATION_PEARSON = "Pearson"
     val CORRELATION_KENDALL = "Kendall"
-    val MAXIMUM_EXPANSION = 1200
+    val MAXIMUM_EXPANSION = 200
+    val AVG_EXPERIMENT_REPETITIONS = 50
 }

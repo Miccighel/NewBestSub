@@ -1,6 +1,5 @@
 package it.uniud.newbestsub.dataset
 
-import com.sun.xml.internal.fastinfoset.util.StringArray
 import it.uniud.newbestsub.utils.Constants
 import kotlinx.coroutines.experimental.CommonPool
 import kotlinx.coroutines.experimental.async
@@ -83,7 +82,7 @@ class DatasetController {
                 view.print(averageResult.await(), resultPath + Constants.TARGET_AVERAGE)
             }
 
-            logger.info("Model data aggregation started.")
+            logger.info("Data aggregation started.")
 
             models = listOf(modelBest, modelWorst, modelAverage)
             view.print(aggregate(models), "${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv")
@@ -172,6 +171,22 @@ class DatasetController {
             aggregatedData.add(newDataEntry)
         }
         incompleteData.clear()
+
+        var computedCardinalitiesForBest = 0
+        var computedCardinalitiesForWorst = 0
+        var computedCardinalitiesForAverage = 0
+
+        aggregatedData.forEach{
+            aLine ->
+            if (aLine[1]!="UNAVAILABLE") computedCardinalitiesForBest++
+            if (aLine[2]!="UNAVAILABLE") computedCardinalitiesForWorst++
+            if (aLine[3]!="UNAVAILABLE") computedCardinalitiesForAverage++
+        }
+
+        logger.info("Computed cardinalities for target \"${Constants.TARGET_BEST}\": $computedCardinalitiesForBest/${models[0].numberOfTopics}")
+        logger.info("Computed cardinalities for target \"${Constants.TARGET_WORST}\": $computedCardinalitiesForWorst/${models[0].numberOfTopics}")
+        logger.info("Computed cardinalities for target \"${Constants.TARGET_AVERAGE}\": $computedCardinalitiesForAverage/${models[0].numberOfTopics}")
+
         aggregatedData.addFirst(header.toTypedArray())
 
         return aggregatedData

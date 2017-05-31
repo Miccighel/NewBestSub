@@ -187,7 +187,7 @@ class DatasetModel {
                 var topicStatus = BooleanArray(0)
                 val generator = Random()
 
-                val correlationsToSum = Array(numberOfTopics, {
+                val correlationsToSum = Array(Constants.AVG_EXPERIMENT_REPETITIONS, {
                     val topicToChoose = HashSet<Int>()
                     while (topicToChoose.size < currentCardinality + 1) topicToChoose.add(generator.nextInt(numberOfTopics) + 1)
 
@@ -206,12 +206,12 @@ class DatasetModel {
 
                 correlationsToSum.forEach { singleCorrelation -> correlationsSum += singleCorrelation }
                 correlationsToSum.sort()
-                meanCorrelation = correlationsSum / numberOfTopics
+                meanCorrelation = correlationsSum / Constants.AVG_EXPERIMENT_REPETITIONS
 
                 percentiles.entries.forEach {
                     (percentileToFind, foundPercentiles) ->
-                    val percentilePosition = Math.ceil((percentileToFind / 100.0) * correlations.size).toInt()
-                    val percentileValue = correlationsToSum[percentilePosition]
+                    val percentilePosition = Math.ceil((percentileToFind / 100.0) * correlationsToSum.size).toInt()
+                    val percentileValue = correlationsToSum[percentilePosition - 1]
                     percentiles[percentileToFind] = foundPercentiles.plus(percentileValue)
                     logger.debug("<Cardinality: $currentCardinality, Percentile: $percentileToFind, Value: $percentileValue>")
                 }
