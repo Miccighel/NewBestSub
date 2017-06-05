@@ -12,7 +12,7 @@ import org.uma.jmetal.util.pseudorandom.JMetalRandom
 class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, BinarySolution, Comparable<BestSubsetSolution> {
 
     var topicStatus : Array<Boolean>
-    var numberOfSelectedTopics: Int = 0
+    var numberOfSelectedTopics = 0
     private val logger = LogManager.getLogger()
 
     constructor(problem: BinaryProblem, numberOfTopics: Int) : super(problem) {

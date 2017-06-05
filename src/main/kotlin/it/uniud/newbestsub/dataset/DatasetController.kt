@@ -28,7 +28,7 @@ class DatasetController {
 
     fun loadData(datasetPath: String) {
 
-        logger.info("Dataset loading started.")
+        logger.info("Data set loading started.")
         logger.info("Path: \"$datasetPath\".")
 
         val outputDirectory = File(Constants.OUTPUT_PATH)
@@ -50,12 +50,12 @@ class DatasetController {
             modelWorst.loadData(datasetPath)
             modelAverage.loadData(datasetPath)
         } catch (exception: FileNotFoundException) {
-            logger.warn("Dataset not found. Is file inside a \"data\" dir.?")
+            logger.warn("Data set not found. Is file inside a \"data\" dir.?")
         } catch (exception: IOException) {
             logger.warn(exception.message as String)
         }
 
-        logger.info("Dataset loading completed.")
+        logger.info("Data set loading completed.")
     }
 
     fun solve(parameters: Parameters, resultPath: String) {
@@ -156,7 +156,7 @@ class DatasetController {
         logger.info("Topics number: ${models[0].numberOfTopics}")
         logger.info("Systems number: ${models[0].numberOfSystems}")
 
-        val computedCardinalities = mutableMapOf(Constants.TARGET_BEST to 0, Constants.TARGET_WORST to 0, Constants.TARGET_AVERAGE to 0)
+        val computedCardinality = mutableMapOf(Constants.TARGET_BEST to 0, Constants.TARGET_WORST to 0, Constants.TARGET_AVERAGE to 0)
 
         (0..models[0].numberOfTopics - 1).forEach {
             index ->
@@ -168,18 +168,18 @@ class DatasetController {
                 val correlationValueForCurrentCardinality = model.findCorrelationForCardinality(currentCardinality)
                 if (correlationValueForCurrentCardinality != null) {
                     currentLine.add(correlationValueForCurrentCardinality.toString())
-                    computedCardinalities[model.targetToAchieve] = computedCardinalities[model.targetToAchieve]?.plus(1) ?: 0
+                    computedCardinality[model.targetToAchieve] = computedCardinality[model.targetToAchieve]?.plus(1) ?: 0
                 } else currentLine.add(Constants.CARDINALITY_NOT_AVAILABLE)
             }
             incompleteData.add(currentLine.toTypedArray())
         }
 
         if (parameters.targetToAchieve != Constants.TARGET_ALL) {
-            logger.info("Cardinalities for target \"${parameters.targetToAchieve}\": ${computedCardinalities[parameters.targetToAchieve]}/${models[0].numberOfTopics}.")
+            logger.info("Cardinality for target \"${parameters.targetToAchieve}\": ${computedCardinality[parameters.targetToAchieve]}/${models[0].numberOfTopics}.")
         } else {
-            logger.info("Cardinalities for target \"${Constants.TARGET_BEST}\": ${computedCardinalities[Constants.TARGET_BEST]}/${models[0].numberOfTopics}.")
-            logger.info("Cardinalities for target \"${Constants.TARGET_WORST}\": ${computedCardinalities[Constants.TARGET_WORST]}/${models[0].numberOfTopics}.")
-            logger.info("Cardinalities for target \"${Constants.TARGET_AVERAGE}\": ${computedCardinalities[Constants.TARGET_AVERAGE]}/${models[0].numberOfTopics}.")
+            logger.info("Cardinality for target \"${Constants.TARGET_BEST}\": ${computedCardinality[Constants.TARGET_BEST]}/${models[0].numberOfTopics}.")
+            logger.info("Cardinality for target \"${Constants.TARGET_WORST}\": ${computedCardinality[Constants.TARGET_WORST]}/${models[0].numberOfTopics}.")
+            logger.info("Cardinality for target \"${Constants.TARGET_AVERAGE}\": ${computedCardinality[Constants.TARGET_AVERAGE]}/${models[0].numberOfTopics}.")
         }
 
         incompleteData.forEach {

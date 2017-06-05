@@ -17,7 +17,6 @@ import org.uma.jmetal.operator.MutationOperator
 import org.uma.jmetal.operator.SelectionOperator
 import org.uma.jmetal.operator.impl.selection.BinaryTournamentSelection
 import org.uma.jmetal.problem.BinaryProblem
-import org.uma.jmetal.problem.Problem
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.util.AlgorithmRunner
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
@@ -42,15 +41,17 @@ class DatasetModel {
 
     private val logger = LogManager.getLogger()
 
-    private lateinit var problem: Problem<BinarySolution>
+    private lateinit var problem: BestSubsetProblem
     private lateinit var crossover: CrossoverOperator<BinarySolution>
     private lateinit var mutation: MutationOperator<BinarySolution>
     private lateinit var selection: SelectionOperator<List<BinarySolution>, BinarySolution>
-    private lateinit var evaluator : MultithreadedSolutionListEvaluator<BinarySolution>
-    lateinit var population: MutableList<BinarySolution>
+    private lateinit var evaluator: MultithreadedSolutionListEvaluator<BinarySolution>
     private lateinit var builder: NSGAIIBuilder<BinarySolution>
     private lateinit var algorithm: Algorithm<List<BinarySolution>>
     private lateinit var algorithmRunner: AlgorithmRunner
+    var notDominatedSolutions = mutableListOf<BinarySolution>()
+    var dominatedSolutions = linkedMapOf<Double, BinarySolution>()
+    var allSolutions = mutableListOf<BinarySolution>()
 
     fun loadData(datasetPath: String) {
 
@@ -146,7 +147,7 @@ class DatasetModel {
     }
 
     fun findCorrelationForCardinality(cardinality: Double): Double? {
-        population.forEach { aSolution -> if (aSolution.getObjective(1) == cardinality) return aSolution.getObjective(0) }
+        allSolutions.forEach { aSolution -> if (aSolution.getObjective(1) == cardinality) return aSolution.getObjective(0) }
         return null
     }
 
@@ -165,7 +166,7 @@ class DatasetModel {
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
 
             val variableValues = mutableListOf<Array<Boolean>>()
-            val cardinalities = mutableListOf<Int>()
+            val cardinality = mutableListOf<Int>()
             val correlations = mutableListOf<Double>()
 
             parameters.percentiles.forEach { percentileToFind -> percentiles[percentileToFind] = LinkedList<Double>() }
@@ -209,26 +210,26 @@ class DatasetModel {
 
                 logger.debug("<Correlation: $meanCorrelation, Number of selected topics: $currentCardinality, Last gene evaluated: $topicStatusToString>")
 
-                cardinalities.add(currentCardinality + 1)
+                cardinality.add(currentCardinality + 1)
                 correlations.add(meanCorrelation)
                 variableValues.add(topicStatus.toTypedArray())
             }
 
-            problem = BestSubsetProblem(numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
-            population = LinkedList()
+            problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
+            notDominatedSolutions = LinkedList()
 
             (0..numberOfTopics - 1).forEach {
                 index ->
                 val solution = BestSubsetSolution(problem as BinaryProblem, numberOfTopics)
                 solution.setVariableValue(0, solution.createNewBitSet(numberOfTopics, variableValues[index]))
                 solution.setObjective(0, correlations[index])
-                solution.setObjective(1, cardinalities[index].toDouble())
-                population.add(solution as BinarySolution)
+                solution.setObjective(1, cardinality[index].toDouble())
+                notDominatedSolutions.add(solution as BinarySolution)
             }
 
         } else {
 
-            problem = BestSubsetProblem(numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
+            problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
             crossover = BinaryPruningCrossover(0.9)
             mutation = BitFlipMutation(1.0)
             selection = BinaryTournamentSelection(RankingAndCrowdingDistanceComparator<BinarySolution>())
@@ -245,16 +246,31 @@ class DatasetModel {
             computingTime = algorithmRunner.computingTime
             builder.solutionListEvaluator.shutdown()
 
-            population = algorithm.result.toMutableList()
-            population = population.distinct().toMutableList()
+            notDominatedSolutions = algorithm.result.toMutableList().distinct().toMutableList()
+            dominatedSolutions = problem.dominatedSolutions
+
+            var nonDominatedSolutionCardinality = listOf<Double>()
+            notDominatedSolutions.forEach {
+                aNonDominatedSolution ->
+                nonDominatedSolutionCardinality = nonDominatedSolutionCardinality.plus(aNonDominatedSolution.getObjective(1))
+                allSolutions.plusAssign(aNonDominatedSolution)
+            }
+            dominatedSolutions.forEach {
+                (_, aDominatedSolution) ->
+                if (!nonDominatedSolutionCardinality.contains(aDominatedSolution.getObjective(1))) allSolutions.plusAssign(aDominatedSolution)
+            }
+
+            logger.info("Not dominated solutions generated for the execution with target \"${parameters.targetToAchieve}\": ${notDominatedSolutions.size}/$numberOfTopics.")
+            logger.info("Dominated solutions generated for the execution with target \"${parameters.targetToAchieve}\": ${numberOfTopics - notDominatedSolutions.size}/$numberOfTopics.")
 
             when (parameters.targetToAchieve) {
-                Constants.TARGET_BEST -> population.forEach { solutionToFix -> solutionToFix.setObjective(0, solutionToFix.getObjective(0) * -1) }
-                Constants.TARGET_WORST -> population.forEach { solutionToFix -> solutionToFix.setObjective(1, solutionToFix.getObjective(1) * -1) }
+                Constants.TARGET_BEST -> notDominatedSolutions.forEach { solutionToFix -> solutionToFix.setObjective(0, solutionToFix.getObjective(0) * -1) }
+                Constants.TARGET_WORST -> notDominatedSolutions.forEach { solutionToFix -> solutionToFix.setObjective(1, solutionToFix.getObjective(1) * -1) }
             }
+
         }
 
-        for (solutionToAnalyze in population) {
+        for (solutionToAnalyze in allSolutions) {
             val topicStatus = (solutionToAnalyze as BestSubsetSolution).retrieveTopicStatus()
             val cardinality = solutionToAnalyze.getObjective(1)
             for (index in topicStatus.indices) {
@@ -266,11 +282,11 @@ class DatasetModel {
             }
         }
 
-        population.sortWith(kotlin.Comparator {
+        allSolutions.sortWith(kotlin.Comparator {
             sol1: BinarySolution, sol2: BinarySolution ->
             (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
         })
 
-        return Pair<List<BinarySolution>, Triple<String, String, Long>>(population, Triple(parameters.targetToAchieve, Thread.currentThread().name, computingTime))
+        return Pair<List<BinarySolution>, Triple<String, String, Long>>(allSolutions, Triple(parameters.targetToAchieve, Thread.currentThread().name, computingTime))
     }
 }
