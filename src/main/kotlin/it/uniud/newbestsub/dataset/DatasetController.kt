@@ -14,10 +14,11 @@ import kotlin.collections.LinkedHashMap
 class DatasetController {
 
     var model = DatasetModel()
+    var models = listOf<DatasetModel>()
+    var aggregatedData = listOf<Array<String>>()
     private var modelBest = DatasetModel()
     private var modelWorst = DatasetModel()
     private var modelAverage = DatasetModel()
-    var models = emptyList<DatasetModel>()
     private var view = DatasetView()
     private lateinit var parameters: Parameters
     private var logger = LogManager.getLogger()
@@ -58,7 +59,22 @@ class DatasetController {
         logger.info("Data set loading completed.")
     }
 
-    fun solve(parameters: Parameters, resultPath: String) {
+    fun expandData(expansionCoefficient: Int, target: String) {
+
+        val random = Random()
+        val systemLabels = model.systemLabels
+        val topicLabels = Array(expansionCoefficient, { "${random.nextInt(998 + 1 - 100) + 100} (F)" })
+        val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
+
+        systemLabels.forEach {
+            systemLabel ->
+            randomizedAveragePrecisions[systemLabel] = DoubleArray(expansionCoefficient, { Math.random() })
+        }
+        if (target == Constants.TARGET_ALL) models.forEach { model -> model.expandData(randomizedAveragePrecisions, topicLabels) }
+        else model.expandData(randomizedAveragePrecisions, topicLabels)
+    }
+
+    fun solve(parameters: Parameters, resultPath: String): List<Array<String>> {
 
         this.parameters = parameters
 
@@ -104,7 +120,8 @@ class DatasetController {
             logger.info("Data aggregation started.")
 
             models = listOf(modelBest, modelWorst, modelAverage)
-            view.print(aggregate(models), "${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv")
+            aggregatedData = aggregate(models)
+            view.print(aggregatedData, "${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv")
 
             logger.info("Aggregated data available at:")
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv\"")
@@ -120,7 +137,8 @@ class DatasetController {
             logger.info("Data aggregation started.")
 
             models = listOf(model)
-            view.print(aggregate(models), "${Constants.OUTPUT_PATH}$resultPath-Final.csv")
+            aggregatedData = aggregate(models)
+            view.print(aggregatedData, "${Constants.OUTPUT_PATH}$resultPath-Final.csv")
 
             logger.info("Aggregated data available at:")
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Final.csv\"")
@@ -128,8 +146,9 @@ class DatasetController {
         }
 
         logger.info("Data aggregation completed.")
-        logger.info("Finished to solve the problem.")
+        logger.info("Problem resolution completed.")
 
+        return aggregatedData
     }
 
     fun aggregate(models: List<DatasetModel>): List<Array<String>> {
@@ -152,9 +171,10 @@ class DatasetController {
 
         aggregatedData.add(header.toTypedArray())
 
-        logger.info("Printing common data between models.")
+        logger.info("Starting to print common data between models.")
         logger.info("Topics number: ${models[0].numberOfTopics}")
         logger.info("Systems number: ${models[0].numberOfSystems}")
+        logger.info("Print completed.")
 
         val computedCardinality = mutableMapOf(Constants.TARGET_BEST to 0, Constants.TARGET_WORST to 0, Constants.TARGET_AVERAGE to 0)
 
@@ -175,11 +195,11 @@ class DatasetController {
         }
 
         if (parameters.targetToAchieve != Constants.TARGET_ALL) {
-            logger.info("Cardinality for target \"${parameters.targetToAchieve}\": ${computedCardinality[parameters.targetToAchieve]}/${models[0].numberOfTopics}.")
+            logger.info("Total cardinality computed for target \"${parameters.targetToAchieve}\": ${computedCardinality[parameters.targetToAchieve]}/${models[0].numberOfTopics}.")
         } else {
-            logger.info("Cardinality for target \"${Constants.TARGET_BEST}\": ${computedCardinality[Constants.TARGET_BEST]}/${models[0].numberOfTopics}.")
-            logger.info("Cardinality for target \"${Constants.TARGET_WORST}\": ${computedCardinality[Constants.TARGET_WORST]}/${models[0].numberOfTopics}.")
-            logger.info("Cardinality for target \"${Constants.TARGET_AVERAGE}\": ${computedCardinality[Constants.TARGET_AVERAGE]}/${models[0].numberOfTopics}.")
+            logger.info("Total cardinality computed for target \"${Constants.TARGET_BEST}\": ${computedCardinality[Constants.TARGET_BEST]}/${models[0].numberOfTopics}.")
+            logger.info("Total cardinality computed for target \"${Constants.TARGET_WORST}\": ${computedCardinality[Constants.TARGET_WORST]}/${models[0].numberOfTopics}.")
+            logger.info("Total cardinality computed for target \"${Constants.TARGET_AVERAGE}\": ${computedCardinality[Constants.TARGET_AVERAGE]}/${models[0].numberOfTopics}.")
         }
 
         incompleteData.forEach {
@@ -211,23 +231,6 @@ class DatasetController {
 
         incompleteData.clear()
         return aggregatedData
-    }
-
-    fun expandData(expansionCoefficient: Int, target: String) {
-
-        val random = Random()
-        val systemLabels = model.systemLabels
-        val topicLabels = Array(expansionCoefficient, { "${random.nextInt(998 + 1 - 100) + 100} (F)" })
-        val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
-
-        systemLabels.forEach {
-            systemLabel ->
-            randomizedAveragePrecisions[systemLabel] = DoubleArray(expansionCoefficient, { Math.random() })
-        }
-        if (target == Constants.TARGET_ALL)
-            models.forEach { model -> model.expandData(randomizedAveragePrecisions, topicLabels) }
-        else
-            model.expandData(randomizedAveragePrecisions, topicLabels)
     }
 
 }

@@ -11,7 +11,7 @@ import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
 class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, BinarySolution, Comparable<BestSubsetSolution> {
 
-    var topicStatus : Array<Boolean>
+    var topicStatus: Array<Boolean>
     var numberOfSelectedTopics = 0
     private val logger = LogManager.getLogger()
 
@@ -24,7 +24,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
         val columnKeepProbability = JMetalRandom.getInstance().nextDouble()
 
         topicStatus = Array(numberOfTopics, {
-            val result : Boolean
+            val result: Boolean
             val pointProbability = JMetalRandom.getInstance().nextDouble()
             if (pointProbability > columnKeepProbability) {
                 result = true
@@ -65,12 +65,6 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
         return bitSet
     }
 
-    fun retrieveTopicStatus(): BooleanArray {
-        val topicStatusValues = BooleanArray(getVariableValue(0).binarySetLength)
-        for (i in topicStatusValues.indices) topicStatusValues[i] = getVariableValue(0).get(i)
-        return topicStatusValues
-    }
-
     fun setBitValue(index: Int, value: Boolean) {
         val topicStatusValues = getVariableValue(0)
         if (topicStatusValues.get(index) != value) {
@@ -78,6 +72,12 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
             if (value) numberOfSelectedTopics++ else numberOfSelectedTopics--
         }
         setVariableValue(0, topicStatusValues)
+    }
+
+    fun retrieveTopicStatus(): BooleanArray {
+        val topicStatusValues = BooleanArray(getVariableValue(0).binarySetLength)
+        for (i in topicStatusValues.indices) topicStatusValues[i] = getVariableValue(0).get(i)
+        return topicStatusValues
     }
 
     override fun getNumberOfBits(index: Int): Int {
@@ -109,9 +109,15 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
     }
 
     override fun hashCode(): Int {
-        return HashCodeBuilder(17, 37)
-                .append(this.getObjective(0))
-                .append(this.getObjective(1))
-                .toHashCode()
+        return HashCodeBuilder(17, 37).append(this.getObjective(0)).append(this.getObjective(1)).toHashCode()
     }
+
+}
+
+fun BinarySolution.getCardinality(): Double {
+    return getObjective(1)
+}
+
+fun BinarySolution.getCorrelation(): Double {
+    return getObjective(0)
 }

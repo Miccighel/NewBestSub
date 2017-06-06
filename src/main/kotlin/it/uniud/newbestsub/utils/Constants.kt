@@ -13,5 +13,5 @@ object Constants {
     val CORRELATION_PEARSON = "Pearson"
     val CORRELATION_KENDALL = "Kendall"
     val MAXIMUM_EXPANSION = 250
-    val ITERATION_LOGGING_FACTOR = 25000
+    val ITERATION_LOGGING_FACTOR = 10000
 }

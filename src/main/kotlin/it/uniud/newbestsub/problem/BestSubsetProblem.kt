@@ -19,9 +19,9 @@ class BestSubsetProblem(
 ) : AbstractBinaryProblem() {
 
     val dominatedSolutions = linkedMapOf<Double, BinarySolution>()
-    private val logger = LogManager.getLogger()
     private var iterationCounter = 0
     private lateinit var solution: BestSubsetSolution
+    private val logger = LogManager.getLogger()
 
     init {
         numberOfVariables = 1
@@ -41,31 +41,33 @@ class BestSubsetProblem(
 
         solution as BestSubsetSolution
 
-        if ((iterationCounter % Constants.ITERATION_LOGGING_FACTOR) == 0)
-            logger.info("Current iteration: $iterationCounter/${parameters.numberOfIterations} for evaluations on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}")
+        if ((iterationCounter % Constants.ITERATION_LOGGING_FACTOR) == 0 && parameters.numberOfIterations > Constants.ITERATION_LOGGING_FACTOR)
+            logger.info("Completed iterations: $iterationCounter/${parameters.numberOfIterations} for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
 
         var iterator = averagePrecisions.entries.iterator()
         val meanAveragePrecisionsReduced = Array(averagePrecisions.entries.size, { Tools.getMean(iterator.next().value.toDoubleArray(), solution.retrieveTopicStatus()) })
         val correlation = correlationStrategy.invoke(meanAveragePrecisionsReduced, meanAveragePrecisions)
 
+        val solutionOld = dominatedSolutions[solution.numberOfSelectedTopics.toDouble()]
+        val correlationOld: Double
+
         logger.debug("<Correlation: $correlation, " + "Num. Sel. Topics: " + "${solution.numberOfSelectedTopics}, " + "Ev. Gene: ${solution.getVariableValueString(0)}>")
 
-        val oldSolution = dominatedSolutions[solution.getObjective(1)]
-        val oldCorrelation: Double
-
-        if (oldSolution != null) {
-            iterator = averagePrecisions.entries.iterator()
-            val oldMeanAveragePrecisionReduced = Array(averagePrecisions.entries.size, { Tools.getMean(iterator.next().value.toDoubleArray(), solution.copy().retrieveTopicStatus()) })
-            oldCorrelation = correlationStrategy.invoke(oldMeanAveragePrecisionReduced, meanAveragePrecisions)
-            when (parameters.targetToAchieve) {
-                Constants.TARGET_BEST -> if (correlation > oldCorrelation) dominatedSolutions[solution.getObjective(1)] = solution
-                Constants.TARGET_WORST -> if (correlation < oldCorrelation) dominatedSolutions[solution.getObjective(1)] = solution
-            }
-        } else dominatedSolutions[solution.getObjective(1)] = solution
-
         targetStrategy(solution, correlation)
+
+        val solutionCopy = solution.copy()
+        if (solutionOld != null) {
+            solutionOld as BestSubsetSolution
+            iterator = averagePrecisions.entries.iterator()
+            val meanAveragePrecisionReducedOld = Array(averagePrecisions.entries.size, { Tools.getMean(iterator.next().value.toDoubleArray(), solutionOld.retrieveTopicStatus()) })
+            correlationOld = correlationStrategy.invoke(meanAveragePrecisionReducedOld, meanAveragePrecisions)
+            when (parameters.targetToAchieve) {
+                Constants.TARGET_BEST -> if (correlation > correlationOld) dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = solutionCopy
+                Constants.TARGET_WORST -> if (correlation < correlationOld) dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = solutionCopy
+            }
+        } else dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = solutionCopy
+
         iterationCounter++
 
     }
-
 }

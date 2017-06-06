@@ -27,6 +27,7 @@ object Program {
         var percentiles: List<Int>
         val expansionCoefficient: Int
         var resultPath: String
+        var aggregatedData: List<Array<String>>
         val loggingLevel: Level
         val logger: Logger
 
@@ -61,7 +62,7 @@ object Program {
                     targetToAchieve = commandLine.getOptionValue("t")
                     numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
                     populationSize = 0
-                    percentiles = List(0, { 0 })
+                    percentiles = emptyList()
 
                     if (targetToAchieve != Constants.TARGET_AVERAGE) {
 
@@ -83,7 +84,6 @@ object Program {
                     if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
 
                         val percentilesToParse = commandLine.getOptionValues("pe").toList()
-
                         try {
                             percentiles = percentilesToParse.zip(List(percentilesToParse.size, { "" }), { percentileToParse, _ -> Integer.parseInt(percentileToParse) })
                         } catch (exception: NumberFormatException) {
@@ -109,16 +109,20 @@ object Program {
 
                         if (targetToAchieve != Constants.TARGET_ALL) baseResultPath = "$resultPath-${datasetController.model.numberOfTopics}" else baseResultPath = "$resultPath${datasetController.model.numberOfTopics}-"
 
-                        datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), baseResultPath)
+                        aggregatedData = datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), baseResultPath)
 
                         do {
+
                             logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + expansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $expansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_EXPANSION}, Original Topic Number: $trueTopicNumber>")
                             datasetController.expandData(expansionCoefficient, targetToAchieve)
                             if (targetToAchieve != Constants.TARGET_ALL) expandedResultPath = "$resultPath-${datasetController.models[0].numberOfTopics}" else expandedResultPath = "$resultPath${datasetController.models[0].numberOfTopics}-"
-                            datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), expandedResultPath)
+                            aggregatedData = datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), expandedResultPath)
+
                         } while (datasetController.models[0].numberOfTopics < Constants.MAXIMUM_EXPANSION)
 
-                    } else datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), resultPath)
+                    } else {
+                        aggregatedData = datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), resultPath)
+                    }
 
                     logger.info("NewBestSub execution terminated.")
 
