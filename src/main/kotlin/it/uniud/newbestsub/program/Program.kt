@@ -27,7 +27,6 @@ object Program {
         var percentiles: List<Int>
         val expansionCoefficient: Int
         var resultPath: String
-        var aggregatedData: List<Array<String>>
         val loggingLevel: Level
         val logger: Logger
 
@@ -39,7 +38,7 @@ object Program {
 
             if (!File(datasetPath).exists()) throw FileNotFoundException("Dataset file does not exists. Be sure that path is correct.") else {
 
-                resultPath = commandLine.getOptionValue("fi") + "-"
+                resultPath = "${commandLine.getOptionValue("fi")}-"
 
                 if (commandLine.getOptionValue("l") == "Verbose" || commandLine.getOptionValue("l") == "Limited" || commandLine.getOptionValue("l") == "Off") {
                     when (commandLine.getOptionValue("l")) {
@@ -53,7 +52,7 @@ object Program {
                 if (commandLine.getOptionValue("c") == Constants.CORRELATION_PEARSON || commandLine.getOptionValue("c") == Constants.CORRELATION_KENDALL) {
 
                     chosenCorrelationMethod = commandLine.getOptionValue("c")
-                    resultPath = resultPath + chosenCorrelationMethod + "-"
+                    resultPath = "$resultPath$chosenCorrelationMethod-"
 
                 } else throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
 
@@ -74,12 +73,13 @@ object Program {
                         }
 
                     }
-                    if (targetToAchieve != Constants.TARGET_ALL) {
 
+                    if (targetToAchieve != Constants.TARGET_ALL) {
                         resultPath += targetToAchieve
                         System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath.log")
-
+                        resultPath += "-"
                     } else System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath${Constants.TARGET_ALL}.log")
+
 
                     if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
 
@@ -95,33 +95,23 @@ object Program {
                     logger = updateLogger(LogManager.getLogger(), loggingLevel)
                     logger.info("NewBestSub execution started.")
 
-                    datasetController = DatasetController()
+                    datasetController = DatasetController(targetToAchieve)
                     datasetController.loadData(datasetPath)
+                    datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
 
                     if (commandLine.hasOption('e')) {
 
                         expansionCoefficient = commandLine.getOptionValue('e').toInt()
-                        val trueTopicNumber = datasetController.model.numberOfTopics
-                        val baseResultPath: String
-                        var expandedResultPath: String
+                        val trueTopicNumber = datasetController.models[0].numberOfTopics
 
                         logger.info("Base execution (true data)")
 
-                        if (targetToAchieve != Constants.TARGET_ALL) baseResultPath = "$resultPath-${datasetController.model.numberOfTopics}" else baseResultPath = "$resultPath${datasetController.model.numberOfTopics}-"
-
-                        aggregatedData = datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), baseResultPath)
-
-                        do {
-
+                        while (datasetController.models[0].numberOfTopics + expansionCoefficient < Constants.MAXIMUM_EXPANSION) {
                             logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + expansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $expansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_EXPANSION}, Original Topic Number: $trueTopicNumber>")
-                            datasetController.expandData(expansionCoefficient, targetToAchieve)
-                            if (targetToAchieve != Constants.TARGET_ALL) expandedResultPath = "$resultPath-${datasetController.models[0].numberOfTopics}" else expandedResultPath = "$resultPath${datasetController.models[0].numberOfTopics}-"
-                            aggregatedData = datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), expandedResultPath)
+                            datasetController.expandData(expansionCoefficient)
+                            datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
+                        }
 
-                        } while (datasetController.models[0].numberOfTopics < Constants.MAXIMUM_EXPANSION)
-
-                    } else {
-                        aggregatedData = datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), resultPath)
                     }
 
                     logger.info("NewBestSub execution terminated.")

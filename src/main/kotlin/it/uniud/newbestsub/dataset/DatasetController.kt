@@ -11,14 +11,13 @@ import java.io.IOException
 import java.util.*
 import kotlin.collections.LinkedHashMap
 
-class DatasetController {
+class DatasetController(
 
-    var model = DatasetModel()
-    var models = listOf<DatasetModel>()
-    var aggregatedData = listOf<Array<String>>()
-    private var modelBest = DatasetModel()
-    private var modelWorst = DatasetModel()
-    private var modelAverage = DatasetModel()
+        private var targetToAchieve: String
+
+) {
+
+    var models = mutableListOf<DatasetModel>()
     private var view = DatasetView()
     private lateinit var parameters: Parameters
     private var logger = LogManager.getLogger()
@@ -46,10 +45,14 @@ class DatasetController {
             logger.info("Path:\"${Constants.OUTPUT_PATH}\".")
         }
         try {
-            model.loadData(datasetPath)
-            modelBest.loadData(datasetPath)
-            modelWorst.loadData(datasetPath)
-            modelAverage.loadData(datasetPath)
+            models.plusAssign(DatasetModel())
+            models[0].loadData(datasetPath)
+            if (targetToAchieve == Constants.TARGET_ALL) {
+                models.plusAssign(DatasetModel())
+                models[1].loadData(datasetPath)
+                models.plusAssign(DatasetModel())
+                models[2].loadData(datasetPath)
+            }
         } catch (exception: FileNotFoundException) {
             logger.warn("Data set not found. Is file inside a \"data\" dir.?")
         } catch (exception: IOException) {
@@ -59,10 +62,10 @@ class DatasetController {
         logger.info("Data set loading completed.")
     }
 
-    fun expandData(expansionCoefficient: Int, target: String) {
+    fun expandData(expansionCoefficient: Int) {
 
         val random = Random()
-        val systemLabels = model.systemLabels
+        val systemLabels = models[0].systemLabels
         val topicLabels = Array(expansionCoefficient, { "${random.nextInt(998 + 1 - 100) + 100} (F)" })
         val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
 
@@ -70,11 +73,10 @@ class DatasetController {
             systemLabel ->
             randomizedAveragePrecisions[systemLabel] = DoubleArray(expansionCoefficient, { Math.random() })
         }
-        if (target == Constants.TARGET_ALL) models.forEach { model -> model.expandData(randomizedAveragePrecisions, topicLabels) }
-        else model.expandData(randomizedAveragePrecisions, topicLabels)
+        models.forEach { model -> model.expandData(randomizedAveragePrecisions, topicLabels) }
     }
 
-    fun solve(parameters: Parameters, resultPath: String): List<Array<String>> {
+    fun solve(parameters: Parameters, resultPath: String) {
 
         this.parameters = parameters
 
@@ -107,48 +109,43 @@ class DatasetController {
             val bestParameters = Parameters(parameters.correlationMethod, Constants.TARGET_BEST, parameters.numberOfIterations, parameters.populationSize, parameters.percentiles)
             val worstParameters = Parameters(parameters.correlationMethod, Constants.TARGET_WORST, parameters.numberOfIterations, parameters.populationSize, parameters.percentiles)
             val averageParameters = Parameters(parameters.correlationMethod, Constants.TARGET_AVERAGE, parameters.numberOfIterations, parameters.populationSize, parameters.percentiles)
-            val bestResult = { async(CommonPool) { modelBest.solve(bestParameters) } }.invoke()
-            val worstResult = { async(CommonPool) { modelWorst.solve(worstParameters) } }.invoke()
-            val averageResult = { async(CommonPool) { modelAverage.solve(averageParameters) } }.invoke()
+            val bestResult = { async(CommonPool) { models[0].solve(bestParameters) } }.invoke()
+            val worstResult = { async(CommonPool) { models[1].solve(worstParameters) } }.invoke()
+            val averageResult = { async(CommonPool) { models[2].solve(averageParameters) } }.invoke()
 
             runBlocking {
-                view.print(bestResult.await(), resultPath + Constants.TARGET_BEST)
-                view.print(worstResult.await(), resultPath + Constants.TARGET_WORST)
-                view.print(averageResult.await(), resultPath + Constants.TARGET_AVERAGE)
+                view.print(bestResult.await(), resultPath + "${Constants.TARGET_BEST}-")
+                view.print(worstResult.await(), resultPath + "${Constants.TARGET_WORST}-")
+                view.print(averageResult.await(), resultPath + "${Constants.TARGET_AVERAGE}-")
             }
 
             logger.info("Data aggregation started.")
 
-            models = listOf(modelBest, modelWorst, modelAverage)
-            aggregatedData = aggregate(models)
-            view.print(aggregatedData, "${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv")
+            view.print(aggregate(models), "${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv")
 
             logger.info("Aggregated data available at:")
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv\"")
 
         } else {
 
-            logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Final.csv\" (Aggregated data)")
-            logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Fun.csv\" (Target function values)")
-            logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Var.csv\" (Variable values)")
+            logger.info("\"${Constants.OUTPUT_PATH}${resultPath}Final.csv\" (Aggregated data)")
+            logger.info("\"${Constants.OUTPUT_PATH}${resultPath}Fun.csv\" (Target function values)")
+            logger.info("\"${Constants.OUTPUT_PATH}${resultPath}Var.csv\" (Variable values)")
 
-            view.print(model.solve(parameters), resultPath)
+            view.print(models[0].solve(parameters), resultPath)
 
             logger.info("Data aggregation started.")
 
-            models = listOf(model)
-            aggregatedData = aggregate(models)
-            view.print(aggregatedData, "${Constants.OUTPUT_PATH}$resultPath-Final.csv")
+            view.print(aggregate(models), "${Constants.OUTPUT_PATH}${resultPath}Final.csv")
 
             logger.info("Aggregated data available at:")
-            logger.info("\"${Constants.OUTPUT_PATH}$resultPath-Final.csv\"")
+            logger.info("\"${Constants.OUTPUT_PATH}${resultPath}Final.csv\"")
 
         }
 
         logger.info("Data aggregation completed.")
         logger.info("Problem resolution completed.")
 
-        return aggregatedData
     }
 
     fun aggregate(models: List<DatasetModel>): List<Array<String>> {

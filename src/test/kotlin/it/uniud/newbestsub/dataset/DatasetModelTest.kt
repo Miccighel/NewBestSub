@@ -15,17 +15,17 @@ class DatasetModelTest {
 
         println("[DatasetModelTest solve] - Test begins.")
 
-        val testDatContr = DatasetController()
+        val testDatContr = DatasetController(Constants.TARGET_BEST)
         testDatContr.loadData("src/test/resources/AP96.csv")
-        val testParams = Parameters(Constants.CORRELATION_KENDALL, Constants.TARGET_BEST, 100000, 1000, listOf(1,5,25,99))
-        val testRes = testDatContr.model.solve(testParams).first
+        val testParams = Parameters(Constants.CORRELATION_KENDALL, Constants.TARGET_BEST, 100000, 1000, listOf(1, 5, 25, 99))
+        val testRes = testDatContr.models[0].solve(testParams).first
         val computedCards = IntArray(testRes.size)
         testRes.forEachIndexed { index, aSol -> computedCards[index] = aSol.getObjective(1).toInt() }
 
         var i = 1
-        val expectedCards = IntArray(testDatContr.model.numberOfTopics, { i++ })
+        val expectedCards = IntArray(testDatContr.models[0].numberOfTopics, { i++ })
 
-        for (j in 0..testDatContr.model.numberOfTopics - 1) {
+        for (j in 0..testDatContr.models[0].numberOfTopics - 1) {
             println("[DatasetModelTest solve] - Testing: <Expected Card. Val.: ${expectedCards[j]}, Computed Card. Val.: ${computedCards[j]}>")
             assertEquals(expectedCards[j], computedCards[j])
         }

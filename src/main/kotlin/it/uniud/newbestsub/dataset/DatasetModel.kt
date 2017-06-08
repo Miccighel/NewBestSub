@@ -17,7 +17,6 @@ import org.uma.jmetal.problem.BinaryProblem
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.util.AlgorithmRunner
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
-import org.uma.jmetal.util.evaluator.impl.MultithreadedSolutionListEvaluator
 import java.io.FileReader
 import java.util.*
 
@@ -103,6 +102,10 @@ class DatasetModel {
         val targetStrategy = this.loadTargetStrategy(parameters.targetToAchieve)
 
         logger.info("Execution started on \"${Thread.currentThread().name}\" with target \"${parameters.targetToAchieve}\". Wait please...")
+
+        notDominatedSolutions = mutableListOf<BinarySolution>() // If data are expanded
+        dominatedSolutions = sortedMapOf<Double, BinarySolution>()
+        allSolutions = mutableListOf<BinarySolution>()
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
 
@@ -195,7 +198,6 @@ class DatasetModel {
                 nonDominatedSolutionCardinality = nonDominatedSolutionCardinality.plus(aNonDominatedSolution.getCardinality())
                 allSolutions.plusAssign(aNonDominatedSolution)
             }
-            notDominatedSolutions = sortByCardinality(notDominatedSolutions)
 
             dominatedSolutions = problem.dominatedSolutions.toSortedMap()
             when (parameters.targetToAchieve) {

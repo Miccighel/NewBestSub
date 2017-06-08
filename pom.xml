@@ -72,7 +72,7 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <kotlin.version>1.1.2-3</kotlin.version>
-        <kotlin.compiler.incremental>true</kotlin.compiler.incremental>
+        <kotlin.compiler.incremental>false</kotlin.compiler.incremental>
         <junit.platform.version>1.0.0-M4</junit.platform.version>
         <junit.jupiter.version>5.0.0-M4</junit.jupiter.version>
         <dokka.version>0.9.13</dokka.version>
@@ -80,6 +80,11 @@
         <apache.commons.cli>1.4</apache.commons.cli>
         <log4j.api.version>2.8.2</log4j.api.version>
         <log4j.core.version>2.8.2</log4j.core.version>
+        <opencsv.version>3.9</opencsv.version>
+        <jmetal.version>5.2</jmetal.version>
+        <maven.dependency-plugin.version>3.0.0</maven.dependency-plugin.version>
+        <maven.jar-plugin.version>3.0.2</maven.jar-plugin.version>
+        <maven.surefire-plugin.version>2.20</maven.surefire-plugin.version>
     </properties>
 
     <dependencies>
@@ -109,13 +114,13 @@
         <dependency>
             <groupId>com.opencsv</groupId>
             <artifactId>opencsv</artifactId>
-            <version>3.9</version>
+            <version>${opencsv.version}</version>
         </dependency>
 
         <dependency>
             <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-problem</artifactId>
-            <version>5.2</version>
+            <version>${jmetal.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.uma.jmetal</groupId>
@@ -130,7 +135,7 @@
         <dependency>
             <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-exec</artifactId>
-            <version>5.2</version>
+            <version>${jmetal.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.uma.jmetal</groupId>
@@ -149,7 +154,7 @@
         <dependency>
             <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-core</artifactId>
-            <version>5.2</version>
+            <version>${jmetal.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.apache.maven.reporting</groupId>
@@ -168,7 +173,7 @@
         <dependency>
             <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-algorithm</artifactId>
-            <version>5.2</version>
+            <version>${jmetal.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.uma.jmetal</groupId>
@@ -226,10 +231,35 @@
 
         <plugins>
 
+            <!--<plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>it.uniud.newbestsub.program.Program</mainClass>
+                        </manifest>
+                    </archive>
+                    <descriptors>
+                        <descriptor>src/main/assembly/test-jar-with-dependencies.xml</descriptor>
+                    </descriptors>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>-->
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.0.0</version>
+                <version>${maven.dependency-plugin.version}</version>
                 <executions>
                     <execution>
                         <id>copy-dependencies</id>
@@ -250,7 +280,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
-                <version>3.0.2</version>
+                <version>${maven.jar-plugin.version}</version>
                 <executions>
                     <execution>
                         <goals>
@@ -298,7 +328,7 @@
 
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.20</version>
+                <version>${maven.surefire-plugin.version}</version>
                 <dependencies>
                     <dependency>
                         <groupId>org.junit.platform</groupId>
@@ -322,7 +352,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <outputDir> ${project.basedir}/target/docs</outputDir>
+                    <outputDir>${project.basedir}/target/docs</outputDir>
                 </configuration>
             </plugin>
 

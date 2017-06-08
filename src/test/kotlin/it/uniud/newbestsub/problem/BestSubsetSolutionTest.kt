@@ -1,26 +1,29 @@
 package it.uniud.newbestsub.problem
 
+import it.uniud.newbestsub.dataset.Parameters
+import it.uniud.newbestsub.utils.Constants
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.uma.jmetal.solution.BinarySolution
+import java.util.*
 import kotlin.test.assertEquals
 
 class BestSubsetSolutionTest {
 
     private lateinit var testProb: BestSubsetProblem
     private lateinit var testSol: BestSubsetSolution
-    private lateinit var testCorr: (DoubleArray, DoubleArray) -> Double
+    private lateinit var testCorr: (Array<Double>, Array<Double>) -> Double
     private lateinit var testTarg: (BinarySolution, Double) -> BinarySolution
-    private var testAvgPrec: MutableMap<String, DoubleArray> = LinkedHashMap()
+    private var testAvgPrec: MutableMap<String, Array<Double>> = LinkedHashMap()
 
     @BeforeEach
     @DisplayName("BestSubsetSolution - Initialize Tests")
 
     fun initTest() {
-        /*val length = 10
+        val length = 10
         for (index in 0..length) {
-            val fakeAvgPrec = DoubleArray(length)
+            val fakeAvgPrec = Array(length, { 0.0 })
             val random = Random()
             for (aIndex in 0..fakeAvgPrec.size - 1) {
                 fakeAvgPrec[aIndex] = (1 + (100 - 1) * random.nextDouble()) / 100
@@ -29,8 +32,9 @@ class BestSubsetSolutionTest {
         }
         testCorr = { _, _ -> 0.0 }
         testTarg = { sol, _ -> sol }
-        testProb = BestSubsetProblem(testAvgPrec.size, testAvgPrec, DoubleArray(0), testCorr, testTarg)
-        testSol = BestSubsetSolution(testProb, testAvgPrec.size)*/
+        val parameters = Parameters(Constants.CORRELATION_PEARSON, Constants.TARGET_BEST, 100000, 1000, listOf(50))
+        testProb = BestSubsetProblem(parameters, testAvgPrec.size, testAvgPrec, Array(0, { 0.0 }), testCorr, testTarg)
+        testSol = BestSubsetSolution(testProb, testAvgPrec.size)
     }
 
     @Test

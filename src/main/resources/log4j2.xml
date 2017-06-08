@@ -5,12 +5,15 @@
     </Properties>
     <Appenders>
         <Console name="Console-Debug" target="SYSTEM_OUT">
-            <PatternLayout pattern="%style{%highlight{%-5.5p}}{Bright} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%highlight{%m%n}}{Bright}"/>
+            <PatternLayout
+                    pattern="%style{%highlight{%-5.5p}}{Bright} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%highlight{%m%n}}{Bright}"/>
         </Console>
         <Console name="Console-Info" target="SYSTEM_OUT">
-            <PatternLayout pattern="%style{%highlight{%-5.5p}}{Bright} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{BG_Cyan,Bright}"/>
+            <PatternLayout
+                    pattern="%style{%highlight{%-5.5p}}{Bright} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{BG_Cyan,Bright}"/>
         </Console>
-        <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log" append="false">
+        <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log"
+                     append="false">
             <PatternLayout pattern="%-5.5p [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M %m%n"/>
             <Policies>
                 <SizeBasedTriggeringPolicy size="5 MB"/>
