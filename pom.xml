@@ -71,7 +71,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <kotlin.version>1.1.2-3</kotlin.version>
+        <kotlin.version>1.1.2-5</kotlin.version>
         <kotlin.compiler.incremental>false</kotlin.compiler.incremental>
         <junit.platform.version>1.0.0-M4</junit.platform.version>
         <junit.jupiter.version>5.0.0-M4</junit.jupiter.version>
@@ -231,7 +231,7 @@
 
         <plugins>
 
-            <!--<plugin>
+            <plugin>
                 <artifactId>maven-assembly-plugin</artifactId>
                 <configuration>
                     <archive>
@@ -254,7 +254,7 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>-->
+            </plugin>
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

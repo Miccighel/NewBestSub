@@ -1,7 +1,12 @@
 package it.uniud.newbestsub.problem
 
+import it.uniud.newbestsub.dataset.Parameters
+import it.uniud.newbestsub.utils.Constants
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.uma.jmetal.solution.BinarySolution
+import java.util.*
+import kotlin.test.assertEquals
 
 class BitFlipMutationTest {
 
@@ -10,25 +15,23 @@ class BitFlipMutationTest {
 
     fun testExecute() {
 
-        /*println("[BitFlipMutationTest execute] - Test begins.")
+        println("[BitFlipMutationTest execute] - Test begins.")
 
-        val testAvgPrec: MutableMap<String, DoubleArray> = LinkedHashMap()
+        val testAvgPrec: MutableMap<String, Array<Double>> = LinkedHashMap()
         var testSol: BinarySolution
-        val testCorr = { _: DoubleArray, _: DoubleArray -> 0.0 }
+        val testCorr = { _: Array<Double>, _: Array<Double> -> 0.0 }
         val testTarg = { sol: BinarySolution, _: Double -> sol }
         val testMut = BitFlipMutation(1.0)
         val length = 10
 
         for (index in 0..length) {
-            val fakeAvgPrec = DoubleArray(length)
             val random = Random()
-            for (anotherIndex in 0..fakeAvgPrec.size - 1) {
-                fakeAvgPrec[anotherIndex] = (1 + (100 - 1) * random.nextDouble()) / 100
-            }
+            val fakeAvgPrec = Array(length, {(1 + (100 - 1) * random.nextDouble()) / 100})
             testAvgPrec["Test $index"] = fakeAvgPrec
         }
 
-        val testProb = BestSubsetProblem(testAvgPrec.size, testAvgPrec, DoubleArray(0), testCorr, testTarg)
+        val parameters = Parameters(Constants.CORRELATION_PEARSON, Constants.TARGET_BEST, 100000, 1000, 1000, listOf(50))
+        val testProb = BestSubsetProblem(parameters, testAvgPrec.size, testAvgPrec, Array(0, { 0.0 }), testCorr, testTarg)
         testSol = BestSubsetSolution(testProb, testAvgPrec.size)
         val oldStatus = testSol.getVariableValueString(0)
         testSol = testMut.execute(testSol) as BestSubsetSolution
@@ -36,7 +39,7 @@ class BitFlipMutationTest {
         println("[BitFlipMutationTest execute] - Testing: <Old. Topic Stat. Val.: $oldStatus, New. Topic Stat. Val.: $newStatus>.")
         assertEquals(false, oldStatus == newStatus, "<Old. Topic Stat. Val.: $oldStatus, New. Topic Stat. Val.: $newStatus>")
 
-        println("[BitFlipMutationTest execute] - Test ends.")*/
+        println("[BitFlipMutationTest execute] - Test ends.")
     }
 
 }

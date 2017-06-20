@@ -22,7 +22,8 @@ object Program {
         val datasetPath: String
         val chosenCorrelationMethod: String
         val targetToAchieve: String
-        val numberOfIterations: Int
+        var numberOfIterations: Int
+        var numberOfRepetitions: Int
         var populationSize: Int
         var percentiles: List<Int>
         val expansionCoefficient: Int
@@ -59,8 +60,9 @@ object Program {
                 if (commandLine.getOptionValue("t") == Constants.TARGET_BEST || commandLine.getOptionValue("t") == Constants.TARGET_WORST || commandLine.getOptionValue("t") == Constants.TARGET_AVERAGE || commandLine.getOptionValue("t") == Constants.TARGET_ALL) {
 
                     targetToAchieve = commandLine.getOptionValue("t")
-                    numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
+                    numberOfIterations = 0
                     populationSize = 0
+                    numberOfRepetitions = 0
                     percentiles = emptyList()
 
                     if (targetToAchieve != Constants.TARGET_AVERAGE) {
@@ -72,6 +74,13 @@ object Program {
                             throw ParseException("Value for the option <<po>> or <<pop>> is not an integer. Check the usage section below")
                         }
 
+                        if (!commandLine.hasOption("i")) throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
+                        try {
+                            numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
+                        }
+
                     }
 
                     if (targetToAchieve != Constants.TARGET_ALL) {
@@ -80,12 +89,22 @@ object Program {
                         resultPath += "-"
                     } else System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath${Constants.TARGET_ALL}.log")
 
-
                     if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
 
-                        val percentilesToParse = commandLine.getOptionValues("pe").toList()
+                        if (!commandLine.hasOption("r")) throw ParseException("Value for the option <<r>> or <<rep>> is missing. Check the usage section below.")
                         try {
-                            percentiles = percentilesToParse.zip(List(percentilesToParse.size, { "" }), { percentileToParse, _ -> Integer.parseInt(percentileToParse) })
+                            numberOfRepetitions = Integer.parseInt(commandLine.getOptionValue("r"))
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<r>> or <<rep>> is not an integer. Check the usage section below")
+                        }
+
+                        val percentilesToParse = commandLine.getOptionValues("pe").toList()
+                        if (percentilesToParse.size > 2) throw ParseException("Value for the option <<pe>> or <<perc>> is wrong. Check the usage section below.")
+                        try {
+                            val firstPercentile = Integer.parseInt(percentilesToParse[0])
+                            val lastPercentile = Integer.parseInt(percentilesToParse[1])
+                            for(currentPercentile in firstPercentile..lastPercentile)
+                                percentiles = percentiles.plus(currentPercentile)
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
                         }
@@ -97,7 +116,7 @@ object Program {
 
                     datasetController = DatasetController(targetToAchieve)
                     datasetController.loadData(datasetPath)
-                    datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
+                    datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
 
                     if (commandLine.hasOption('e')) {
 
@@ -109,7 +128,7 @@ object Program {
                         while (datasetController.models[0].numberOfTopics + expansionCoefficient < Constants.MAXIMUM_EXPANSION) {
                             logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + expansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $expansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_EXPANSION}, Original Topic Number: $trueTopicNumber>")
                             datasetController.expandData(expansionCoefficient)
-                            datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
+                            datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
                         }
 
                     }
@@ -140,11 +159,13 @@ object Program {
         options.addOption(source)
         source = Option.builder("l").longOpt("log").desc("Indicates the required level of logging. Available levels: Verbose, Limited, Off. [REQUIRED]").required().hasArg().argName("Logging Level").build()
         options.addOption(source)
-        source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It must be an integer value. [REQUIRED]").required().hasArg().argName("Value").build()
+        source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Value").build()
+        options.addOption(source)
+        source = Option.builder("r").longOpt("rep").desc("Indicates the number of repetitions to be done to compute a single cardinality during Average experiment. It must be an integer value. It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)
         source = Option.builder("po").longOpt("pop").desc("Indicates the size of the initial population to be generated. It must be an integer value. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)
-        source = Option.builder("pe").longOpt("perc").desc("Indicates the set of percentiles to be calculated . It must be a list of comma separated integer values. It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArgs().valueSeparator(',').argName("Percentile").build()
+        source = Option.builder("pe").longOpt("perc").desc("Indicates the set of percentiles to be calculated. There must be two comma separated integer values. It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArgs().valueSeparator(',').argName("Percentile").build()
         options.addOption(source)
         source = Option.builder("e").longOpt("exp").desc("Indicates the number of fake topics to be added at each iteration. It must be an integer value. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)

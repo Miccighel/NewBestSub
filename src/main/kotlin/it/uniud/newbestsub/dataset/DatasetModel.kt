@@ -45,7 +45,7 @@ class DatasetModel {
     private lateinit var algorithmRunner: AlgorithmRunner
 
     var notDominatedSolutions = mutableListOf<BinarySolution>()
-    var dominatedSolutions = sortedMapOf<Double, BinarySolution>()
+    var dominatedSolutions = mutableListOf<BinarySolution>()
     var allSolutions = mutableListOf<BinarySolution>()
 
     fun loadData(datasetPath: String) {
@@ -104,7 +104,7 @@ class DatasetModel {
         logger.info("Execution started on \"${Thread.currentThread().name}\" with target \"${parameters.targetToAchieve}\". Wait please...")
 
         notDominatedSolutions = mutableListOf<BinarySolution>() // If data are expanded
-        dominatedSolutions = sortedMapOf<Double, BinarySolution>()
+        dominatedSolutions = mutableListOf<BinarySolution>()
         allSolutions = mutableListOf<BinarySolution>()
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
@@ -112,10 +112,14 @@ class DatasetModel {
             val variableValues = mutableListOf<Array<Boolean>>()
             val cardinality = mutableListOf<Int>()
             val correlations = mutableListOf<Double>()
+            val numberOfRepetitions = parameters.numberOfRepetitions
 
             parameters.percentiles.forEach { percentileToFind -> percentiles[percentileToFind] = LinkedList<Double>() }
 
-            for (currentCardinality in 0..numberOfTopics - 1) {
+            for ((iterationCounter, currentCardinality) in (0..numberOfTopics - 1).withIndex()) {
+
+                if ((iterationCounter % Constants.ITERATION_LOGGING_FACTOR) == 0 && numberOfTopics-1 > Constants.ITERATION_LOGGING_FACTOR)
+                    logger.info("Completed iterations: ${currentCardinality+1}/$numberOfTopics for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
 
                 var correlationsSum = 0.0
                 var meanCorrelation: Double
@@ -123,8 +127,7 @@ class DatasetModel {
                 var topicStatus = BooleanArray(0)
                 val generator = Random()
 
-                val correlationsToSum = Array(Constants.AVG_EXPERIMENT_REPETITIONS, {
-
+                val correlationsToSum = Array(numberOfRepetitions, {
                     val topicToChoose = HashSet<Int>()
                     while (topicToChoose.size < currentCardinality + 1) topicToChoose.add(generator.nextInt(numberOfTopics) + 1)
 
@@ -142,7 +145,7 @@ class DatasetModel {
 
                 correlationsToSum.forEach { singleCorrelation -> correlationsSum += singleCorrelation }
                 correlationsToSum.sort()
-                meanCorrelation = correlationsSum / Constants.AVG_EXPERIMENT_REPETITIONS
+                meanCorrelation = correlationsSum / numberOfRepetitions
 
                 percentiles.entries.forEach {
                     (percentileToFind, foundPercentiles) ->
@@ -157,6 +160,7 @@ class DatasetModel {
                 cardinality.add(currentCardinality + 1)
                 correlations.add(meanCorrelation)
                 variableValues.add(topicStatus.toTypedArray())
+
             }
 
             problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
@@ -188,10 +192,7 @@ class DatasetModel {
             computingTime = algorithmRunner.computingTime
 
             notDominatedSolutions = algorithm.result.toMutableList().distinct().toMutableList()
-            when (parameters.targetToAchieve) {
-                Constants.TARGET_BEST -> notDominatedSolutions.forEach { solutionToFix -> solutionToFix.setObjective(0, solutionToFix.getCorrelation() * -1) }
-                Constants.TARGET_WORST -> notDominatedSolutions.forEach { solutionToFix -> solutionToFix.setObjective(1, solutionToFix.getCardinality() * -1) }
-            }
+            notDominatedSolutions = fixObjectiveFunctionValues(notDominatedSolutions)
             var nonDominatedSolutionCardinality = listOf<Double>()
             notDominatedSolutions.forEach {
                 aNonDominatedSolution ->
@@ -199,18 +200,15 @@ class DatasetModel {
                 allSolutions.plusAssign(aNonDominatedSolution)
             }
 
-            dominatedSolutions = problem.dominatedSolutions.toSortedMap()
-            when (parameters.targetToAchieve) {
-                Constants.TARGET_BEST -> dominatedSolutions.forEach { (_, solutionToFix) -> solutionToFix.setObjective(0, solutionToFix.getCorrelation() * -1) }
-                Constants.TARGET_WORST -> dominatedSolutions.forEach { (_, solutionToFix) -> solutionToFix.setObjective(1, solutionToFix.getCardinality() * -1) }
-            }
-            val dominatedCardinalityToRemove = mutableListOf<Double>()
+            dominatedSolutions = problem.dominatedSolutions.values.toMutableList()
+            dominatedSolutions = fixObjectiveFunctionValues(dominatedSolutions)
+            val dominatedSolutionsToRemove = mutableListOf<BinarySolution>()
             dominatedSolutions.forEach {
-                (cardinality, aDominatedSolution) ->
+                aDominatedSolution ->
                 if (!nonDominatedSolutionCardinality.contains(aDominatedSolution.getCardinality())) allSolutions.plusAssign(aDominatedSolution)
-                else dominatedCardinalityToRemove.plusAssign(cardinality)
+                else dominatedSolutionsToRemove.plusAssign(aDominatedSolution)
             }
-            dominatedCardinalityToRemove.forEach { aDominatedCardinalityToRemove -> dominatedSolutions.remove(aDominatedCardinalityToRemove) }
+            dominatedSolutionsToRemove.forEach { aDominatedSolutionToRemove -> dominatedSolutions.remove(aDominatedSolutionToRemove) }
         }
 
         for (solutionToAnalyze in allSolutions) {
@@ -296,5 +294,13 @@ class DatasetModel {
             (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
         })
         return solutionsToSort
+    }
+
+    fun fixObjectiveFunctionValues(solutionsToFix : MutableList<BinarySolution>) : MutableList<BinarySolution> {
+        when (targetToAchieve) {
+            Constants.TARGET_BEST -> solutionsToFix.forEach { aSolutionToFix -> aSolutionToFix.setObjective(0, aSolutionToFix.getCorrelation() * -1) }
+            Constants.TARGET_WORST -> solutionsToFix.forEach { aSolutionToFix -> aSolutionToFix.setObjective(1, aSolutionToFix.getCardinality() * -1) }
+        }
+        return solutionsToFix
     }
 }

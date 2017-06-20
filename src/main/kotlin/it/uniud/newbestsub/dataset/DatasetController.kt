@@ -106,9 +106,9 @@ class DatasetController(
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_AVERAGE}-Fun.csv\" (Target function values)")
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_AVERAGE}-Var.csv\" (Variable values)")
 
-            val bestParameters = Parameters(parameters.correlationMethod, Constants.TARGET_BEST, parameters.numberOfIterations, parameters.populationSize, parameters.percentiles)
-            val worstParameters = Parameters(parameters.correlationMethod, Constants.TARGET_WORST, parameters.numberOfIterations, parameters.populationSize, parameters.percentiles)
-            val averageParameters = Parameters(parameters.correlationMethod, Constants.TARGET_AVERAGE, parameters.numberOfIterations, parameters.populationSize, parameters.percentiles)
+            val bestParameters = Parameters(parameters.correlationMethod, Constants.TARGET_BEST, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.percentiles)
+            val worstParameters = Parameters(parameters.correlationMethod, Constants.TARGET_WORST, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.percentiles)
+            val averageParameters = Parameters(parameters.correlationMethod, Constants.TARGET_AVERAGE, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.percentiles)
             val bestResult = { async(CommonPool) { models[0].solve(bestParameters) } }.invoke()
             val worstResult = { async(CommonPool) { models[1].solve(worstParameters) } }.invoke()
             val averageResult = { async(CommonPool) { models[2].solve(averageParameters) } }.invoke()
