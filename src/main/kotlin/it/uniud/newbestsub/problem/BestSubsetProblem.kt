@@ -22,6 +22,7 @@ class BestSubsetProblem(
     private var iterationCounter = 0
     private lateinit var solution: BestSubsetSolution
     private val logger = LogManager.getLogger()
+    private var progressCounter = 0
 
     init {
         numberOfVariables = 1
@@ -41,8 +42,12 @@ class BestSubsetProblem(
 
         solution as BestSubsetSolution
 
-        if ((iterationCounter % Constants.ITERATION_LOGGING_FACTOR) == 0 && parameters.numberOfIterations > Constants.ITERATION_LOGGING_FACTOR)
-            logger.info("Completed iterations: $iterationCounter/${parameters.numberOfIterations} for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
+        val loggingFactor = (parameters.numberOfIterations*Constants.ITERATION_LOGGING_FACTOR)/100
+
+        if ((iterationCounter % loggingFactor) == 0 && parameters.numberOfIterations > loggingFactor) {
+            logger.info("Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
+            progressCounter += Constants.ITERATION_LOGGING_FACTOR
+        }
 
         var iterator = averagePrecisions.entries.iterator()
         val meanAveragePrecisionsReduced = Array(averagePrecisions.entries.size, { Tools.getMean(iterator.next().value.toDoubleArray(), solution.retrieveTopicStatus()) })

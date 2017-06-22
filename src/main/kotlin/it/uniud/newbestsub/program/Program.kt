@@ -67,13 +67,6 @@ object Program {
 
                     if (targetToAchieve != Constants.TARGET_AVERAGE) {
 
-                        if (!commandLine.hasOption("po")) throw ParseException("Value for the option <<po>> or <<pop>> is missing. Check the usage section below.")
-                        try {
-                            populationSize = Integer.parseInt(commandLine.getOptionValue("po"))
-                        } catch (exception: NumberFormatException) {
-                            throw ParseException("Value for the option <<po>> or <<pop>> is not an integer. Check the usage section below")
-                        }
-
                         if (!commandLine.hasOption("i")) throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
                         try {
                             numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
@@ -81,13 +74,17 @@ object Program {
                             throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
                         }
 
-                    }
+                        if (!commandLine.hasOption("po")) throw ParseException("Value for the option <<po>> or <<pop>> is missing. Check the usage section below.")
+                        try {
+                            populationSize = Integer.parseInt(commandLine.getOptionValue("po"))
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<po>> or <<pop>> is not an integer. Check the usage section below")
+                        }
 
-                    if (targetToAchieve != Constants.TARGET_ALL) {
-                        resultPath += targetToAchieve
-                        System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath.log")
-                        resultPath += "-"
-                    } else System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath${Constants.TARGET_ALL}.log")
+                        resultPath += "$numberOfIterations-"
+                        resultPath += "$populationSize-"
+
+                    }
 
                     if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
 
@@ -109,7 +106,15 @@ object Program {
                             throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
                         }
 
+                        resultPath += "$numberOfRepetitions-"
+
                     }
+
+                    if (targetToAchieve != Constants.TARGET_ALL) {
+                        resultPath += targetToAchieve
+                        System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath.log")
+                        resultPath += "-"
+                    } else System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath${Constants.TARGET_ALL}.log")
 
                     logger = updateLogger(LogManager.getLogger(), loggingLevel)
                     logger.info("NewBestSub execution started.")

@@ -162,9 +162,8 @@ class DatasetController(
             header.add(model.targetToAchieve)
             if (model.targetToAchieve == Constants.TARGET_AVERAGE) percentiles = model.percentiles
         }
-
+        percentiles.keys.forEach { percentile -> header.add("$percentile%") }
         topicLabels.forEach { topicLabel -> header.add(topicLabel) }
-        percentiles.keys.forEach { percentile -> header.add(" Percentile: $percentile%") }
 
         aggregatedData.add(header.toTypedArray())
 
