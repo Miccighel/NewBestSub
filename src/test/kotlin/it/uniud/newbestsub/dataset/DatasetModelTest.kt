@@ -1,5 +1,6 @@
 package it.uniud.newbestsub.dataset
 
+import it.uniud.newbestsub.problem.getCardinality
 import it.uniud.newbestsub.utils.Constants
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -20,7 +21,7 @@ class DatasetModelTest {
         val testParams = Parameters(Constants.CORRELATION_KENDALL, Constants.TARGET_BEST, 100000, 1000, 1000, listOf(1, 5, 25, 99))
         val testRes = testDatContr.models[0].solve(testParams).first
         val computedCards = IntArray(testRes.size)
-        testRes.forEachIndexed { index, aSol -> computedCards[index] = aSol.getObjective(1).toInt() }
+        testRes.forEachIndexed { index, aSol -> computedCards[index] = aSol.getCardinality().toInt() }
 
         var i = 1
         val expectedCards = IntArray(testDatContr.models[0].numberOfTopics, { i++ })

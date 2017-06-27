@@ -26,7 +26,7 @@ class BitFlipMutationTest {
 
         for (index in 0..length) {
             val random = Random()
-            val fakeAvgPrec = Array(length, {(1 + (100 - 1) * random.nextDouble()) / 100})
+            val fakeAvgPrec = Array(length, { (1 + (100 - 1) * random.nextDouble()) / 100 })
             testAvgPrec["Test $index"] = fakeAvgPrec
         }
 

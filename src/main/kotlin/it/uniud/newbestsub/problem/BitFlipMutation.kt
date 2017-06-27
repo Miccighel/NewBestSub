@@ -28,7 +28,7 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
             if (solution.numberOfSelectedTopics == 0) {
                 flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * totalNumberOfTopics).toInt()
                 if (flipIndex == totalNumberOfTopics) flipIndex -= 1
-                solution.setBitValue(flipIndex, !topicStatus.get(flipIndex))
+                solution.setBitValue(flipIndex, !topicStatus[flipIndex])
             }
 
         }

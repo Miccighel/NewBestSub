@@ -17,17 +17,22 @@ import org.uma.jmetal.problem.BinaryProblem
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.util.AlgorithmRunner
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
+import java.io.File
 import java.io.FileReader
 import java.util.*
 
 class DatasetModel {
 
-    var systemLabels = emptyArray<String>()
-    var topicLabels = emptyArray<String>()
+    var datasetName = ""
     var numberOfSystems = 0
     var numberOfTopics = 0
     var targetToAchieve = ""
     var correlationMethod = ""
+    var numberOfIterations = 0
+    var numberOfRepetitions = 0
+    var populationSize = 0
+    var systemLabels = emptyArray<String>()
+    var topicLabels = emptyArray<String>()
     var averagePrecisions = linkedMapOf<String, Array<Double>>()
     var meanAveragePrecisions = emptyArray<Double>()
     var percentiles = linkedMapOf<Int, List<Double>>()
@@ -53,6 +58,7 @@ class DatasetModel {
         val reader = CSVReader(FileReader(datasetPath))
         topicLabels = reader.readNext()
         numberOfTopics = topicLabels.size - 1
+        datasetName = File(datasetPath).nameWithoutExtension
 
         reader.readAll().forEach {
             nextLine ->
@@ -109,19 +115,21 @@ class DatasetModel {
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
 
+            val startTime = System.nanoTime()
+
             val variableValues = mutableListOf<Array<Boolean>>()
             val cardinality = mutableListOf<Int>()
             val correlations = mutableListOf<Double>()
-            val numberOfRepetitions = parameters.numberOfRepetitions
+            numberOfRepetitions = parameters.numberOfRepetitions
 
-            val loggingFactor = (numberOfTopics*Constants.ITERATION_LOGGING_FACTOR)/100
+            val loggingFactor = (numberOfTopics * Constants.ITERATION_LOGGING_FACTOR) / 100
             var progressCounter = 0
 
             parameters.percentiles.forEach { percentileToFind -> percentiles[percentileToFind] = LinkedList<Double>() }
 
             for ((iterationCounter, currentCardinality) in (0..numberOfTopics - 1).withIndex()) {
 
-                if ((iterationCounter % loggingFactor) == 0 && numberOfTopics-1 > loggingFactor) {
+                if ((iterationCounter % loggingFactor) == 0 && numberOfTopics - 1 > loggingFactor) {
                     logger.info("Completed iterations: $currentCardinality/$numberOfTopics ($progressCounter%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
                     progressCounter += Constants.ITERATION_LOGGING_FACTOR
                 }
@@ -166,6 +174,8 @@ class DatasetModel {
                 correlations.add(meanCorrelation)
                 variableValues.add(topicStatus.toTypedArray())
 
+                computingTime = (System.nanoTime() - startTime) / 1000000
+
             }
 
             logger.info("Completed iterations: $numberOfTopics/$numberOfTopics (100%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
@@ -176,23 +186,26 @@ class DatasetModel {
                 index ->
                 val solution = BestSubsetSolution(problem as BinaryProblem, numberOfTopics)
                 solution.setVariableValue(0, solution.createNewBitSet(numberOfTopics, variableValues[index]))
-                solution.setObjective(0, correlations[index])
-                solution.setObjective(1, cardinality[index].toDouble())
+                solution.setObjective(0, cardinality[index].toDouble())
+                solution.setObjective(1, correlations[index])
                 notDominatedSolutions.add(solution as BinarySolution)
                 allSolutions.add(solution as BinarySolution)
             }
 
         } else {
 
+            populationSize = parameters.populationSize
+            numberOfIterations = parameters.numberOfIterations
+
             problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
-            crossover = BinaryPruningCrossover(0.9)
-            mutation = BitFlipMutation(1.0)
+            crossover = BinaryPruningCrossover(0.7)
+            mutation = BitFlipMutation(0.3)
             selection = BinaryTournamentSelection(RankingAndCrowdingDistanceComparator<BinarySolution>())
 
             builder = NSGAIIBuilder(problem, crossover, mutation)
             builder.selectionOperator = selection
-            builder.populationSize = parameters.populationSize
-            builder.setMaxEvaluations(parameters.numberOfIterations)
+            builder.populationSize = populationSize
+            builder.setMaxEvaluations(numberOfIterations)
 
             algorithm = builder.build()
             algorithmRunner = AlgorithmRunner.Executor(algorithm).execute()
@@ -232,12 +245,13 @@ class DatasetModel {
 
         allSolutions = sortByCardinality(allSolutions)
 
-        logger.info("Completed iterations: ${parameters.numberOfIterations}/${parameters.numberOfIterations} (100%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
-        logger.info("Not dominated solutions generated by execution with target \"${parameters.targetToAchieve}\": ${notDominatedSolutions.size}/$numberOfTopics.")
-        logger.info("Dominated solutions generated by execution with target \"${parameters.targetToAchieve}\": ${dominatedSolutions.size}/$numberOfTopics.")
-        logger.info("Total solutions generated by execution with target \"${parameters.targetToAchieve}\": ${allSolutions.size}/$numberOfTopics.")
+        if (targetToAchieve != Constants.TARGET_AVERAGE)
+            logger.info("Completed iterations: $numberOfIterations/$numberOfIterations (100%) for evaluations being computed on \"${Thread.currentThread().name}\" with target $targetToAchieve.")
+        logger.info("Not dominated solutions generated by execution with target \"$targetToAchieve\": ${notDominatedSolutions.size}/$numberOfTopics.")
+        logger.info("Dominated solutions generated by execution with target \"$targetToAchieve\": ${dominatedSolutions.size}/$numberOfTopics.")
+        logger.info("Total solutions generated by execution with target \"$targetToAchieve\": ${allSolutions.size}/$numberOfTopics.")
 
-        return Pair<List<BinarySolution>, Triple<String, String, Long>>(allSolutions, Triple(parameters.targetToAchieve, Thread.currentThread().name, computingTime))
+        return Pair<List<BinarySolution>, Triple<String, String, Long>>(allSolutions, Triple(targetToAchieve, Thread.currentThread().name, computingTime))
     }
 
     private fun loadCorrelationStrategy(correlationMethod: String): (Array<Double>, Array<Double>) -> Double {
@@ -266,14 +280,14 @@ class DatasetModel {
 
         val bestStrategy: (BinarySolution, Double) -> BinarySolution = {
             solution, correlation ->
-            solution.setObjective(0, correlation * -1)
-            solution.setObjective(1, (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble())
+            solution.setObjective(0, (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble())
+            solution.setObjective(1, correlation * -1)
             solution
         }
         val worstStrategy: (BinarySolution, Double) -> BinarySolution = {
             solution, correlation ->
-            solution.setObjective(0, correlation)
-            solution.setObjective(1, ((solution as BestSubsetSolution).numberOfSelectedTopics * -1).toDouble())
+            solution.setObjective(0, ((solution as BestSubsetSolution).numberOfSelectedTopics * -1).toDouble())
+            solution.setObjective(1, correlation)
             solution
         }
 
@@ -287,7 +301,7 @@ class DatasetModel {
     }
 
     fun findCorrelationForCardinality(cardinality: Double): Double? {
-        allSolutions.forEach { aSolution -> if (aSolution.getCardinality() == cardinality) return aSolution.getObjective(0) }
+        allSolutions.forEach { aSolution -> if (aSolution.getCardinality() == cardinality) return aSolution.getCorrelation() }
         return null
     }
 
@@ -304,10 +318,10 @@ class DatasetModel {
         return solutionsToSort
     }
 
-    fun fixObjectiveFunctionValues(solutionsToFix : MutableList<BinarySolution>) : MutableList<BinarySolution> {
+    fun fixObjectiveFunctionValues(solutionsToFix: MutableList<BinarySolution>): MutableList<BinarySolution> {
         when (targetToAchieve) {
-            Constants.TARGET_BEST -> solutionsToFix.forEach { aSolutionToFix -> aSolutionToFix.setObjective(0, aSolutionToFix.getCorrelation() * -1) }
-            Constants.TARGET_WORST -> solutionsToFix.forEach { aSolutionToFix -> aSolutionToFix.setObjective(1, aSolutionToFix.getCardinality() * -1) }
+            Constants.TARGET_BEST -> solutionsToFix.forEach { aSolutionToFix -> aSolutionToFix.setObjective(1, aSolutionToFix.getCorrelation() * -1) }
+            Constants.TARGET_WORST -> solutionsToFix.forEach { aSolutionToFix -> aSolutionToFix.setObjective(0, aSolutionToFix.getCardinality() * -1) }
         }
         return solutionsToFix
     }

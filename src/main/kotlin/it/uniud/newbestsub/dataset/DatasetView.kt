@@ -34,10 +34,10 @@ class DatasetView : AbstractAlgorithmRunner() {
 
     }
 
-    fun print(aggregatedData: List<Array<String>>, resultPath: String) {
+    fun print(data: List<Array<String>>, resultPath: String) {
 
         val writer = CSVWriter(FileWriter(resultPath))
-        writer.writeAll(aggregatedData)
+        writer.writeAll(data)
         writer.close()
 
     }

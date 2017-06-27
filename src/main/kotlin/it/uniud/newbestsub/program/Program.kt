@@ -100,7 +100,7 @@ object Program {
                         try {
                             val firstPercentile = Integer.parseInt(percentilesToParse[0])
                             val lastPercentile = Integer.parseInt(percentilesToParse[1])
-                            for(currentPercentile in firstPercentile..lastPercentile)
+                            for (currentPercentile in firstPercentile..lastPercentile)
                                 percentiles = percentiles.plus(currentPercentile)
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")

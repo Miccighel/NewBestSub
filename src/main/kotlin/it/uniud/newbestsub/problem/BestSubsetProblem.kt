@@ -23,6 +23,7 @@ class BestSubsetProblem(
     private lateinit var solution: BestSubsetSolution
     private val logger = LogManager.getLogger()
     private var progressCounter = 0
+    private var cardinalityToGenerate = 1
 
     init {
         numberOfVariables = 1
@@ -35,14 +36,18 @@ class BestSubsetProblem(
     }
 
     override fun createSolution(): BestSubsetSolution {
-        solution = BestSubsetSolution(this, numberOfTopics); return solution
+        if (cardinalityToGenerate < numberOfTopics) {
+            solution = BestSubsetSolution(this, numberOfTopics, cardinalityToGenerate)
+            cardinalityToGenerate++
+        } else solution = BestSubsetSolution(this, numberOfTopics)
+        return solution
     }
 
     override fun evaluate(solution: BinarySolution) {
 
         solution as BestSubsetSolution
 
-        val loggingFactor = (parameters.numberOfIterations*Constants.ITERATION_LOGGING_FACTOR)/100
+        val loggingFactor = (parameters.numberOfIterations * Constants.ITERATION_LOGGING_FACTOR) / 100
 
         if ((iterationCounter % loggingFactor) == 0 && parameters.numberOfIterations > loggingFactor) {
             logger.info("Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")

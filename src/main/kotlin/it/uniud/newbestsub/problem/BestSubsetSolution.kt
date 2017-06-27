@@ -8,12 +8,34 @@ import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.solution.impl.AbstractGenericSolution
 import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
+import java.util.*
 
 class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, BinarySolution, Comparable<BestSubsetSolution> {
 
     var topicStatus: Array<Boolean>
     var numberOfSelectedTopics = 0
     private val logger = LogManager.getLogger()
+
+    constructor(problem: BinaryProblem, numberOfTopics: Int, cardinalityToGenerate: Int) : super(problem) {
+
+        initializeObjectiveValues()
+
+        val generator = Random()
+        numberOfSelectedTopics = 0
+        topicStatus = Array(numberOfTopics, { false })
+
+        while (numberOfSelectedTopics < cardinalityToGenerate) {
+            val topicToSelect = generator.nextInt(numberOfTopics)
+            if (!topicStatus[topicToSelect]) {
+                topicStatus[topicToSelect] = true
+                numberOfSelectedTopics++
+            }
+        }
+
+        setVariableValue(0, createNewBitSet(topicStatus.size, topicStatus))
+
+        logger.debug("<Num. Sel. Topics: $numberOfSelectedTopics, Gene: ${getVariableValueString(0)}>")
+    }
 
     constructor(problem: BinaryProblem, numberOfTopics: Int) : super(problem) {
 
@@ -97,27 +119,27 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
     }
 
     override fun compareTo(other: BestSubsetSolution): Int {
-        if (this.getObjective(1) > other.getObjective(1)) return 1 else return if (this.getObjective(1) == other.getObjective(1)) 0 else -1
+        if (this.getCardinality() > other.getCardinality()) return 1 else return if (this.getCardinality() == other.getCardinality()) 0 else -1
     }
 
     override fun equals(other: Any?): Boolean {
         val aSolution = other as BestSubsetSolution
         return EqualsBuilder()
-                .append(this.getObjective(0), aSolution.getObjective(0))
-                .append(this.getObjective(1), aSolution.getObjective(1))
+                .append(this.getCorrelation(), aSolution.getCorrelation())
+                .append(this.getCardinality(), aSolution.getCardinality())
                 .isEquals
     }
 
     override fun hashCode(): Int {
-        return HashCodeBuilder(17, 37).append(this.getObjective(0)).append(this.getObjective(1)).toHashCode()
+        return HashCodeBuilder(17, 37).append(this.getCorrelation()).append(this.getCardinality()).toHashCode()
     }
 
 }
 
 fun BinarySolution.getCardinality(): Double {
-    return getObjective(1)
+    return getObjective(0)
 }
 
 fun BinarySolution.getCorrelation(): Double {
-    return getObjective(0)
+    return getObjective(1)
 }

@@ -59,7 +59,7 @@ class DatasetController(
             logger.warn(exception.message as String)
         }
 
-        logger.info("Data set loading completed.")
+        logger.info("Data set loading for input file \"${models[0].datasetName}\" completed.")
     }
 
     fun expandData(expansionCoefficient: Int) {
@@ -120,11 +120,14 @@ class DatasetController(
             }
 
             logger.info("Data aggregation started.")
-
             view.print(aggregate(models), "${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv")
-
             logger.info("Aggregated data available at:")
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv\"")
+            logger.info("Execution informations gathering started.")
+            view.print(info(models), "${Constants.OUTPUT_PATH}${resultPath}Info.csv")
+            logger.info("Execution informations available at:")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Info.csv\"")
+
 
         } else {
 
@@ -135,14 +138,17 @@ class DatasetController(
             view.print(models[0].solve(parameters), resultPath)
 
             logger.info("Data aggregation started.")
-
             view.print(aggregate(models), "${Constants.OUTPUT_PATH}${resultPath}Final.csv")
-
             logger.info("Aggregated data available at:")
             logger.info("\"${Constants.OUTPUT_PATH}${resultPath}Final.csv\"")
+            logger.info("Execution informations gathering started.")
+            view.print(info(models), "${Constants.OUTPUT_PATH}${resultPath}Info.csv")
+            logger.info("Execution informations available at:")
+            logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Info.csv\"")
 
         }
 
+        logger.info("Execution informations gathering completed.")
         logger.info("Data aggregation completed.")
         logger.info("Problem resolution completed.")
 
@@ -150,9 +156,9 @@ class DatasetController(
 
     fun aggregate(models: List<DatasetModel>): List<Array<String>> {
 
+        val header = mutableListOf<String>()
         val incompleteData = mutableListOf<Array<String>>()
         val aggregatedData = mutableListOf<Array<String>>()
-        val header = mutableListOf<String>()
         val topicLabels = models[0].topicLabels
         var percentiles = linkedMapOf<Int, List<Double>>()
 
@@ -226,6 +232,39 @@ class DatasetController(
         }
 
         incompleteData.clear()
+        return aggregatedData
+    }
+
+    fun info(models: List<DatasetModel>): List<Array<String>> {
+
+        val header = mutableListOf<String>()
+        val aggregatedData = mutableListOf<Array<String>>()
+        var executionParameters: MutableList<String>
+
+        header.add("Data set Name")
+        header.add("Number of Systems")
+        header.add("Number of Topics")
+        header.add("Correlation Method")
+        header.add("Target to Achieve")
+        header.add("Number of Iterations")
+        header.add("Population Size")
+        header.add("Number of Repetitions")
+        header.add("Computing Time")
+        aggregatedData.add(header.toTypedArray())
+        models.forEach {
+            model ->
+            executionParameters = mutableListOf<String>()
+            executionParameters.plusAssign(model.datasetName)
+            executionParameters.plusAssign(model.numberOfSystems.toString())
+            executionParameters.plusAssign(model.numberOfTopics.toString())
+            executionParameters.plusAssign(model.correlationMethod)
+            executionParameters.plusAssign(model.targetToAchieve)
+            executionParameters.plusAssign(model.numberOfIterations.toString())
+            executionParameters.plusAssign(model.populationSize.toString())
+            executionParameters.plusAssign(model.numberOfRepetitions.toString())
+            executionParameters.plusAssign(model.computingTime.toString())
+            aggregatedData.add(executionParameters.toTypedArray())
+        }
         return aggregatedData
     }
 
