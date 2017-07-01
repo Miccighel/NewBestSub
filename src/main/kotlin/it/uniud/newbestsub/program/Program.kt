@@ -27,9 +27,13 @@ object Program {
         var populationSize: Int
         var percentiles: List<Int>
         val expansionCoefficient: Int
+        val numberOfExecutions: Int
         var resultPath: String
         val loggingLevel: Level
-        val logger: Logger
+        var logger: Logger
+
+        System.setProperty("baseLogFileName", "${Constants.LOG_PATH}/Program.log")
+        logger = updateLogger(LogManager.getLogger(), Level.INFO)
 
         try {
 
@@ -120,19 +124,43 @@ object Program {
                     logger.info("NewBestSub execution started.")
 
                     datasetController = DatasetController(targetToAchieve)
-                    datasetController.loadData(datasetPath)
-                    datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
+                    datasetController.load(datasetPath)
+
+                    if (commandLine.hasOption('m')) {
+
+                        try {
+                            numberOfExecutions = Integer.parseInt(commandLine.getOptionValue("m"))
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<m>> or <<mrg>> is not an integer. Check the usage section below")
+                        }
+
+                        (1..numberOfExecutions).forEach{
+                            currentExecution ->
+                            logger.info("Execution number: $currentExecution")
+                            val currentExecutionResultPath = "$resultPath${datasetController.models[0].numberOfTopics}-$currentExecution-"
+                            datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), currentExecutionResultPath)
+                            datasetController.save(currentExecutionResultPath)
+                        }
+
+                        datasetController.merge()
+
+                    } else
+                        datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
 
                     if (commandLine.hasOption('e')) {
 
-                        expansionCoefficient = commandLine.getOptionValue('e').toInt()
+                        try {
+                            expansionCoefficient = Integer.parseInt(commandLine.getOptionValue('e'))
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<e>> or <<exp>> is not an integer. Check the usage section below")
+                        }
                         val trueTopicNumber = datasetController.models[0].numberOfTopics
 
                         logger.info("Base execution (true data)")
 
                         while (datasetController.models[0].numberOfTopics + expansionCoefficient < Constants.MAXIMUM_EXPANSION) {
                             logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + expansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $expansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_EXPANSION}, Original Topic Number: $trueTopicNumber>")
-                            datasetController.expandData(expansionCoefficient)
+                            datasetController.expand(expansionCoefficient)
                             datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
                         }
 
@@ -144,11 +172,18 @@ object Program {
             }
 
         } catch (exception: ParseException) {
-            println(exception.message)
+            logger.error(exception.message)
             val formatter = HelpFormatter()
             formatter.printHelp("NewBestSub", options)
+            logger.error("End of the usage section.")
+            logger.info("NewBestSub execution terminated.")
         } catch (exception: FileNotFoundException) {
-            println(exception.message)
+            logger.error(exception.message)
+            logger.info("NewBestSub execution terminated.")
+        } catch (exception: FileSystemException) {
+            logger.error(exception.message)
+            logger.error(exception.stackTrace)
+            logger.info("NewBestSub execution terminated.")
         }
 
     }
@@ -173,6 +208,8 @@ object Program {
         source = Option.builder("pe").longOpt("perc").desc("Indicates the set of percentiles to be calculated. There must be two comma separated integer values. It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArgs().valueSeparator(',').argName("Percentile").build()
         options.addOption(source)
         source = Option.builder("e").longOpt("exp").desc("Indicates the number of fake topics to be added at each iteration. It must be an integer value. [OPTIONAL]").hasArg().argName("Value").build()
+        options.addOption(source)
+        source = Option.builder("m").longOpt("mrg").desc("Indicates the number of executions of the program to do. The results of the executions will be merged together. It must be an integer value. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)
         return options
 

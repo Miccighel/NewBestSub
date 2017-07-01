@@ -17,7 +17,7 @@ class DatasetModelTest {
         println("[DatasetModelTest solve] - Test begins.")
 
         val testDatContr = DatasetController(Constants.TARGET_BEST)
-        testDatContr.loadData("src/test/resources/AP96.csv")
+        testDatContr.load("src/test/resources/AP96.csv")
         val testParams = Parameters(Constants.CORRELATION_KENDALL, Constants.TARGET_BEST, 100000, 1000, 1000, listOf(1, 5, 25, 99))
         val testRes = testDatContr.models[0].solve(testParams).first
         val computedCards = IntArray(testRes.size)
