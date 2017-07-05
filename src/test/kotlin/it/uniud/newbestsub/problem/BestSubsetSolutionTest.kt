@@ -32,7 +32,7 @@ class BestSubsetSolutionTest {
         }
         testCorr = { _, _ -> 0.0 }
         testTarg = { sol, _ -> sol }
-        val parameters = Parameters(Constants.CORRELATION_PEARSON, Constants.TARGET_BEST, 100000, 1000, 1000, listOf(50))
+        val parameters = Parameters("AH99", Constants.CORRELATION_PEARSON, Constants.TARGET_BEST, 100000, 1000, 1000, listOf(50))
         testProb = BestSubsetProblem(parameters, testAvgPrec.size, testAvgPrec, Array(0, { 0.0 }), testCorr, testTarg)
         testSol = BestSubsetSolution(testProb, testAvgPrec.size)
     }

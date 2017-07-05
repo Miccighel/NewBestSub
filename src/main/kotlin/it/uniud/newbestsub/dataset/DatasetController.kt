@@ -24,6 +24,7 @@ class DatasetController(
     var models = mutableListOf<DatasetModel>()
     private var view = DatasetView()
     private lateinit var parameters: Parameters
+    private lateinit var datasetPath: String
     private lateinit var resultPath: String
     private var resultPaths = mutableListOf<String>()
     private var logger = LogManager.getLogger()
@@ -33,6 +34,8 @@ class DatasetController(
     }
 
     fun load(datasetPath: String) {
+
+        this.datasetPath = datasetPath
 
         logger.info("Data set loading started.")
         logger.info("Path: \"$datasetPath\".")
@@ -52,12 +55,12 @@ class DatasetController(
         }
         try {
             models.plusAssign(DatasetModel())
-            models[0].loadData(datasetPath)
+            models[0].loadData(this.datasetPath)
             if (targetToAchieve == Constants.TARGET_ALL) {
                 models.plusAssign(DatasetModel())
-                models[1].loadData(datasetPath)
+                models[1].loadData(this.datasetPath)
                 models.plusAssign(DatasetModel())
-                models[2].loadData(datasetPath)
+                models[2].loadData(this.datasetPath)
             }
         } catch (exception: FileNotFoundException) {
             logger.warn("Data set not found. Is file inside a \"data\" dir.?")
@@ -82,20 +85,19 @@ class DatasetController(
         models.forEach { model -> model.expandData(randomizedAveragePrecisions, topicLabels) }
     }
 
-    fun save(resultPath: String) {
-        resultPaths.plusAssign(resultPath)
-    }
-
     fun solve(parameters: Parameters, resultPath: String) {
 
         this.parameters = parameters
         this.resultPath = resultPath
+        this.resultPaths.plusAssign(resultPath)
 
         logger.info("Printing common execution parameters.")
 
+        logger.info("Data set name: ${parameters.datasetName}.")
         logger.info("Correlation: ${parameters.correlationMethod}.")
         logger.info("Target: ${parameters.targetToAchieve}.")
         logger.info("Number of iterations: ${parameters.numberOfIterations}.")
+        logger.info("Number of repetitions: ${parameters.numberOfRepetitions}.")
         logger.info("Population size: ${parameters.populationSize}.")
 
         if (parameters.targetToAchieve == Constants.TARGET_ALL || parameters.targetToAchieve == Constants.TARGET_AVERAGE) {
@@ -117,9 +119,9 @@ class DatasetController(
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_AVERAGE}-Fun.csv\" (Target function values)")
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_AVERAGE}-Var.csv\" (Variable values)")
 
-            val bestParameters = Parameters(parameters.correlationMethod, Constants.TARGET_BEST, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.percentiles)
-            val worstParameters = Parameters(parameters.correlationMethod, Constants.TARGET_WORST, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.percentiles)
-            val averageParameters = Parameters(parameters.correlationMethod, Constants.TARGET_AVERAGE, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.percentiles)
+            val bestParameters = Parameters(parameters.datasetName, parameters.correlationMethod, Constants.TARGET_BEST, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.percentiles)
+            val worstParameters = Parameters(parameters.datasetName, parameters.correlationMethod, Constants.TARGET_WORST, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.percentiles)
+            val averageParameters = Parameters(parameters.datasetName, parameters.correlationMethod, Constants.TARGET_AVERAGE, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.percentiles)
             val bestResult = { async(CommonPool) { models[0].solve(bestParameters) } }.invoke()
             val worstResult = { async(CommonPool) { models[1].solve(worstParameters) } }.invoke()
             val averageResult = { async(CommonPool) { models[2].solve(averageParameters) } }.invoke()
@@ -134,9 +136,9 @@ class DatasetController(
             view.print(aggregate(models), "${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv")
             logger.info("Aggregated data available at:")
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Final.csv\"")
-            logger.info("Execution informations gathering started.")
-            view.print(info(models), "${Constants.OUTPUT_PATH}${resultPath}Info.csv")
-            logger.info("Execution informations available at:")
+            logger.info("Execution information gathering started.")
+            view.print(info(models), "${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Info.csv")
+            logger.info("Execution information available at:")
             logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Info.csv\"")
 
 
@@ -152,14 +154,14 @@ class DatasetController(
             view.print(aggregate(models), "${Constants.OUTPUT_PATH}${resultPath}Final.csv")
             logger.info("Aggregated data available at:")
             logger.info("\"${Constants.OUTPUT_PATH}${resultPath}Final.csv\"")
-            logger.info("Execution informations gathering started.")
+            logger.info("Execution information gathering started.")
             view.print(info(models), "${Constants.OUTPUT_PATH}${resultPath}Info.csv")
-            logger.info("Execution informations available at:")
-            logger.info("\"${Constants.OUTPUT_PATH}$resultPath${Constants.TARGET_ALL}-Info.csv\"")
+            logger.info("Execution information available at:")
+            logger.info("\"${Constants.OUTPUT_PATH}${resultPath}Info.csv\"")
 
         }
 
-        logger.info("Execution informations gathering completed.")
+        logger.info("Execution information gathering completed.")
         logger.info("Data aggregation completed.")
         logger.info("Problem resolution completed.")
 
@@ -264,7 +266,7 @@ class DatasetController(
         aggregatedData.add(header.toTypedArray())
         models.forEach {
             model ->
-            executionParameters = mutableListOf<String>()
+            executionParameters = mutableListOf()
             executionParameters.plusAssign(model.datasetName)
             executionParameters.plusAssign(model.numberOfSystems.toString())
             executionParameters.plusAssign(model.numberOfTopics.toString())
@@ -281,147 +283,196 @@ class DatasetController(
 
     fun merge() {
 
+        var bestFunctionValuesReaders = emptyArray<BufferedReader>()
+        var bestFunctionValues = LinkedList<LinkedList<String>>()
+        var bestVariableValuesReaders = emptyArray<BufferedReader>()
+        var bestVariableValues = LinkedList<LinkedList<String>>()
+        var worstFunctionValuesReaders = emptyArray<BufferedReader>()
+        var worstFunctionValues = LinkedList<LinkedList<String>>()
+        var worstVariableValuesReaders = emptyArray<BufferedReader>()
+        var worstVariableValues = LinkedList<LinkedList<String>>()
+        var averageFunctionValuesReaders = emptyArray<BufferedReader>()
+        var averageFunctionValues = LinkedList<LinkedList<String>>()
+        var averageVariableValuesReaders = emptyArray<BufferedReader>()
+        var averageVariableValues = LinkedList<LinkedList<String>>()
+        var readCounter = 0
+        val mergedBestFunctionValues = LinkedList<String>()
+        val mergedBestVariableValues = LinkedList<String>()
+        val mergedWorstFunctionValues = LinkedList<String>()
+        val mergedWorstVariableValues = LinkedList<String>()
+        val mergedAverageFunctionValues = LinkedList<String>()
+        val mergedAverageVariableValues = LinkedList<String>()
+
         val aggregatedDataReaders = Array(resultPaths.size, {
             index ->
-            CSVReader(FileReader("${Constants.OUTPUT_PATH}${resultPaths[index]}${Constants.TARGET_ALL}-Final.csv"))
+            if (targetToAchieve == Constants.TARGET_ALL)
+                CSVReader(FileReader("${Constants.OUTPUT_PATH}${resultPaths[index]}${Constants.TARGET_ALL}-Final.csv"))
+            else
+                CSVReader(FileReader("${Constants.OUTPUT_PATH}${resultPaths[index]}Final.csv"))
         })
         val aggregatedCardinality = LinkedList<LinkedList<Array<String>>>()
-        var aggregatedCardinalityRead = 0
 
-        val bestFunctionValuesReaders = Array(resultPaths.size, {
-            index ->
-            Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Best-Fun.csv"))
-        })
-        val bestFunctionValues = LinkedList<LinkedList<String>>()
-        var bestFunctionValuesRead = 0
+        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
+            bestFunctionValuesReaders = Array(resultPaths.size, {
+                index ->
+                if (targetToAchieve == Constants.TARGET_ALL)
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Best-Fun.csv"))
+                else
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Fun.csv"))
+            })
+            bestFunctionValues = LinkedList()
+            bestVariableValuesReaders = Array(resultPaths.size, {
+                index ->
+                if (targetToAchieve == Constants.TARGET_ALL)
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Best-Var.csv"))
+                else
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Var.csv"))
+            })
+            bestVariableValues = LinkedList()
+        }
 
-        val bestVariableValuesReaders = Array(resultPaths.size, {
-            index ->
-            Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Best-Var.csv"))
-        })
-        val bestVariableValues = LinkedList<LinkedList<String>>()
-        var bestVariableValuesRead = 0
+        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
+            worstFunctionValuesReaders = Array(resultPaths.size, {
+                index ->
+                if (targetToAchieve == Constants.TARGET_ALL)
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Worst-Fun.csv"))
+                else
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Fun.csv"))
+            })
+            worstFunctionValues = LinkedList()
+            worstVariableValuesReaders = Array(resultPaths.size, {
+                index ->
+                if (targetToAchieve == Constants.TARGET_ALL)
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Worst-Var.csv"))
+                else
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Var.csv"))
+            })
+            worstVariableValues = LinkedList()
+        }
 
-        val worstFunctionValuesReaders = Array(resultPaths.size, {
-            index ->
-            Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Worst-Fun.csv"))
-        })
-        val worstFunctionValues = LinkedList<LinkedList<String>>()
-        var worstFunctionValuesRead = 0
-
-        val worstVariableValuesReaders = Array(resultPaths.size, {
-            index ->
-            Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Worst-Var.csv"))
-        })
-        val worstVariableValues = LinkedList<LinkedList<String>>()
-        var worstVariableValuesRead = 0
-
-        val averageFunctionValuesReaders = Array(resultPaths.size, {
-            index ->
-            Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Average-Fun.csv"))
-        })
-        val averageFunctionValues = LinkedList<LinkedList<String>>()
-        var averageFunctionValuesRead = 0
-
-        val averageVariableValuesReaders = Array(resultPaths.size, {
-            index ->
-            Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Average-Var.csv"))
-        })
-        val averageVariableValues = LinkedList<LinkedList<String>>()
-        var averageVariableValuesRead = 0
+        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
+            averageFunctionValuesReaders = Array(resultPaths.size, {
+                index ->
+                if (targetToAchieve == Constants.TARGET_ALL)
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Average-Fun.csv"))
+                else
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Fun.csv"))
+            })
+            averageFunctionValues = LinkedList()
+            averageVariableValuesReaders = Array(resultPaths.size, {
+                index ->
+                if (targetToAchieve == Constants.TARGET_ALL)
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Average-Var.csv"))
+                else
+                    Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Var.csv"))
+            })
+            averageVariableValues = LinkedList()
+        }
 
         val infoReaders = Array(resultPaths.size, {
             index ->
-            Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Info.csv"))
+            if (targetToAchieve == Constants.TARGET_ALL)
+                Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}${Constants.TARGET_ALL}-Info.csv"))
+            else
+                Files.newBufferedReader(Paths.get("${Constants.OUTPUT_PATH}${resultPaths[index]}Info.csv"))
         })
-        val infos = LinkedList<LinkedList<String>>()
-        var infosRead = 0
+        val info = LinkedList<LinkedList<String>>()
 
-        while (aggregatedCardinalityRead < models[0].numberOfTopics) {
+        while (readCounter < models[0].numberOfTopics) {
             val currentAggregatedCardinality = LinkedList<Array<String>>()
             aggregatedDataReaders.forEach {
                 anAggregatedDataReader ->
                 currentAggregatedCardinality.plusAssign(anAggregatedDataReader.readNext())
             }
             aggregatedCardinality.add(currentAggregatedCardinality)
-            aggregatedCardinalityRead++
+            readCounter++
         }
         aggregatedDataReaders.forEach(CSVReader::close)
 
-        while (bestFunctionValuesRead < models[0].numberOfTopics) {
-            val currentBestFunctionValue = LinkedList<String>()
-            bestFunctionValuesReaders.forEach {
-                aFunctionValuesReader ->
-                currentBestFunctionValue.plusAssign(aFunctionValuesReader.readLine())
+        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
+            readCounter = 0
+            while (readCounter < models[0].numberOfTopics) {
+                val currentBestFunctionValue = LinkedList<String>()
+                bestFunctionValuesReaders.forEach {
+                    aFunctionValuesReader ->
+                    currentBestFunctionValue.plusAssign(aFunctionValuesReader.readLine())
+                }
+                bestFunctionValues.add(currentBestFunctionValue)
+                readCounter++
             }
-            bestFunctionValues.add(currentBestFunctionValue)
-            bestFunctionValuesRead++
-        }
-        bestFunctionValuesReaders.forEach(BufferedReader::close)
-
-        while (bestVariableValuesRead < models[0].numberOfTopics) {
-            val currentBestVariableValue = LinkedList<String>()
-            bestVariableValuesReaders.forEach {
-                aVariableValuesReader ->
-                currentBestVariableValue.plusAssign(aVariableValuesReader.readLine())
+            bestFunctionValuesReaders.forEach(BufferedReader::close)
+            readCounter = 0
+            while (readCounter < models[0].numberOfTopics) {
+                val currentBestVariableValue = LinkedList<String>()
+                bestVariableValuesReaders.forEach {
+                    aVariableValuesReader ->
+                    currentBestVariableValue.plusAssign(aVariableValuesReader.readLine())
+                }
+                bestVariableValues.add(currentBestVariableValue)
+                readCounter++
             }
-            bestVariableValues.add(currentBestVariableValue)
-            bestVariableValuesRead++
+            bestVariableValuesReaders.forEach(BufferedReader::close)
         }
-        bestVariableValuesReaders.forEach(BufferedReader::close)
 
-        while (worstFunctionValuesRead < models[0].numberOfTopics) {
-            val currentWorstFunctionValue = LinkedList<String>()
-            worstFunctionValuesReaders.forEach {
-                aFunctionValuesReader ->
-                currentWorstFunctionValue.plusAssign(aFunctionValuesReader.readLine())
+        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
+            readCounter = 0
+            while (readCounter < models[0].numberOfTopics) {
+                val currentWorstFunctionValue = LinkedList<String>()
+                worstFunctionValuesReaders.forEach {
+                    aFunctionValuesReader ->
+                    currentWorstFunctionValue.plusAssign(aFunctionValuesReader.readLine())
+                }
+                worstFunctionValues.add(currentWorstFunctionValue)
+                readCounter++
             }
-            worstFunctionValues.add(currentWorstFunctionValue)
-            worstFunctionValuesRead++
-        }
-        worstFunctionValuesReaders.forEach(BufferedReader::close)
-
-        while (worstVariableValuesRead < models[0].numberOfTopics) {
-            val currentWorstVariableValue = LinkedList<String>()
-            worstVariableValuesReaders.forEach {
-                aVariableValuesReader ->
-                currentWorstVariableValue.plusAssign(aVariableValuesReader.readLine())
+            worstFunctionValuesReaders.forEach(BufferedReader::close)
+            readCounter = 0
+            while (readCounter < models[0].numberOfTopics) {
+                val currentWorstVariableValue = LinkedList<String>()
+                worstVariableValuesReaders.forEach {
+                    aVariableValuesReader ->
+                    currentWorstVariableValue.plusAssign(aVariableValuesReader.readLine())
+                }
+                worstVariableValues.add(currentWorstVariableValue)
+                readCounter++
             }
-            worstVariableValues.add(currentWorstVariableValue)
-            worstVariableValuesRead++
+            worstVariableValuesReaders.forEach(BufferedReader::close)
         }
-        worstVariableValuesReaders.forEach(BufferedReader::close)
 
-        while (averageFunctionValuesRead < models[0].numberOfTopics) {
-            val currentAverageFunctionValue = LinkedList<String>()
-            averageFunctionValuesReaders.forEach {
-                aFunctionValuesReader ->
-                currentAverageFunctionValue.plusAssign(aFunctionValuesReader.readLine())
+        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
+            readCounter = 0
+            while (readCounter < models[0].numberOfTopics) {
+                val currentAverageFunctionValue = LinkedList<String>()
+                averageFunctionValuesReaders.forEach {
+                    aFunctionValuesReader ->
+                    currentAverageFunctionValue.plusAssign(aFunctionValuesReader.readLine())
+                }
+                averageFunctionValues.add(currentAverageFunctionValue)
+                readCounter++
             }
-            averageFunctionValues.add(currentAverageFunctionValue)
-            averageFunctionValuesRead++
-        }
-        averageFunctionValuesReaders.forEach(BufferedReader::close)
-
-        while (averageVariableValuesRead < models[0].numberOfTopics) {
-            val currentAverageVariableValue = LinkedList<String>()
-            averageVariableValuesReaders.forEach {
-                aVariableValuesReader ->
-                currentAverageVariableValue.plusAssign(aVariableValuesReader.readLine())
+            averageFunctionValuesReaders.forEach(BufferedReader::close)
+            readCounter = 0
+            while (readCounter < models[0].numberOfTopics) {
+                val currentAverageVariableValue = LinkedList<String>()
+                averageVariableValuesReaders.forEach {
+                    aVariableValuesReader ->
+                    currentAverageVariableValue.plusAssign(aVariableValuesReader.readLine())
+                }
+                averageVariableValues.add(currentAverageVariableValue)
+                readCounter++
             }
-            averageVariableValues.add(currentAverageVariableValue)
-            averageVariableValuesRead++
+            averageVariableValuesReaders.forEach(BufferedReader::close)
         }
-        averageVariableValuesReaders.forEach(BufferedReader::close)
 
-        while (infosRead <= resultPaths.size) {
+        readCounter = 0
+        while (readCounter <= resultPaths.size) {
             val currentInfo = LinkedList<String>()
             infoReaders.forEach {
                 aInfoReader ->
                 currentInfo.plusAssign(aInfoReader.readLine())
             }
-            infos.add(currentInfo)
-            infosRead++
+            info.add(currentInfo)
+            readCounter++
         }
         infoReaders.forEach(BufferedReader::close)
 
@@ -429,16 +480,9 @@ class DatasetController(
         val mergedAggregatedData = LinkedList<Array<String>>()
         mergedAggregatedData.add(aggregatedDataHeader)
 
-        val infosHeader = infos.pop().pop()
-        val mergedInfos = LinkedList<String>()
-        mergedInfos.add(infosHeader)
-
-        val mergedBestFunctionValues = LinkedList<String>()
-        val mergedBestVariableValues = LinkedList<String>()
-        val mergedWorstFunctionValues = LinkedList<String>()
-        val mergedWorstVariableValues = LinkedList<String>()
-        val mergedAverageFunctionValues = LinkedList<String>()
-        val mergedAverageVariableValues = LinkedList<String>()
+        val infoHeader = info.pop().pop()
+        val mergedInfo = LinkedList<String>()
+        mergedInfo.add(infoHeader)
 
         aggregatedCardinality.forEachIndexed {
             index, currentAggregatedCardinality ->
@@ -453,7 +497,11 @@ class DatasetController(
                     bestAggregatedCorrelation = maximumValue
                     bestAggregatedCorrelationIndex = anotherIndex
                 }
-                val minimumValue = Math.min(worstAggregatedCorrelation, aggregatedCardinalityForAnExecution[2].toDouble())
+                val minimumValue: Double
+                if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST)
+                    minimumValue = Math.min(worstAggregatedCorrelation, aggregatedCardinalityForAnExecution[2].toDouble())
+                else
+                    minimumValue = Math.min(worstAggregatedCorrelation, aggregatedCardinalityForAnExecution[1].toDouble())
                 if (worstAggregatedCorrelation > minimumValue) {
                     worstAggregatedCorrelation = minimumValue
                     worstAggregatedCorrelationIndex = anotherIndex
@@ -461,116 +509,205 @@ class DatasetController(
             }
             val mergedDataAggregatedForCurrentAggregatedCardinality = Array(currentAggregatedCardinality[0].size, { "" })
             mergedDataAggregatedForCurrentAggregatedCardinality[0] = currentAggregatedCardinality[0][0]
-            mergedDataAggregatedForCurrentAggregatedCardinality[1] = bestAggregatedCorrelation.toString()
-            mergedDataAggregatedForCurrentAggregatedCardinality[2] = worstAggregatedCorrelation.toString()
-            (3..currentAggregatedCardinality[0].size - 1).forEach {
-                anotherIndex ->
-                mergedDataAggregatedForCurrentAggregatedCardinality[anotherIndex] = currentAggregatedCardinality[0][anotherIndex]
+            when (targetToAchieve) {
+                Constants.TARGET_BEST -> mergedDataAggregatedForCurrentAggregatedCardinality[1] = bestAggregatedCorrelation.toString()
+                Constants.TARGET_WORST -> mergedDataAggregatedForCurrentAggregatedCardinality[1] = worstAggregatedCorrelation.toString()
+            }
+            when (targetToAchieve) {
+                Constants.TARGET_ALL -> {
+                    mergedDataAggregatedForCurrentAggregatedCardinality[1] = bestAggregatedCorrelation.toString()
+                    mergedDataAggregatedForCurrentAggregatedCardinality[2] = worstAggregatedCorrelation.toString()
+                    (3..currentAggregatedCardinality[0].size - 1).forEach {
+                        anotherIndex ->
+                        mergedDataAggregatedForCurrentAggregatedCardinality[anotherIndex] = currentAggregatedCardinality[0][anotherIndex]
+                    }
+                }
+                else -> {
+                    (1..currentAggregatedCardinality[0].size - 1).forEach {
+                        anotherIndex ->
+                        mergedDataAggregatedForCurrentAggregatedCardinality[anotherIndex] = currentAggregatedCardinality[0][anotherIndex]
+                    }
+                }
             }
             mergedAggregatedData.add(mergedDataAggregatedForCurrentAggregatedCardinality)
-            mergedBestFunctionValues.add(bestFunctionValues[index][bestAggregatedCorrelationIndex])
-            mergedBestVariableValues.add(bestVariableValues[index][bestAggregatedCorrelationIndex])
-            mergedWorstFunctionValues.add(worstFunctionValues[index][worstAggregatedCorrelationIndex])
-            mergedWorstVariableValues.add(worstVariableValues[index][worstAggregatedCorrelationIndex])
-            mergedAverageFunctionValues.add(averageFunctionValues[index][0])
-            mergedAverageVariableValues.add(averageVariableValues[index][0])
+            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
+                mergedBestFunctionValues.add(bestFunctionValues[index][bestAggregatedCorrelationIndex])
+                mergedBestVariableValues.add(bestVariableValues[index][bestAggregatedCorrelationIndex])
+            }
+            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
+                mergedWorstFunctionValues.add(worstFunctionValues[index][worstAggregatedCorrelationIndex])
+                mergedWorstVariableValues.add(worstVariableValues[index][worstAggregatedCorrelationIndex])
+            }
+            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
+                mergedAverageFunctionValues.add(averageFunctionValues[index][0])
+                mergedAverageVariableValues.add(averageVariableValues[index][0])
+            }
         }
 
         var bestComputingTime = 0
         var worstComputingTime = 0
         var averageComputingTime = 0
-        infos[0].forEach {
-            infoForABestExecution ->
-            bestComputingTime += infoForABestExecution.split(",").last().replace("\"", "").toInt()
+        val mergedBestExecutionInfo: MutableList<String>
+        val mergedWorstExecutionInfo: MutableList<String>
+        val mergedAverageExecutionInfo: MutableList<String>
+
+        when (targetToAchieve) {
+            Constants.TARGET_ALL -> {
+                info[0].forEach {
+                    infoForABestExecution ->
+                    bestComputingTime += infoForABestExecution.split(",").last().replace("\"", "").toInt()
+                }
+                mergedBestExecutionInfo = info[0][0].split(",").toMutableList()
+                mergedBestExecutionInfo[mergedBestExecutionInfo.lastIndex] = bestComputingTime.toString()
+                mergedInfo.add(StringUtils.join(mergedBestExecutionInfo, ","))
+                info[1].forEach {
+                    infoForAWorstExecution ->
+                    worstComputingTime += infoForAWorstExecution.split(",").last().replace("\"", "").toInt()
+                }
+                mergedWorstExecutionInfo = info[1][0].split(",").toMutableList()
+                mergedWorstExecutionInfo[mergedWorstExecutionInfo.lastIndex] = worstComputingTime.toString()
+                mergedInfo.add(StringUtils.join(mergedWorstExecutionInfo, ","))
+                info[2].forEach {
+                    infoForAnAverageExecution ->
+                    averageComputingTime += infoForAnAverageExecution.split(",").last().replace("\"", "").toInt()
+                }
+                mergedAverageExecutionInfo = info[2][0].split(",").toMutableList()
+                mergedAverageExecutionInfo[mergedAverageExecutionInfo.lastIndex] = averageComputingTime.toString()
+                mergedInfo.add(StringUtils.join(mergedAverageExecutionInfo, ","))
+            }
+            Constants.TARGET_BEST -> {
+                info[0].forEach {
+                    infoForABestExecution ->
+                    bestComputingTime += infoForABestExecution.split(",").last().replace("\"", "").toInt()
+                }
+                mergedBestExecutionInfo = info[0][0].split(",").toMutableList()
+                mergedBestExecutionInfo[mergedBestExecutionInfo.lastIndex] = bestComputingTime.toString()
+                mergedInfo.add(StringUtils.join(mergedBestExecutionInfo, ","))
+            }
+            Constants.TARGET_WORST -> {
+                info[0].forEach {
+                    infoForAWorstExecution ->
+                    worstComputingTime += infoForAWorstExecution.split(",").last().replace("\"", "").toInt()
+                }
+                mergedWorstExecutionInfo = info[1][0].split(",").toMutableList()
+                mergedWorstExecutionInfo[mergedWorstExecutionInfo.lastIndex] = worstComputingTime.toString()
+                mergedInfo.add(StringUtils.join(mergedWorstExecutionInfo, ","))
+            }
+            Constants.TARGET_AVERAGE -> {
+                info[0].forEach {
+                    infoForAnAverageExecution ->
+                    averageComputingTime += infoForAnAverageExecution.split(",").last().replace("\"", "").toInt()
+                }
+                mergedAverageExecutionInfo = info[2][0].split(",").toMutableList()
+                mergedAverageExecutionInfo[mergedAverageExecutionInfo.lastIndex] = averageComputingTime.toString()
+                mergedInfo.add(StringUtils.join(mergedAverageExecutionInfo, ","))
+            }
         }
-        infos[1].forEach {
-            infoForAWorstExecution ->
-            worstComputingTime += infoForAWorstExecution.split(",").last().replace("\"", "").toInt()
-        }
-        infos[2].forEach {
-            infoForAnAverageExecution ->
-            averageComputingTime += infoForAnAverageExecution.split(",").last().replace("\"", "").toInt()
-        }
-        val mergedBestExecutionInfo = infos[0][0].split(",").toMutableList()
-        mergedBestExecutionInfo[mergedBestExecutionInfo.lastIndex] = bestComputingTime.toString()
-        val mergedWorstExecutionInfo = infos[1][0].split(",").toMutableList()
-        mergedWorstExecutionInfo[mergedBestExecutionInfo.lastIndex] = worstComputingTime.toString()
-        val mergedAverageExecutionInfo = infos[2][0].split(",").toMutableList()
-        mergedAverageExecutionInfo[mergedAverageExecutionInfo.lastIndex] = averageComputingTime.toString()
-        mergedInfos.add(StringUtils.join(mergedBestExecutionInfo, ","))
-        mergedInfos.add(StringUtils.join(mergedWorstExecutionInfo, ","))
-        mergedInfos.add(StringUtils.join(mergedAverageExecutionInfo, ","))
 
         val mergedAggregatedDataWriter = CSVWriter(FileWriter("${Constants.OUTPUT_PATH}${resultPaths.last()}${Constants.TARGET_ALL}-Final-Merged.csv"))
         mergedAggregatedDataWriter.writeAll(mergedAggregatedData)
         mergedAggregatedDataWriter.close()
 
-        val bestFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Best-Fun-Merged.csv"))
-        mergedBestFunctionValues.forEach {
-            aMergedBestFunctionValues ->
-            bestFunctionValuesDataWriter.write(aMergedBestFunctionValues)
-            bestFunctionValuesDataWriter.newLine()
+        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
+            val bestFunctionValuesDataWriter: BufferedWriter
+            if (targetToAchieve == Constants.TARGET_ALL)
+                bestFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Best-Fun-Merged.csv"))
+            else
+                bestFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Fun-Merged.csv"))
+            mergedBestFunctionValues.forEach {
+                aMergedBestFunctionValues ->
+                bestFunctionValuesDataWriter.write(aMergedBestFunctionValues)
+                bestFunctionValuesDataWriter.newLine()
+            }
+            bestFunctionValuesDataWriter.close()
+            val bestVariableValuesDataWriter: BufferedWriter
+            if (targetToAchieve == Constants.TARGET_ALL)
+                bestVariableValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Best-Val-Merged.csv"))
+            else
+                bestVariableValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Val-Merged.csv"))
+            mergedBestVariableValues.forEach {
+                aMergedBestVariableValues ->
+                bestVariableValuesDataWriter.write(aMergedBestVariableValues)
+                bestVariableValuesDataWriter.newLine()
+            }
+            bestVariableValuesDataWriter.close()
         }
-        bestFunctionValuesDataWriter.close()
 
-        val bestVariableValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Best-Var-Merged.csv"))
-        mergedBestVariableValues.forEach {
-            aMergedBestVariableValues ->
-            bestVariableValuesDataWriter.write(aMergedBestVariableValues)
-            bestVariableValuesDataWriter.newLine()
+        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
+            val worstFunctionValuesDataWriter: BufferedWriter
+            if (targetToAchieve == Constants.TARGET_ALL)
+                worstFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Worst-Fun-Merged.csv"))
+            else
+                worstFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Fun-Merged.csv"))
+            mergedWorstFunctionValues.forEach {
+                aMergedWorstFunctionValues ->
+                worstFunctionValuesDataWriter.write(aMergedWorstFunctionValues)
+                worstFunctionValuesDataWriter.newLine()
+            }
+            worstFunctionValuesDataWriter.close()
+            val worstVariableValuesDataWriter: BufferedWriter
+            if (targetToAchieve == Constants.TARGET_ALL)
+                worstVariableValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Worst-Val-Merged.csv"))
+            else
+                worstVariableValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Val-Merged.csv"))
+            mergedWorstVariableValues.forEach {
+                aMergedWorstVariableValues ->
+                worstVariableValuesDataWriter.write(aMergedWorstVariableValues)
+                worstVariableValuesDataWriter.newLine()
+            }
+            worstVariableValuesDataWriter.close()
         }
-        bestVariableValuesDataWriter.close()
 
-        val worstFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Worst-Fun-Merged.csv"))
-        mergedWorstFunctionValues.forEach {
-            aMergedWorstFunctionValues ->
-            worstFunctionValuesDataWriter.write(aMergedWorstFunctionValues)
-            worstFunctionValuesDataWriter.newLine()
+        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
+            val averageFunctionValuesDataWriter: BufferedWriter
+            if (targetToAchieve == Constants.TARGET_ALL)
+                averageFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Average-Fun-Merged.csv"))
+            else
+                averageFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Fun-Merged.csv"))
+            mergedAverageFunctionValues.forEach {
+                aMergedAverageFunctionValues ->
+                averageFunctionValuesDataWriter.write(aMergedAverageFunctionValues)
+                averageFunctionValuesDataWriter.newLine()
+            }
+            averageFunctionValuesDataWriter.close()
+            val averageVariableValuesDataWriter: BufferedWriter
+            if (targetToAchieve == Constants.TARGET_ALL)
+                averageVariableValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Average-Val-Merged.csv"))
+            else
+                averageVariableValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Val-Merged.csv"))
+            mergedAverageVariableValues.forEach {
+                aMergedAverageVariableValues ->
+                averageVariableValuesDataWriter.write(aMergedAverageVariableValues)
+                averageVariableValuesDataWriter.newLine()
+            }
+            averageVariableValuesDataWriter.close()
         }
-        worstFunctionValuesDataWriter.close()
-
-        val worstVariableValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Worst-Var-Merged.csv"))
-        mergedWorstVariableValues.forEach {
-            aMergedWorstVariableValues ->
-            worstVariableValuesDataWriter.write(aMergedWorstVariableValues)
-            worstVariableValuesDataWriter.newLine()
-        }
-        worstVariableValuesDataWriter.close()
-
-        val averageFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Average-Fun-Merged.csv"))
-        mergedAverageFunctionValues.forEach {
-            aMergedAverageFunctionValues ->
-            averageFunctionValuesDataWriter.write(aMergedAverageFunctionValues)
-            averageFunctionValuesDataWriter.newLine()
-        }
-        averageFunctionValuesDataWriter.close()
 
         val infoValuesWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Info-Merged.csv"))
-        mergedInfos.forEach {
+        mergedInfo.forEach {
             aMergedInfo ->
             infoValuesWriter.write(aMergedInfo)
             infoValuesWriter.newLine()
         }
         infoValuesWriter.close()
 
-        val averageVariableValuesDataWriter = Files.newBufferedWriter(Paths.get("${Constants.OUTPUT_PATH}${resultPaths.last()}Average-Var-Merged.csv"))
-        mergedAverageVariableValues.forEach {
-            aMergedAverageVariableValues ->
-            averageVariableValuesDataWriter.write(aMergedAverageVariableValues)
-            averageVariableValuesDataWriter.newLine()
-        }
-        averageVariableValuesDataWriter.close()
-
         resultPaths.forEach {
             aResultPath ->
-            Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}$aResultPath${Constants.TARGET_ALL}-Final.csv"))
-            Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Best-Fun.csv"))
-            Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Best-Var.csv"))
-            Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Worst-Fun.csv"))
-            Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Worst-Var.csv"))
-            Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Average-Fun.csv"))
-            Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Average-Var.csv"))
-            Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Info.csv"))
+            if (targetToAchieve == Constants.TARGET_ALL) {
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}$aResultPath${Constants.TARGET_ALL}-Final.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Best-Fun.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Best-Var.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Worst-Fun.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Worst-Var.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Average-Fun.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Average-Var.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}$aResultPath${Constants.TARGET_ALL}-Info.csv"))
+            } else {
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Final.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Fun.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Var.csv"))
+                Files.deleteIfExists(Paths.get("${Constants.OUTPUT_PATH}${aResultPath}Info.csv"))
+            }
         }
 
     }

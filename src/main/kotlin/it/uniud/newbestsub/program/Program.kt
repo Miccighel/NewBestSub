@@ -20,6 +20,7 @@ object Program {
         val options = loadCommandLineOptions()
         val datasetController: DatasetController
         val datasetPath: String
+        val datasetName : String
         val chosenCorrelationMethod: String
         val targetToAchieve: String
         var numberOfIterations: Int
@@ -39,7 +40,8 @@ object Program {
 
             parser = DefaultParser()
             commandLine = parser.parse(options, arguments)
-            datasetPath = Constants.INPUT_PATH + commandLine.getOptionValue("fi") + ".csv"
+            datasetName = commandLine.getOptionValue("fi")
+            datasetPath = "${Constants.INPUT_PATH}$datasetName.csv"
 
             if (!File(datasetPath).exists()) throw FileNotFoundException("Dataset file does not exists. Be sure that path is correct.") else {
 
@@ -74,6 +76,7 @@ object Program {
                         if (!commandLine.hasOption("i")) throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
                         try {
                             numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
+                            if (numberOfIterations<=0) throw ParseException("Value for the option <<i>> or <<iter>> must be a positive value. Check the usage section below")
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
                         }
@@ -81,6 +84,7 @@ object Program {
                         if (!commandLine.hasOption("po")) throw ParseException("Value for the option <<po>> or <<pop>> is missing. Check the usage section below.")
                         try {
                             populationSize = Integer.parseInt(commandLine.getOptionValue("po"))
+                            if (populationSize<=0) throw ParseException("Value for the option <<p>> or <<po>> must be a positive value. Check the usage section below")
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<po>> or <<pop>> is not an integer. Check the usage section below")
                         }
@@ -95,6 +99,7 @@ object Program {
                         if (!commandLine.hasOption("r")) throw ParseException("Value for the option <<r>> or <<rep>> is missing. Check the usage section below.")
                         try {
                             numberOfRepetitions = Integer.parseInt(commandLine.getOptionValue("r"))
+                            if (numberOfRepetitions<=0) throw ParseException("Value for the option <<r>> or <<rep>> must be a positive value. Check the usage section below")
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<r>> or <<rep>> is not an integer. Check the usage section below")
                         }
@@ -130,6 +135,7 @@ object Program {
 
                         try {
                             numberOfExecutions = Integer.parseInt(commandLine.getOptionValue("m"))
+                            if (numberOfExecutions<=0) throw ParseException("Value for the option <<m>> or <<mrg>> must be a positive value. Check the usage section below")
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<m>> or <<mrg>> is not an integer. Check the usage section below")
                         }
@@ -138,14 +144,13 @@ object Program {
                             currentExecution ->
                             logger.info("Execution number: $currentExecution")
                             val currentExecutionResultPath = "$resultPath${datasetController.models[0].numberOfTopics}-$currentExecution-"
-                            datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), currentExecutionResultPath)
-                            datasetController.save(currentExecutionResultPath)
+                            datasetController.solve(Parameters(datasetName, chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), currentExecutionResultPath)
                         }
 
                         datasetController.merge()
 
                     } else
-                        datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
+                        datasetController.solve(Parameters(datasetName, chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
 
                     if (commandLine.hasOption('e')) {
 
@@ -161,7 +166,7 @@ object Program {
                         while (datasetController.models[0].numberOfTopics + expansionCoefficient < Constants.MAXIMUM_EXPANSION) {
                             logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + expansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $expansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_EXPANSION}, Original Topic Number: $trueTopicNumber>")
                             datasetController.expand(expansionCoefficient)
-                            datasetController.solve(Parameters(chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
+                            datasetController.solve(Parameters(datasetName, chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
                         }
 
                     }
@@ -173,6 +178,7 @@ object Program {
 
         } catch (exception: ParseException) {
             logger.error(exception.message)
+            logger.error(exception.stackTrace)
             val formatter = HelpFormatter()
             formatter.printHelp("NewBestSub", options)
             logger.error("End of the usage section.")
@@ -201,15 +207,15 @@ object Program {
         options.addOption(source)
         source = Option.builder("i").longOpt("iter").desc("Indicates the number of iterations to be done. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)
-        source = Option.builder("r").longOpt("rep").desc("Indicates the number of repetitions to be done to compute a single cardinality during Average experiment. It must be an integer value. It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArg().argName("Value").build()
+        source = Option.builder("r").longOpt("rep").desc("Indicates the number of repetitions to be done to compute a single cardinality during Average experiment. It must be a positive integer value. It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)
-        source = Option.builder("po").longOpt("pop").desc("Indicates the size of the initial population to be generated. It must be an integer value. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Value").build()
+        source = Option.builder("po").longOpt("pop").desc("Indicates the size of the initial population to be generated. It must be an integer value. It must be greater or equal than/to of the number of topics of the data set. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)
         source = Option.builder("pe").longOpt("perc").desc("Indicates the set of percentiles to be calculated. There must be two comma separated integer values. It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArgs().valueSeparator(',').argName("Percentile").build()
         options.addOption(source)
-        source = Option.builder("e").longOpt("exp").desc("Indicates the number of fake topics to be added at each iteration. It must be an integer value. [OPTIONAL]").hasArg().argName("Value").build()
+        source = Option.builder("e").longOpt("exp").desc("Indicates the number of fake topics to be added at each iteration. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)
-        source = Option.builder("m").longOpt("mrg").desc("Indicates the number of executions of the program to do. The results of the executions will be merged together. It must be an integer value. [OPTIONAL]").hasArg().argName("Value").build()
+        source = Option.builder("m").longOpt("mrg").desc("Indicates the number of executions of the program to do. The results of the executions will be merged together. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)
         return options
 

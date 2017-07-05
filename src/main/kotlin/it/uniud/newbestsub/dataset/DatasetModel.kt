@@ -4,6 +4,7 @@ import com.opencsv.CSVReader
 import it.uniud.newbestsub.problem.*
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools
+import org.apache.commons.cli.ParseException
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation
 import org.apache.logging.log4j.LogManager
@@ -87,7 +88,7 @@ class DatasetModel {
 
     private fun updateData() {
 
-        topicLabels.forEach { topicLabel -> topicDistribution.put(topicLabel, TreeMap<Double, Boolean>()) }
+        topicLabels.forEach { topicLabel -> topicDistribution.put(topicLabel, TreeMap()) }
 
         numberOfSystems = averagePrecisions.entries.size
 
@@ -104,14 +105,17 @@ class DatasetModel {
 
     fun solve(parameters: Parameters): Pair<List<BinarySolution>, Triple<String, String, Long>> {
 
-        val correlationStrategy = this.loadCorrelationStrategy(parameters.correlationMethod)
-        val targetStrategy = this.loadTargetStrategy(parameters.targetToAchieve)
+        datasetName = parameters.datasetName
+        populationSize = parameters.populationSize
+        if (populationSize < numberOfTopics) throw ParseException("Value for the option <<p>> or <<po>> must be greater or equal than/to $numberOfTopics. Current value is $populationSize. Check the usage section below.")
+        val correlationStrategy = this.loadCorrelationMethod(parameters.correlationMethod)
+        val targetStrategy = this.loadTargetToAchieve(parameters.targetToAchieve)
 
         logger.info("Execution started on \"${Thread.currentThread().name}\" with target \"${parameters.targetToAchieve}\". Wait please...")
 
-        notDominatedSolutions = mutableListOf<BinarySolution>() // If data are expanded
-        dominatedSolutions = mutableListOf<BinarySolution>()
-        allSolutions = mutableListOf<BinarySolution>()
+        notDominatedSolutions = mutableListOf() // If data are expanded
+        dominatedSolutions = mutableListOf()
+        allSolutions = mutableListOf()
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
 
@@ -125,7 +129,7 @@ class DatasetModel {
             val loggingFactor = (numberOfTopics * Constants.ITERATION_LOGGING_FACTOR) / 100
             var progressCounter = 0
 
-            parameters.percentiles.forEach { percentileToFind -> percentiles[percentileToFind] = LinkedList<Double>() }
+            parameters.percentiles.forEach { percentileToFind -> percentiles[percentileToFind] = LinkedList() }
 
             for ((iterationCounter, currentCardinality) in (0..numberOfTopics - 1).withIndex()) {
 
@@ -194,7 +198,6 @@ class DatasetModel {
 
         } else {
 
-            populationSize = parameters.populationSize
             numberOfIterations = parameters.numberOfIterations
 
             problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
@@ -254,7 +257,7 @@ class DatasetModel {
         return Pair<List<BinarySolution>, Triple<String, String, Long>>(allSolutions, Triple(targetToAchieve, Thread.currentThread().name, computingTime))
     }
 
-    private fun loadCorrelationStrategy(correlationMethod: String): (Array<Double>, Array<Double>) -> Double {
+    private fun loadCorrelationMethod(correlationMethod: String): (Array<Double>, Array<Double>) -> Double {
 
         val pearsonCorrelation: (Array<Double>, Array<Double>) -> Double = {
             firstArray, secondArray ->
@@ -276,7 +279,7 @@ class DatasetModel {
         }
     }
 
-    private fun loadTargetStrategy(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
+    private fun loadTargetToAchieve(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
 
         val bestStrategy: (BinarySolution, Double) -> BinarySolution = {
             solution, correlation ->
