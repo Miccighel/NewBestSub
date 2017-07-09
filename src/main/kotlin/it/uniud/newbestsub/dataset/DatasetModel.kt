@@ -32,6 +32,8 @@ class DatasetModel {
     var numberOfIterations = 0
     var numberOfRepetitions = 0
     var populationSize = 0
+    var currentExecution = 0
+    var expansionCoefficient = 0
     var systemLabels = emptyArray<String>()
     var topicLabels = emptyArray<String>()
     var averagePrecisions = linkedMapOf<String, Array<Double>>()
@@ -72,8 +74,9 @@ class DatasetModel {
         updateData()
     }
 
-    fun expandData(randomizedAveragePrecisions: Map<String, DoubleArray>, randomizedTopicLabels: Array<String>) {
+    fun expandData(expansionCoefficient : Int, randomizedAveragePrecisions: Map<String, DoubleArray>, randomizedTopicLabels: Array<String>) {
 
+        this.expansionCoefficient = expansionCoefficient
         numberOfTopics += randomizedTopicLabels.size
 
         averagePrecisions.entries.forEach {
@@ -108,6 +111,10 @@ class DatasetModel {
         datasetName = parameters.datasetName
         populationSize = parameters.populationSize
         if (populationSize < numberOfTopics) throw ParseException("Value for the option <<p>> or <<po>> must be greater or equal than/to $numberOfTopics. Current value is $populationSize. Check the usage section below.")
+        numberOfIterations = parameters.numberOfIterations
+        numberOfRepetitions = parameters.numberOfRepetitions
+        currentExecution = parameters.currentExecution
+
         val correlationStrategy = this.loadCorrelationMethod(parameters.correlationMethod)
         val targetStrategy = this.loadTargetToAchieve(parameters.targetToAchieve)
 
@@ -124,7 +131,6 @@ class DatasetModel {
             val variableValues = mutableListOf<Array<Boolean>>()
             val cardinality = mutableListOf<Int>()
             val correlations = mutableListOf<Double>()
-            numberOfRepetitions = parameters.numberOfRepetitions
 
             val loggingFactor = (numberOfTopics * Constants.ITERATION_LOGGING_FACTOR) / 100
             var progressCounter = 0
@@ -197,8 +203,6 @@ class DatasetModel {
             }
 
         } else {
-
-            numberOfIterations = parameters.numberOfIterations
 
             problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
             crossover = BinaryPruningCrossover(0.7)
@@ -303,16 +307,6 @@ class DatasetModel {
         }
     }
 
-    fun findCorrelationForCardinality(cardinality: Double): Double? {
-        allSolutions.forEach { aSolution -> if (aSolution.getCardinality() == cardinality) return aSolution.getCorrelation() }
-        return null
-    }
-
-    fun isTopicInASolutionOfCardinality(topicLabel: String, cardinality: Double): Boolean {
-        val answer = topicDistribution[topicLabel]?.get(cardinality)
-        if (answer != null) return answer else return false
-    }
-
     fun sortByCardinality(solutionsToSort: MutableList<BinarySolution>): MutableList<BinarySolution> {
         solutionsToSort.sortWith(kotlin.Comparator {
             sol1: BinarySolution, sol2: BinarySolution ->
@@ -327,5 +321,58 @@ class DatasetModel {
             Constants.TARGET_WORST -> solutionsToFix.forEach { aSolutionToFix -> aSolutionToFix.setObjective(0, aSolutionToFix.getCardinality() * -1) }
         }
         return solutionsToFix
+    }
+
+    fun findCorrelationForCardinality(cardinality: Double): Double? {
+        allSolutions.forEach { aSolution -> if (aSolution.getCardinality() == cardinality) return aSolution.getCorrelation() }
+        return null
+    }
+
+    fun isTopicInASolutionOfCardinality(topicLabel: String, cardinality: Double): Boolean {
+        val answer = topicDistribution[topicLabel]?.get(cardinality)
+        if (answer != null) return answer else return false
+    }
+
+    fun getBaseFilePath(isTargetAll: Boolean): String {
+        var baseResultPath = "${Constants.OUTPUT_PATH}$datasetName${Constants.FILE_NAME_SEPARATOR}$correlationMethod${Constants.FILE_NAME_SEPARATOR}$numberOfTopics${Constants.FILE_NAME_SEPARATOR}$numberOfIterations${Constants.FILE_NAME_SEPARATOR}$populationSize${Constants.FILE_NAME_SEPARATOR}$numberOfRepetitions${Constants.FILE_NAME_SEPARATOR}"
+        if (currentExecution > 0)
+            baseResultPath += "$currentExecution${Constants.FILE_NAME_SEPARATOR}"
+        if (isTargetAll)
+            baseResultPath += "${Constants.TARGET_ALL}${Constants.FILE_NAME_SEPARATOR}"
+        else
+            baseResultPath += "$targetToAchieve${Constants.FILE_NAME_SEPARATOR}"
+        return baseResultPath
+    }
+
+    fun getAggregatedDataFilePath(isTargetAll: Boolean): String {
+        return "${getBaseFilePath(isTargetAll)}${Constants.AGGREGATED_DATA_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
+    }
+
+    fun getAggregatedDataMergedFilePath(isTargetAll: Boolean): String {
+        return "${getBaseFilePath(isTargetAll)}${Constants.AGGREGATED_DATA_FILE_SUFFIX}${Constants.FILE_NAME_SEPARATOR}${Constants.MERGED_RESULT_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
+    }
+
+    fun getFunctionValuesFilePath(): String {
+        return "${getBaseFilePath(false)}${Constants.FUNCTION_VALUES_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
+    }
+
+    fun getFunctionValuesMergedFilePath(): String {
+        return "${getBaseFilePath(false)}${Constants.FUNCTION_VALUES_FILE_SUFFIX}${Constants.FILE_NAME_SEPARATOR}${Constants.MERGED_RESULT_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
+    }
+
+    fun getVariableValuesFilePath(): String {
+        return "${getBaseFilePath(false)}${Constants.VARIABLE_VALUES_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
+    }
+
+    fun getVariableValuesMergedFilePath(): String {
+        return "${getBaseFilePath(false)}${Constants.VARIABLE_VALUES_FILE_SUFFIX}${Constants.FILE_NAME_SEPARATOR}${Constants.MERGED_RESULT_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
+    }
+
+    fun getInfoFilePath(isTargetAll: Boolean): String {
+        return "${getBaseFilePath(isTargetAll)}${Constants.INFO_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
+    }
+
+    fun getInfoMergedFilePath(isTargetAll: Boolean): String {
+        return "${getBaseFilePath(isTargetAll)}${Constants.INFO_FILE_SUFFIX}${Constants.FILE_NAME_SEPARATOR}${Constants.MERGED_RESULT_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
     }
 }

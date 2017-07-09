@@ -10,6 +10,8 @@ import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import java.io.File
 import java.io.FileNotFoundException
+import java.nio.file.Files
+import java.nio.file.Paths
 
 object Program {
 
@@ -21,7 +23,7 @@ object Program {
         val datasetController: DatasetController
         val datasetPath: String
         val datasetName : String
-        val chosenCorrelationMethod: String
+        val correlationMethod: String
         val targetToAchieve: String
         var numberOfIterations: Int
         var numberOfRepetitions: Int
@@ -29,12 +31,11 @@ object Program {
         var percentiles: List<Int>
         val expansionCoefficient: Int
         val numberOfExecutions: Int
-        var resultPath: String
         val loggingLevel: Level
         var logger: Logger
 
-        System.setProperty("baseLogFileName", "${Constants.LOG_PATH}/Program.log")
-        logger = updateLogger(LogManager.getLogger(), Level.INFO)
+        System.setProperty("baseLogFileName", "${Constants.LOG_PATH}${Constants.LOG_FILE_NAME}${Constants.LOG_FILE_SUFFIX}")
+        logger = updateLogger(LogManager.getLogger("it.uniud.newbestsub.program.Program"), Level.INFO)
 
         try {
 
@@ -44,8 +45,6 @@ object Program {
             datasetPath = "${Constants.INPUT_PATH}$datasetName.csv"
 
             if (!File(datasetPath).exists()) throw FileNotFoundException("Dataset file does not exists. Be sure that path is correct.") else {
-
-                resultPath = "${commandLine.getOptionValue("fi")}-"
 
                 if (commandLine.getOptionValue("l") == "Verbose" || commandLine.getOptionValue("l") == "Limited" || commandLine.getOptionValue("l") == "Off") {
                     when (commandLine.getOptionValue("l")) {
@@ -58,8 +57,7 @@ object Program {
 
                 if (commandLine.getOptionValue("c") == Constants.CORRELATION_PEARSON || commandLine.getOptionValue("c") == Constants.CORRELATION_KENDALL) {
 
-                    chosenCorrelationMethod = commandLine.getOptionValue("c")
-                    resultPath = "$resultPath$chosenCorrelationMethod-"
+                    correlationMethod = commandLine.getOptionValue("c")
 
                 } else throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
 
@@ -89,10 +87,10 @@ object Program {
                             throw ParseException("Value for the option <<po>> or <<pop>> is not an integer. Check the usage section below")
                         }
 
-                        resultPath += "$numberOfIterations-"
-                        resultPath += "$populationSize-"
-
                     }
+
+                    logger = updateLogger(LogManager.getLogger(), loggingLevel)
+                    logger.info("NewBestSub execution started.")
 
                     if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
 
@@ -115,18 +113,7 @@ object Program {
                             throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
                         }
 
-                        resultPath += "$numberOfRepetitions-"
-
                     }
-
-                    if (targetToAchieve != Constants.TARGET_ALL) {
-                        resultPath += targetToAchieve
-                        System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath.log")
-                        resultPath += "-"
-                    } else System.setProperty("baseLogFileName", "${Constants.LOG_PATH}$resultPath${Constants.TARGET_ALL}.log")
-
-                    logger = updateLogger(LogManager.getLogger(), loggingLevel)
-                    logger.info("NewBestSub execution started.")
 
                     datasetController = DatasetController(targetToAchieve)
                     datasetController.load(datasetPath)
@@ -142,15 +129,14 @@ object Program {
 
                         (1..numberOfExecutions).forEach{
                             currentExecution ->
-                            logger.info("Execution number: $currentExecution")
-                            val currentExecutionResultPath = "$resultPath${datasetController.models[0].numberOfTopics}-$currentExecution-"
-                            datasetController.solve(Parameters(datasetName, chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), currentExecutionResultPath)
+                            logger.info("Execution number: $currentExecution/$numberOfExecutions")
+                            datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, currentExecution, percentiles))
                         }
 
-                        datasetController.merge()
+                        datasetController.merge(numberOfExecutions)
 
                     } else
-                        datasetController.solve(Parameters(datasetName, chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
+                        datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
 
                     if (commandLine.hasOption('e')) {
 
@@ -163,10 +149,11 @@ object Program {
 
                         logger.info("Base execution (true data)")
 
+                        datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
                         while (datasetController.models[0].numberOfTopics + expansionCoefficient < Constants.MAXIMUM_EXPANSION) {
                             logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + expansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $expansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_EXPANSION}, Original Topic Number: $trueTopicNumber>")
                             datasetController.expand(expansionCoefficient)
-                            datasetController.solve(Parameters(datasetName, chosenCorrelationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, percentiles), "$resultPath${datasetController.models[0].numberOfTopics}-")
+                            datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
                         }
 
                     }
@@ -177,19 +164,24 @@ object Program {
             }
 
         } catch (exception: ParseException) {
+
             logger.error(exception.message)
-            logger.error(exception.stackTrace)
             val formatter = HelpFormatter()
             formatter.printHelp("NewBestSub", options)
             logger.error("End of the usage section.")
             logger.info("NewBestSub execution terminated.")
+
         } catch (exception: FileNotFoundException) {
+
             logger.error(exception.message)
+            exception.printStackTrace()
             logger.info("NewBestSub execution terminated.")
+
         } catch (exception: FileSystemException) {
+
             logger.error(exception.message)
-            logger.error(exception.stackTrace)
             logger.info("NewBestSub execution terminated.")
+
         }
 
     }

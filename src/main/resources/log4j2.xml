@@ -31,8 +31,9 @@
         </RollingFile>
     </Appenders>
     <Loggers>
-        <Root level="error">
+        <Root level="warn">
             <AppenderRef ref="Console-Main"/>
+            <AppenderRef ref="Rolling"/>
         </Root>
         <Logger name="it.uniud.newbestsub.program.Program" additivity="false">
             <AppenderRef ref="Console-Program"/>
