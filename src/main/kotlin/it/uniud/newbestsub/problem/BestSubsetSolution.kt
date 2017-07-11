@@ -1,5 +1,6 @@
 package it.uniud.newbestsub.problem
 
+import guide.channel.example06.launchProcessor
 import org.apache.commons.lang3.builder.EqualsBuilder
 import org.apache.commons.lang3.builder.HashCodeBuilder
 import org.apache.logging.log4j.LogManager
@@ -14,15 +15,19 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
     var topicStatus: Array<Boolean>
     var numberOfSelectedTopics = 0
+    private lateinit var topicLabels : Array<String>
     private val logger = LogManager.getLogger()
 
     constructor(problem: BinaryProblem, numberOfTopics: Int, cardinalityToGenerate: Int) : super(problem) {
+
+        problem as BestSubsetProblem
 
         initializeObjectiveValues()
 
         val generator = Random()
         numberOfSelectedTopics = 0
         topicStatus = Array(numberOfTopics, { false })
+        topicLabels = problem.topicLabels
 
         while (numberOfSelectedTopics < cardinalityToGenerate) {
             val topicToSelect = generator.nextInt(numberOfTopics)
@@ -34,14 +39,17 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
         setVariableValue(0, createNewBitSet(topicStatus.size, topicStatus))
 
-        logger.debug("<Num. Sel. Topics: $numberOfSelectedTopics, Gene: ${getVariableValueString(0)}>")
+        logger.debug("<Num. Sel. Topics: $numberOfSelectedTopics, Sel. Topics: ${getTopicLabelsFromTopicStatus()}, Gene: ${getVariableValueString(0)}>")
     }
 
     constructor(problem: BinaryProblem, numberOfTopics: Int) : super(problem) {
 
+        problem as BestSubsetProblem
+
         initializeObjectiveValues()
 
         numberOfSelectedTopics = 0
+        topicLabels = problem.topicLabels
 
         val columnKeepProbability = JMetalRandom.getInstance().nextDouble()
 
@@ -64,7 +72,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
         setVariableValue(0, createNewBitSet(topicStatus.size, topicStatus))
 
-        logger.debug("<Num. Sel. Topics: $numberOfSelectedTopics, Gene: ${getVariableValueString(0)}>")
+        logger.debug("<Num. Sel. Topics: $numberOfSelectedTopics, Sel. Topics: ${getTopicLabelsFromTopicStatus()}, Gene: ${getVariableValueString(0)}>")
     }
 
     constructor(solution: BestSubsetSolution) : super(solution.problem) {
@@ -100,6 +108,18 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
         val topicStatusValues = BooleanArray(getVariableValue(0).binarySetLength)
         for (i in topicStatusValues.indices) topicStatusValues[i] = getVariableValue(0).get(i)
         return topicStatusValues
+    }
+
+    fun getTopicLabelsFromTopicStatus() : String {
+        var selectedTopicLabels = "["
+        topicStatus.forEachIndexed{
+            index, aTopicStatusValue->
+            if (aTopicStatusValue)
+                selectedTopicLabels += "${topicLabels[index]} "
+        }
+        selectedTopicLabels = selectedTopicLabels.dropLast(1)
+        selectedTopicLabels += "]"
+        return selectedTopicLabels
     }
 
     override fun getNumberOfBits(index: Int): Int {

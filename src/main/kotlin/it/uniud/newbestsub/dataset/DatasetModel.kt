@@ -190,7 +190,7 @@ class DatasetModel {
 
             logger.info("Completed iterations: $numberOfTopics/$numberOfTopics (100%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
 
-            problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
+            problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels, correlationStrategy, targetStrategy)
 
             (0..numberOfTopics - 1).forEach {
                 index ->
@@ -204,7 +204,7 @@ class DatasetModel {
 
         } else {
 
-            problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, correlationStrategy, targetStrategy)
+            problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels, correlationStrategy, targetStrategy)
             crossover = BinaryPruningCrossover(0.7)
             mutation = BitFlipMutation(0.3)
             selection = BinaryTournamentSelection(RankingAndCrowdingDistanceComparator<BinarySolution>())

@@ -13,6 +13,7 @@ class BestSubsetProblem(
         private var numberOfTopics: Int,
         private var averagePrecisions: MutableMap<String, Array<Double>>,
         private var meanAveragePrecisions: Array<Double>,
+        var topicLabels : Array<String>,
         private var correlationStrategy: (Array<Double>, Array<Double>) -> Double,
         private var targetStrategy: (BinarySolution, Double) -> BinarySolution
 
@@ -61,7 +62,7 @@ class BestSubsetProblem(
         val solutionOld = dominatedSolutions[solution.numberOfSelectedTopics.toDouble()]
         val correlationOld: Double
 
-        logger.debug("<Correlation: $correlation, " + "Num. Sel. Topics: " + "${solution.numberOfSelectedTopics}, " + "Ev. Gene: ${solution.getVariableValueString(0)}>")
+        logger.debug("<Correlation: $correlation, Num. Sel. Topics: ${solution.numberOfSelectedTopics}, Sel. Topics: ${solution.getTopicLabelsFromTopicStatus()}, Ev. Gene: ${solution.getVariableValueString(0)}>")
 
         targetStrategy(solution, correlation)
 

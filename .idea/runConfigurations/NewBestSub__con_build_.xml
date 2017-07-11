@@ -1,0 +1,20 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="NewBestSub (con build)" type="Application" factoryName="Application">
+    <extension name="coverage" enabled="false" merge="false" sample_coverage="true" runner="idea" />
+    <option name="MAIN_CLASS_NAME" value="it.uniud.newbestsub.program.Program" />
+    <option name="VM_PARAMETERS" value="" />
+    <option name="PROGRAM_PARAMETERS" value="-fi &quot;AH99&quot; -c &quot;Kendall&quot; -po 100 -i 100 -t &quot;Best&quot; -log Verbose " />
+    <option name="WORKING_DIRECTORY" value="file://$PROJECT_DIR$" />
+    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
+    <option name="ALTERNATIVE_JRE_PATH" />
+    <option name="ENABLE_SWING_INSPECTOR" value="false" />
+    <option name="ENV_VARIABLES" />
+    <option name="PASS_PARENT_ENVS" value="false" />
+    <module name="NewBestSub" />
+    <envs />
+    <method>
+      <option name="Make" enabled="false" />
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="NewBestSub" run_configuration_type="MavenRunConfiguration" />
+    </method>
+  </configuration>
+</component>

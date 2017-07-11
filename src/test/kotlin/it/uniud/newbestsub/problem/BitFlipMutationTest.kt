@@ -31,7 +31,7 @@ class BitFlipMutationTest {
         }
 
         val parameters = Parameters("AH99", Constants.CORRELATION_PEARSON, Constants.TARGET_BEST, 100000, 1000, 1000, 0,listOf(50))
-        val testProb = BestSubsetProblem(parameters, testAvgPrec.size, testAvgPrec, Array(0, { 0.0 }), testCorr, testTarg)
+        val testProb = BestSubsetProblem(parameters, testAvgPrec.size, testAvgPrec, Array(0, { 0.0 }), Array(50, {"Test"}), testCorr, testTarg)
         testSol = BestSubsetSolution(testProb, testAvgPrec.size)
         val oldStatus = testSol.getVariableValueString(0)
         testSol = testMut.execute(testSol) as BestSubsetSolution

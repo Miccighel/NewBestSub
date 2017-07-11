@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="NewBestSub (senza build)" type="JarApplication" factoryName="JAR Application">
+    <extension name="coverage" enabled="false" merge="false" sample_coverage="true" runner="idea" />
+    <option name="JAR_PATH" value="$PROJECT_DIR$/target/NewBestSub-1.0-SNAPSHOT.jar" />
+    <option name="PROGRAM_PARAMETERS" value="-fi &quot;AH99&quot; -c &quot;Kendall&quot; -po 100 -i 100 -t &quot;Best&quot; -log Verbose " />
+    <option name="WORKING_DIRECTORY" value="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub" />
+    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="true" />
+    <option name="ALTERNATIVE_JRE_PATH" value="1.8" />
+    <envs />
+    <method />
+  </configuration>
+</component>
