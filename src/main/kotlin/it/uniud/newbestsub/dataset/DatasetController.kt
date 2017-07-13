@@ -162,7 +162,7 @@ class DatasetController(
             aggregatedDataResultPaths = aggregatedDataResultPaths.plus(models[0].getAggregatedDataFilePath(false))
             functionValuesResultPaths = functionValuesResultPaths.plus(models[0].getFunctionValuesFilePath())
             variableValuesResultPaths = variableValuesResultPaths.plus(models[0].getVariableValuesFilePath())
-            infoResultPaths = infoResultPaths.plus(models[0].getInfoFilePath(true))
+            infoResultPaths = infoResultPaths.plus(models[0].getInfoFilePath(false))
 
             logger.info("Data aggregation started.")
             view.print(aggregate(models), models[0].getAggregatedDataFilePath(false))
@@ -324,39 +324,94 @@ class DatasetController(
         val mergedAverageFunctionValues = LinkedList<String>()
         val mergedAverageVariableValues = LinkedList<String>()
 
-        val aggregatedDataReaders = Array(numberOfExecutions, { index -> CSVReader(FileReader(aggregatedDataResultPaths[index])) })
+        logger.info("Loading aggregated data for all executions.")
+        logger.info("Aggregated data paths:")
+        val aggregatedDataReaders = Array(numberOfExecutions, {
+            index ->
+            logger.info("\"${aggregatedDataResultPaths[index]}\"")
+            CSVReader(FileReader(aggregatedDataResultPaths[index]))
+        })
         val aggregatedCardinality = LinkedList<LinkedList<Array<String>>>()
 
-        var indexEx: Int
+        var executionIndex: Int
 
         if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
-            indexEx = -3
-            bestFunctionValuesReaders = Array(numberOfExecutions, { _ -> indexEx += 3; Files.newBufferedReader(Paths.get(functionValuesResultPaths[indexEx])) })
-            indexEx = -3
+            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -3 else executionIndex = -1
+            logger.info("Loading function values for experiment \"${Constants.TARGET_BEST}\" for all executions.")
+            logger.info("Function values paths:")
+            bestFunctionValuesReaders = Array(numberOfExecutions, {
+                _ ->
+                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+                logger.info("\"${functionValuesResultPaths[executionIndex]}\"")
+                Files.newBufferedReader(Paths.get(functionValuesResultPaths[executionIndex]))
+            })
+            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -3 else executionIndex = -1
             bestFunctionValues = LinkedList()
-            bestVariableValuesReaders = Array(numberOfExecutions, { _ -> indexEx += 3; Files.newBufferedReader(Paths.get(variableValuesResultPaths[indexEx])) })
+            logger.info("Loading variable values for experiment \"${Constants.TARGET_BEST}\" for all executions.")
+            logger.info("Variable values paths:")
+            bestVariableValuesReaders = Array(numberOfExecutions, {
+                _ ->
+                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+                logger.info("\"${variableValuesResultPaths[executionIndex]}\"")
+                Files.newBufferedReader(Paths.get(variableValuesResultPaths[executionIndex]))
+            })
             bestVariableValues = LinkedList()
         }
 
         if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
-            indexEx = -2
-            worstFunctionValuesReaders = Array(numberOfExecutions, { _ -> indexEx += 3; Files.newBufferedReader(Paths.get(functionValuesResultPaths[indexEx])) })
-            indexEx = -2
+            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
+            logger.info("Loading function values for experiment \"${Constants.TARGET_WORST}\" for all executions.")
+            logger.info("Function values paths:")
+            worstFunctionValuesReaders = Array(numberOfExecutions, {
+                _ ->
+                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+                logger.info("\"${functionValuesResultPaths[executionIndex]}\"")
+                Files.newBufferedReader(Paths.get(functionValuesResultPaths[executionIndex]))
+            })
+            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
             worstFunctionValues = LinkedList()
-            worstVariableValuesReaders = Array(numberOfExecutions, { _ -> indexEx += 3;Files.newBufferedReader(Paths.get(variableValuesResultPaths[indexEx])) })
+            logger.info("Loading variable values for experiment \"${Constants.TARGET_WORST}\" for all executions.")
+            logger.info("Variable values paths:")
+            worstVariableValuesReaders = Array(numberOfExecutions, {
+                _ ->
+                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+                logger.info("\"${variableValuesResultPaths[executionIndex]}\"")
+                Files.newBufferedReader(Paths.get(variableValuesResultPaths[executionIndex]))
+            })
             worstVariableValues = LinkedList()
         }
 
         if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
-            indexEx = -1
-            averageFunctionValuesReaders = Array(numberOfExecutions, { _ -> indexEx += 3; Files.newBufferedReader(Paths.get(functionValuesResultPaths[indexEx])) })
-            indexEx = -1
+            executionIndex = -1
+            logger.info("Loading function values for experiment \"${Constants.TARGET_AVERAGE}\" for all executions.")
+            logger.info("Function values paths:")
+            averageFunctionValuesReaders = Array(numberOfExecutions, {
+                _ ->
+                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+                logger.info("\"${functionValuesResultPaths[executionIndex]}\"")
+                Files.newBufferedReader(Paths.get(functionValuesResultPaths[executionIndex]))
+            })
+            executionIndex = -1
             averageFunctionValues = LinkedList()
-            averageVariableValuesReaders = Array(numberOfExecutions, { _ -> indexEx += 3; Files.newBufferedReader(Paths.get(variableValuesResultPaths[indexEx])) })
+            logger.info("Loading variable values for experiment \"${Constants.TARGET_WORST}\" for all executions.")
+            logger.info("Variable values paths:")
+            averageVariableValuesReaders = Array(numberOfExecutions, {
+                _ ->
+                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+                logger.info("\"${variableValuesResultPaths[executionIndex]}\"")
+                Files.newBufferedReader(Paths.get(variableValuesResultPaths[executionIndex]))
+            })
             averageVariableValues = LinkedList()
         }
 
-        val infoReaders = Array(numberOfExecutions, { index -> Files.newBufferedReader(Paths.get(infoResultPaths[index])) })
+        logger.info("Loading info for all executions.")
+        logger.info("Info paths:")
+
+        val infoReaders = Array(numberOfExecutions, {
+            index ->
+            logger.info("\"${infoResultPaths[index]}\"")
+            Files.newBufferedReader(Paths.get(infoResultPaths[index]))
+        })
         val info = LinkedList<LinkedList<String>>()
 
         while (readCounter < models[0].numberOfTopics) {
@@ -441,8 +496,15 @@ class DatasetController(
         val mergedInfo = LinkedList<String>()
         mergedInfo.add(infoHeader)
 
+        val loggingFactor = ((aggregatedCardinality.size + 1) * Constants.LOGGING_FACTOR) / 100
+        var progressCounter = 0
+
         aggregatedCardinality.forEachIndexed {
             index, currentAggregatedCardinality ->
+            if (((index) % loggingFactor) == 0 && (aggregatedCardinality.size + 1) > loggingFactor) {
+                logger.info("Results merged for cardinality: ${index + 1}/${aggregatedCardinality.size + 1} ($progressCounter%) for $numberOfExecutions total executions.")
+                progressCounter += Constants.LOGGING_FACTOR
+            }
             var bestAggregatedCorrelation = -10.0
             var bestAggregatedCorrelationIndex = -10
             var worstAggregatedCorrelation = 10.0
@@ -455,7 +517,7 @@ class DatasetController(
                     bestAggregatedCorrelationIndex = anotherIndex
                 }
                 val minimumValue: Double
-                if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST)
+                if (targetToAchieve == Constants.TARGET_ALL)
                     minimumValue = Math.min(worstAggregatedCorrelation, aggregatedCardinalityForAnExecution[2].toDouble())
                 else
                     minimumValue = Math.min(worstAggregatedCorrelation, aggregatedCardinalityForAnExecution[1].toDouble())
@@ -470,21 +532,20 @@ class DatasetController(
                 Constants.TARGET_BEST -> mergedDataAggregatedForCurrentAggregatedCardinality[1] = bestAggregatedCorrelation.toString()
                 Constants.TARGET_WORST -> mergedDataAggregatedForCurrentAggregatedCardinality[1] = worstAggregatedCorrelation.toString()
             }
+            val lowerBound: Int
+            val upperBound = currentAggregatedCardinality[0].size - 1
             when (targetToAchieve) {
                 Constants.TARGET_ALL -> {
                     mergedDataAggregatedForCurrentAggregatedCardinality[1] = bestAggregatedCorrelation.toString()
                     mergedDataAggregatedForCurrentAggregatedCardinality[2] = worstAggregatedCorrelation.toString()
-                    (3..currentAggregatedCardinality[0].size - 1).forEach {
-                        anotherIndex ->
-                        mergedDataAggregatedForCurrentAggregatedCardinality[anotherIndex] = currentAggregatedCardinality[0][anotherIndex]
-                    }
+                    lowerBound = 3
                 }
-                else -> {
-                    (1..currentAggregatedCardinality[0].size - 1).forEach {
-                        anotherIndex ->
-                        mergedDataAggregatedForCurrentAggregatedCardinality[anotherIndex] = currentAggregatedCardinality[0][anotherIndex]
-                    }
-                }
+                Constants.TARGET_AVERAGE -> { lowerBound = 1 }
+                else -> { lowerBound = 2 }
+            }
+            (lowerBound..upperBound).forEach {
+                anotherIndex ->
+                mergedDataAggregatedForCurrentAggregatedCardinality[anotherIndex] = currentAggregatedCardinality[0][anotherIndex]
             }
             mergedAggregatedData.add(mergedDataAggregatedForCurrentAggregatedCardinality)
             if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
@@ -500,6 +561,8 @@ class DatasetController(
                 mergedAverageVariableValues.add(averageVariableValues[index][0])
             }
         }
+
+        logger.info("Results merged for cardinality: ${aggregatedCardinality.size + 1}/${aggregatedCardinality.size + 1} (100%) for $numberOfExecutions total executions.")
 
         var bestComputingTime = 0
         var worstComputingTime = 0
@@ -531,27 +594,35 @@ class DatasetController(
             }
             Constants.TARGET_WORST -> {
                 info[0].forEach { infoForAWorstExecution -> worstComputingTime += infoForAWorstExecution.split(",").last().replace("\"", "").toInt() }
-                mergedWorstExecutionInfo = info[1][0].split(",").toMutableList()
+                mergedWorstExecutionInfo = info[0][0].split(",").toMutableList()
                 mergedWorstExecutionInfo[mergedWorstExecutionInfo.lastIndex] = worstComputingTime.toString()
                 mergedInfo.add(StringUtils.join(mergedWorstExecutionInfo, ","))
             }
             Constants.TARGET_AVERAGE -> {
                 info[0].forEach { infoForAnAverageExecution -> averageComputingTime += infoForAnAverageExecution.split(",").last().replace("\"", "").toInt() }
-                mergedAverageExecutionInfo = info[2][0].split(",").toMutableList()
+                mergedAverageExecutionInfo = info[0][0].split(",").toMutableList()
                 mergedAverageExecutionInfo[mergedAverageExecutionInfo.lastIndex] = averageComputingTime.toString()
                 mergedInfo.add(StringUtils.join(mergedAverageExecutionInfo, ","))
             }
         }
+        info[0].forEachIndexed { index, _ -> logger.info("Info merged for execution: ${index + 1}/$numberOfExecutions.") }
 
         val mergedAggregatedDataWriter: CSVWriter
-        if (targetToAchieve == Constants.TARGET_ALL)
+        if (targetToAchieve == Constants.TARGET_ALL) {
+            logger.info("Merged aggregated data for all executions available at:")
+            logger.info("\"${models[0].getAggregatedDataMergedFilePath(true)}\"")
             mergedAggregatedDataWriter = CSVWriter(FileWriter(models[0].getAggregatedDataMergedFilePath(true)))
-        else
+        } else {
+            logger.info("Merged aggregated data for all executions available at:")
+            logger.info("\"${models[0].getAggregatedDataMergedFilePath(false)}\"")
             mergedAggregatedDataWriter = CSVWriter(FileWriter(models[0].getAggregatedDataMergedFilePath(false)))
+        }
         mergedAggregatedDataWriter.writeAll(mergedAggregatedData)
         mergedAggregatedDataWriter.close()
 
         if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
+            logger.info("Merged function values for experiment \"${Constants.TARGET_BEST}\" for all executions available at:")
+            logger.info("\"${models[0].getFunctionValuesMergedFilePath()}\"")
             val bestFunctionValuesDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(models[0].getFunctionValuesMergedFilePath()))
             mergedBestFunctionValues.forEach {
                 aMergedBestFunctionValues ->
@@ -559,6 +630,8 @@ class DatasetController(
                 bestFunctionValuesDataWriter.newLine()
             }
             bestFunctionValuesDataWriter.close()
+            logger.info("Merged variable values for experiment \"${Constants.TARGET_BEST}\" for all executions available at:")
+            logger.info("\"${models[0].getVariableValuesMergedFilePath()}\"")
             val bestVariableValuesDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(models[0].getVariableValuesMergedFilePath()))
             mergedBestVariableValues.forEach {
                 aMergedBestVariableValues ->
@@ -569,22 +642,30 @@ class DatasetController(
         }
 
         if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
+            logger.info("Merged function values for experiment \"${Constants.TARGET_WORST}\" for all executions available at:")
             val worstFunctionValuesDataWriter: BufferedWriter
-            if (targetToAchieve == Constants.TARGET_ALL)
+            if (targetToAchieve == Constants.TARGET_ALL) {
                 worstFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get(models[1].getFunctionValuesMergedFilePath()))
-            else
+                logger.info("\"${models[1].getFunctionValuesMergedFilePath()}\"")
+            } else {
                 worstFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get(models[0].getFunctionValuesMergedFilePath()))
+                logger.info("\"${models[0].getFunctionValuesMergedFilePath()}\"")
+            }
             mergedWorstFunctionValues.forEach {
                 aMergedWorstFunctionValues ->
                 worstFunctionValuesDataWriter.write(aMergedWorstFunctionValues)
                 worstFunctionValuesDataWriter.newLine()
             }
             worstFunctionValuesDataWriter.close()
+            logger.info("Merged variable values for experiment \"${Constants.TARGET_WORST}\" for all executions available at:")
             val worstVariableValuesDataWriter: BufferedWriter
-            if (targetToAchieve == Constants.TARGET_ALL)
+            if (targetToAchieve == Constants.TARGET_ALL) {
                 worstVariableValuesDataWriter = Files.newBufferedWriter(Paths.get(models[1].getVariableValuesMergedFilePath()))
-            else
+                logger.info("\"${models[1].getVariableValuesMergedFilePath()}\"")
+            } else {
                 worstVariableValuesDataWriter = Files.newBufferedWriter(Paths.get(models[0].getVariableValuesMergedFilePath()))
+                logger.info("\"${models[0].getVariableValuesMergedFilePath()}\"")
+            }
             mergedWorstVariableValues.forEach {
                 aMergedWorstVariableValues ->
                 worstVariableValuesDataWriter.write(aMergedWorstVariableValues)
@@ -594,22 +675,30 @@ class DatasetController(
         }
 
         if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
+            logger.info("Merged function values for experiment \"${Constants.TARGET_AVERAGE}\" for all executions available at:")
             val averageFunctionValuesDataWriter: BufferedWriter
-            if (targetToAchieve == Constants.TARGET_ALL)
+            if (targetToAchieve == Constants.TARGET_ALL) {
                 averageFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get(models[2].getFunctionValuesMergedFilePath()))
-            else
+                logger.info("\"${models[2].getFunctionValuesMergedFilePath()}\"")
+            } else {
                 averageFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get(models[0].getFunctionValuesMergedFilePath()))
+                logger.info("\"${models[0].getFunctionValuesMergedFilePath()}\"")
+            }
             mergedAverageFunctionValues.forEach {
                 aMergedAverageFunctionValues ->
                 averageFunctionValuesDataWriter.write(aMergedAverageFunctionValues)
                 averageFunctionValuesDataWriter.newLine()
             }
             averageFunctionValuesDataWriter.close()
+            logger.info("Merged variable values for experiment \"${Constants.TARGET_AVERAGE}\" for all executions available at:")
             val averageVariableValuesDataWriter: BufferedWriter
-            if (targetToAchieve == Constants.TARGET_ALL)
+            if (targetToAchieve == Constants.TARGET_ALL) {
                 averageVariableValuesDataWriter = Files.newBufferedWriter(Paths.get(models[2].getVariableValuesMergedFilePath()))
-            else
+                logger.info("\"${models[2].getVariableValuesMergedFilePath()}\"")
+            } else {
                 averageVariableValuesDataWriter = Files.newBufferedWriter(Paths.get(models[0].getVariableValuesMergedFilePath()))
+                logger.info("\"${models[0].getVariableValuesMergedFilePath()}\"")
+            }
             mergedAverageVariableValues.forEach {
                 aMergedAverageVariableValues ->
                 averageVariableValuesDataWriter.write(aMergedAverageVariableValues)
@@ -618,11 +707,15 @@ class DatasetController(
             averageVariableValuesDataWriter.close()
         }
 
+        logger.info("Merged info for all executions available at:")
         val infoValuesWriter: BufferedWriter
-        if (targetToAchieve == Constants.TARGET_ALL)
+        if (targetToAchieve == Constants.TARGET_ALL) {
             infoValuesWriter = Files.newBufferedWriter(Paths.get(models[0].getInfoMergedFilePath(true)))
-        else
+            logger.info("\"${models[0].getInfoMergedFilePath(true)}\"")
+        } else {
             infoValuesWriter = Files.newBufferedWriter(Paths.get(models[0].getInfoMergedFilePath(false)))
+            logger.info("\"${models[0].getInfoMergedFilePath(false)}\"")
+        }
         mergedInfo.forEach {
             aMergedInfo ->
             infoValuesWriter.write(aMergedInfo)
@@ -630,10 +723,34 @@ class DatasetController(
         }
         infoValuesWriter.close()
 
-        aggregatedDataResultPaths.forEach { aResultPath -> Files.deleteIfExists(Paths.get(aResultPath)) }
-        functionValuesResultPaths.forEach { aResultPath -> Files.deleteIfExists(Paths.get(aResultPath)) }
-        variableValuesResultPaths.forEach { aResultPath -> Files.deleteIfExists(Paths.get(aResultPath)) }
-        infoResultPaths.forEach { aResultPath -> Files.deleteIfExists(Paths.get(aResultPath)) }
+        logger.info("Cleaning of not merged results for all executions started.")
+
+        logger.info("Cleaning aggregated data at paths:")
+        aggregatedDataResultPaths.forEach {
+            aResultPath ->
+            Files.deleteIfExists(Paths.get(aResultPath))
+            logger.info("\"$aResultPath\"")
+        }
+        logger.info("Cleaning function values at paths:")
+        functionValuesResultPaths.forEach {
+            aResultPath ->
+            Files.deleteIfExists(Paths.get(aResultPath))
+            logger.info("\"$aResultPath\"")
+        }
+        logger.info("Cleaning variable values at paths:")
+        variableValuesResultPaths.forEach {
+            aResultPath ->
+            Files.deleteIfExists(Paths.get(aResultPath))
+            logger.info("\"$aResultPath\"")
+        }
+        logger.info("Cleaning info at paths:")
+        infoResultPaths.forEach {
+            aResultPath ->
+            Files.deleteIfExists(Paths.get(aResultPath))
+            logger.info("\"$aResultPath\"")
+        }
+
+        logger.info("Cleaning of not merged results for all executions completed.")
 
     }
 }

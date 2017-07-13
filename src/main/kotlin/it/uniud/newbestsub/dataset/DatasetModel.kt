@@ -109,10 +109,6 @@ class DatasetModel {
     fun solve(parameters: Parameters): Pair<List<BinarySolution>, Triple<String, String, Long>> {
 
         datasetName = parameters.datasetName
-        populationSize = parameters.populationSize
-        if (populationSize < numberOfTopics) throw ParseException("Value for the option <<p>> or <<po>> must be greater or equal than/to $numberOfTopics. Current value is $populationSize. Check the usage section below.")
-        numberOfIterations = parameters.numberOfIterations
-        numberOfRepetitions = parameters.numberOfRepetitions
         currentExecution = parameters.currentExecution
 
         val correlationStrategy = this.loadCorrelationMethod(parameters.correlationMethod)
@@ -126,13 +122,15 @@ class DatasetModel {
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
 
+            numberOfRepetitions = parameters.numberOfRepetitions
+
             val startTime = System.nanoTime()
 
             val variableValues = mutableListOf<Array<Boolean>>()
             val cardinality = mutableListOf<Int>()
             val correlations = mutableListOf<Double>()
 
-            val loggingFactor = (numberOfTopics * Constants.ITERATION_LOGGING_FACTOR) / 100
+            val loggingFactor = (numberOfTopics * Constants.LOGGING_FACTOR) / 100
             var progressCounter = 0
 
             parameters.percentiles.forEach { percentileToFind -> percentiles[percentileToFind] = LinkedList() }
@@ -141,7 +139,7 @@ class DatasetModel {
 
                 if ((iterationCounter % loggingFactor) == 0 && numberOfTopics - 1 > loggingFactor) {
                     logger.info("Completed iterations: $currentCardinality/$numberOfTopics ($progressCounter%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
-                    progressCounter += Constants.ITERATION_LOGGING_FACTOR
+                    progressCounter += Constants.LOGGING_FACTOR
                 }
 
                 var correlationsSum = 0.0
@@ -203,6 +201,10 @@ class DatasetModel {
             }
 
         } else {
+
+            populationSize = parameters.populationSize
+            if (populationSize < numberOfTopics) throw ParseException("Value for the option <<p>> or <<po>> must be greater or equal than/to $numberOfTopics. Current value is $populationSize. Check the usage section below.")
+            numberOfIterations = parameters.numberOfIterations
 
             problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels, correlationStrategy, targetStrategy)
             crossover = BinaryPruningCrossover(0.7)

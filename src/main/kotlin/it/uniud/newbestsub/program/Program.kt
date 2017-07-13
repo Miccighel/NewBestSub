@@ -102,6 +102,7 @@ object Program {
                             throw ParseException("Value for the option <<r>> or <<rep>> is not an integer. Check the usage section below")
                         }
 
+                        if (!commandLine.hasOption("pe")) throw ParseException("Value for the option <<pe>> or <<perc>> is missing. Check the usage section below.")
                         val percentilesToParse = commandLine.getOptionValues("pe").toList()
                         if (percentilesToParse.size > 2) throw ParseException("Value for the option <<pe>> or <<perc>> is wrong. Check the usage section below.")
                         try {
@@ -133,7 +134,9 @@ object Program {
                             datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, currentExecution, percentiles))
                         }
 
+                        logger.info("Starting to merge results of $numberOfExecutions executions.")
                         datasetController.merge(numberOfExecutions)
+                        logger.info("Executions result merging completed.")
 
                     } else
                         datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))

@@ -5,7 +5,7 @@ object Constants {
     val LOG_PATH = "log/"
     val LOG_FILE_NAME = "Execution"
     val LOG_FILE_SUFFIX = ".log"
-    val ITERATION_LOGGING_FACTOR = 10
+    val LOGGING_FACTOR = 10
     val TARGET_BEST = "Best"
     val TARGET_WORST = "Worst"
     val TARGET_AVERAGE = "Average"

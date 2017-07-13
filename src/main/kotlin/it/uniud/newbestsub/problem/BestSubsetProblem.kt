@@ -48,11 +48,11 @@ class BestSubsetProblem(
 
         solution as BestSubsetSolution
 
-        val loggingFactor = (parameters.numberOfIterations * Constants.ITERATION_LOGGING_FACTOR) / 100
+        val loggingFactor = (parameters.numberOfIterations * Constants.LOGGING_FACTOR) / 100
 
         if ((iterationCounter % loggingFactor) == 0 && parameters.numberOfIterations > loggingFactor) {
             logger.info("Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
-            progressCounter += Constants.ITERATION_LOGGING_FACTOR
+            progressCounter += Constants.LOGGING_FACTOR
         }
 
         var iterator = averagePrecisions.entries.iterator()
