@@ -13,7 +13,7 @@ class BestSubsetProblem(
         private var numberOfTopics: Int,
         private var averagePrecisions: MutableMap<String, Array<Double>>,
         private var meanAveragePrecisions: Array<Double>,
-        var topicLabels : Array<String>,
+        var topicLabels: Array<String>,
         private var correlationStrategy: (Array<Double>, Array<Double>) -> Double,
         private var targetStrategy: (BinarySolution, Double) -> BinarySolution
 

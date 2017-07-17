@@ -74,7 +74,7 @@ class DatasetModel {
         updateData()
     }
 
-    fun expandData(expansionCoefficient : Int, randomizedAveragePrecisions: Map<String, DoubleArray>, randomizedTopicLabels: Array<String>) {
+    fun expandData(expansionCoefficient: Int, randomizedAveragePrecisions: Map<String, DoubleArray>, randomizedTopicLabels: Array<String>) {
 
         this.expansionCoefficient = expansionCoefficient
         numberOfTopics += randomizedTopicLabels.size
@@ -309,7 +309,7 @@ class DatasetModel {
         }
     }
 
-    fun sortByCardinality(solutionsToSort: MutableList<BinarySolution>): MutableList<BinarySolution> {
+    private fun sortByCardinality(solutionsToSort: MutableList<BinarySolution>): MutableList<BinarySolution> {
         solutionsToSort.sortWith(kotlin.Comparator {
             sol1: BinarySolution, sol2: BinarySolution ->
             (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
@@ -317,7 +317,7 @@ class DatasetModel {
         return solutionsToSort
     }
 
-    fun fixObjectiveFunctionValues(solutionsToFix: MutableList<BinarySolution>): MutableList<BinarySolution> {
+    private fun fixObjectiveFunctionValues(solutionsToFix: MutableList<BinarySolution>): MutableList<BinarySolution> {
         when (targetToAchieve) {
             Constants.TARGET_BEST -> solutionsToFix.forEach { aSolutionToFix -> aSolutionToFix.setObjective(1, aSolutionToFix.getCorrelation() * -1) }
             Constants.TARGET_WORST -> solutionsToFix.forEach { aSolutionToFix -> aSolutionToFix.setObjective(0, aSolutionToFix.getCardinality() * -1) }
@@ -335,8 +335,12 @@ class DatasetModel {
         if (answer != null) return answer else return false
     }
 
-    fun getBaseFilePath(isTargetAll: Boolean): String {
-        var baseResultPath = "${Constants.OUTPUT_PATH}$datasetName${Constants.FILE_NAME_SEPARATOR}$correlationMethod${Constants.FILE_NAME_SEPARATOR}$numberOfTopics${Constants.FILE_NAME_SEPARATOR}$numberOfIterations${Constants.FILE_NAME_SEPARATOR}$populationSize${Constants.FILE_NAME_SEPARATOR}$numberOfRepetitions${Constants.FILE_NAME_SEPARATOR}"
+    private fun getBaseFilePath(isTargetAll: Boolean): String {
+        var baseResultPath = "${Constants.NEWBESTSUB_OUTPUT_PATH}$datasetName${Constants.FILE_NAME_SEPARATOR}$correlationMethod${Constants.FILE_NAME_SEPARATOR}$numberOfTopics${Constants.FILE_NAME_SEPARATOR}"
+        if (targetToAchieve != Constants.TARGET_AVERAGE && targetToAchieve != Constants.TARGET_ALL)
+            baseResultPath += "$numberOfIterations${Constants.FILE_NAME_SEPARATOR}$populationSize${Constants.FILE_NAME_SEPARATOR}"
+        if (targetToAchieve == Constants.TARGET_AVERAGE || isTargetAll)
+            baseResultPath += "$numberOfRepetitions${Constants.FILE_NAME_SEPARATOR}"
         if (currentExecution > 0)
             baseResultPath += "$currentExecution${Constants.FILE_NAME_SEPARATOR}"
         if (isTargetAll)

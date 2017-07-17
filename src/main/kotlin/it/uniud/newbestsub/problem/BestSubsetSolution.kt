@@ -1,6 +1,5 @@
 package it.uniud.newbestsub.problem
 
-import guide.channel.example06.launchProcessor
 import org.apache.commons.lang3.builder.EqualsBuilder
 import org.apache.commons.lang3.builder.HashCodeBuilder
 import org.apache.logging.log4j.LogManager
@@ -15,7 +14,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
     var topicStatus: Array<Boolean>
     var numberOfSelectedTopics = 0
-    private lateinit var topicLabels : Array<String>
+    private var topicLabels: Array<String>
     private val logger = LogManager.getLogger()
 
     constructor(problem: BinaryProblem, numberOfTopics: Int, cardinalityToGenerate: Int) : super(problem) {
@@ -79,6 +78,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
         topicStatus = solution.topicStatus
         numberOfSelectedTopics = solution.numberOfSelectedTopics
+        topicLabels = solution.topicLabels
 
         (0..problem.numberOfVariables - 1).forEach { i -> setVariableValue(i, solution.getVariableValue(i).clone() as BinarySet) }
         (0..problem.numberOfObjectives - 1).forEach { i -> setObjective(i, solution.getObjective(i)) }
@@ -110,10 +110,10 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
         return topicStatusValues
     }
 
-    fun getTopicLabelsFromTopicStatus() : String {
+    fun getTopicLabelsFromTopicStatus(): String {
         var selectedTopicLabels = "["
-        topicStatus.forEachIndexed{
-            index, aTopicStatusValue->
+        topicStatus.forEachIndexed {
+            index, aTopicStatusValue ->
             if (aTopicStatusValue)
                 selectedTopicLabels += "${topicLabels[index]} "
         }
@@ -144,10 +144,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
     override fun equals(other: Any?): Boolean {
         val aSolution = other as BestSubsetSolution
-        return EqualsBuilder()
-                .append(this.getCorrelation(), aSolution.getCorrelation())
-                .append(this.getCardinality(), aSolution.getCardinality())
-                .isEquals
+        return EqualsBuilder().append(this.getCorrelation(), aSolution.getCorrelation()).append(this.getCardinality(), aSolution.getCardinality()).isEquals
     }
 
     override fun hashCode(): Int {

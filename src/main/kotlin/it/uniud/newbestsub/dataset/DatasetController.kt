@@ -11,6 +11,7 @@ import org.apache.logging.log4j.LogManager
 import java.io.*
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.util.*
 import kotlin.collections.LinkedHashMap
 
@@ -25,10 +26,10 @@ class DatasetController(
     private var view = DatasetView()
     private lateinit var parameters: Parameters
     private lateinit var datasetPath: String
-    private var aggregatedDataResultPaths = Array(0, { "" })
-    private var variableValuesResultPaths = Array(0, { "" })
-    private var functionValuesResultPaths = Array(0, { "" })
-    private var infoResultPaths = Array(0, { "" })
+    private var aggregatedDataResultPaths = mutableListOf<String>()
+    private var variableValuesResultPaths = mutableListOf<String>()
+    private var functionValuesResultPaths = mutableListOf<String>()
+    private var infoResultPaths = mutableListOf<String>()
     private var logger = LogManager.getLogger()
 
     init {
@@ -42,18 +43,18 @@ class DatasetController(
         logger.info("Data set loading started.")
         logger.info("Path: \"$datasetPath\".")
 
-        val outputDirectory = File(Constants.OUTPUT_PATH)
-        logger.info("Checking if output dir. exists.")
+        val outputDirectory = File(Constants.NEWBESTSUB_OUTPUT_PATH)
+        logger.info("Checking if ${Constants.NEWBESTSUB_NAME} output dir. exists.")
         if (!outputDirectory.exists()) {
             logger.info("Output dir. not exists.")
             if (outputDirectory.mkdirs()) {
                 logger.info("Output dir. created.")
-                logger.info("Path: \"${Constants.OUTPUT_PATH}\".")
+                logger.info("Path: \"${Constants.NEWBESTSUB_OUTPUT_PATH}\".")
             }
         } else {
             logger.info("Output dir. already exists.")
             logger.info("Output dir. creation skipped.")
-            logger.info("Path:\"${Constants.OUTPUT_PATH}\".")
+            logger.info("Path:\"${Constants.NEWBESTSUB_OUTPUT_PATH}\".")
         }
         try {
             models.plusAssign(DatasetModel())
@@ -126,13 +127,13 @@ class DatasetController(
                 view.print(averageResult.await(), models[2])
             }
 
-            aggregatedDataResultPaths = aggregatedDataResultPaths.plus(models[0].getAggregatedDataFilePath(true))
+            aggregatedDataResultPaths.add(models[0].getAggregatedDataFilePath(true))
             models.forEach {
                 model ->
-                functionValuesResultPaths = functionValuesResultPaths.plus(model.getFunctionValuesFilePath())
-                variableValuesResultPaths = variableValuesResultPaths.plus(model.getVariableValuesFilePath())
+                functionValuesResultPaths.add(model.getFunctionValuesFilePath())
+                variableValuesResultPaths.add(model.getVariableValuesFilePath())
             }
-            infoResultPaths = infoResultPaths.plus(models[0].getInfoFilePath(true))
+            infoResultPaths.add(models[0].getInfoFilePath(true))
 
             logger.info("Data aggregation started.")
             view.print(aggregate(models), models[0].getAggregatedDataFilePath(true))
@@ -159,10 +160,10 @@ class DatasetController(
 
             view.print(result, models[0])
 
-            aggregatedDataResultPaths = aggregatedDataResultPaths.plus(models[0].getAggregatedDataFilePath(false))
-            functionValuesResultPaths = functionValuesResultPaths.plus(models[0].getFunctionValuesFilePath())
-            variableValuesResultPaths = variableValuesResultPaths.plus(models[0].getVariableValuesFilePath())
-            infoResultPaths = infoResultPaths.plus(models[0].getInfoFilePath(false))
+            aggregatedDataResultPaths.add(models[0].getAggregatedDataFilePath(false))
+            functionValuesResultPaths.add(models[0].getFunctionValuesFilePath())
+            variableValuesResultPaths.add(models[0].getVariableValuesFilePath())
+            infoResultPaths.add(models[0].getInfoFilePath(false))
 
             logger.info("Data aggregation started.")
             view.print(aggregate(models), models[0].getAggregatedDataFilePath(false))
@@ -303,6 +304,8 @@ class DatasetController(
     }
 
     fun merge(numberOfExecutions: Int) {
+
+        logger.info("Starting to merge results of $numberOfExecutions executions.")
 
         var bestFunctionValuesReaders = emptyArray<BufferedReader>()
         var bestFunctionValues = LinkedList<LinkedList<String>>()
@@ -540,8 +543,12 @@ class DatasetController(
                     mergedDataAggregatedForCurrentAggregatedCardinality[2] = worstAggregatedCorrelation.toString()
                     lowerBound = 3
                 }
-                Constants.TARGET_AVERAGE -> { lowerBound = 1 }
-                else -> { lowerBound = 2 }
+                Constants.TARGET_AVERAGE -> {
+                    lowerBound = 1
+                }
+                else -> {
+                    lowerBound = 2
+                }
             }
             (lowerBound..upperBound).forEach {
                 anotherIndex ->
@@ -726,31 +733,186 @@ class DatasetController(
         logger.info("Cleaning of not merged results for all executions started.")
 
         logger.info("Cleaning aggregated data at paths:")
+        var toBeRemoved = mutableListOf<String>()
         aggregatedDataResultPaths.forEach {
             aResultPath ->
-            Files.deleteIfExists(Paths.get(aResultPath))
+            if (Files.exists(Paths.get(aResultPath))) {
+                Files.delete(Paths.get(aResultPath))
+                toBeRemoved.add(aResultPath)
+            }
             logger.info("\"$aResultPath\"")
         }
+        aggregatedDataResultPaths.removeAll(toBeRemoved)
+
         logger.info("Cleaning function values at paths:")
+        toBeRemoved = mutableListOf()
         functionValuesResultPaths.forEach {
             aResultPath ->
-            Files.deleteIfExists(Paths.get(aResultPath))
+            if (Files.exists(Paths.get(aResultPath))) {
+                Files.delete(Paths.get(aResultPath))
+                toBeRemoved.add(aResultPath)
+            }
             logger.info("\"$aResultPath\"")
         }
+        functionValuesResultPaths.removeAll(toBeRemoved)
+
         logger.info("Cleaning variable values at paths:")
+        toBeRemoved = mutableListOf()
         variableValuesResultPaths.forEach {
             aResultPath ->
-            Files.deleteIfExists(Paths.get(aResultPath))
+            if (Files.exists(Paths.get(aResultPath))) {
+                Files.delete(Paths.get(aResultPath))
+                toBeRemoved.add(aResultPath)
+            }
             logger.info("\"$aResultPath\"")
         }
+        variableValuesResultPaths.removeAll(toBeRemoved)
+
         logger.info("Cleaning info at paths:")
+        toBeRemoved = mutableListOf()
         infoResultPaths.forEach {
             aResultPath ->
-            Files.deleteIfExists(Paths.get(aResultPath))
+            if (Files.exists(Paths.get(aResultPath))) {
+                Files.delete(Paths.get(aResultPath))
+                toBeRemoved.add(aResultPath)
+            }
             logger.info("\"$aResultPath\"")
         }
+        infoResultPaths.removeAll(toBeRemoved)
 
         logger.info("Cleaning of not merged results for all executions completed.")
+        logger.info("Executions result merging completed.")
 
     }
+
+    fun copy() {
+
+        logger.info("Execution result copy to ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} started.")
+
+        val inputPath = Constants.NEWBESTSUB_EXPERIMENTS_INPUT_PATH
+        val inputDirectory = File(Constants.NEWBESTSUB_EXPERIMENTS_INPUT_PATH)
+
+        logger.info("Checking if ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} input dir. exists.")
+        if (!inputDirectory.exists()) {
+            logger.info("Input dir. not exists.")
+            if (inputDirectory.mkdirs()) {
+                logger.info("Input dir. created.")
+                logger.info("Path: \"$inputPath\".")
+            }
+        } else {
+            logger.info("Input dir. already exists.")
+            logger.info("Input dir. creation skipped.")
+            logger.info("Path: \"$inputPath\".")
+        }
+
+        if (aggregatedDataResultPaths.size > 0) logger.info("Aggregated data copy started from paths:")
+        var outputPaths = mutableListOf<String>()
+        aggregatedDataResultPaths.forEach {
+            aResultPath ->
+            if (Files.exists(Paths.get(aResultPath))) {
+                logger.info("\"$aResultPath\"")
+                Files.copy(Paths.get(aResultPath), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(aResultPath).fileName}"), StandardCopyOption.REPLACE_EXISTING)
+                outputPaths.add(Paths.get(aResultPath).toString())
+            }
+        }
+        if (outputPaths.size > 0) {
+            logger.info("To paths: ")
+        }
+        outputPaths.forEach(logger::info)
+
+        if (functionValuesResultPaths.size > 0) logger.info("Function values copy started from paths:")
+        outputPaths = mutableListOf()
+        functionValuesResultPaths.forEach {
+            aResultPath ->
+            if (Files.exists(Paths.get(aResultPath))) {
+                logger.info("\"$aResultPath\"")
+                Files.copy(Paths.get(aResultPath), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(aResultPath).fileName}"), StandardCopyOption.REPLACE_EXISTING)
+                outputPaths.add(Paths.get(aResultPath).toString())
+            }
+        }
+        if (outputPaths.size > 0) {
+            logger.info("To paths: ")
+        }
+        outputPaths.forEach(logger::info)
+
+        if (variableValuesResultPaths.size > 0) logger.info("Variable values copy started from paths:")
+        outputPaths = mutableListOf()
+        variableValuesResultPaths.forEach {
+            aResultPath ->
+            if (Files.exists(Paths.get(aResultPath))) {
+                logger.info("\"$aResultPath\"")
+                Files.copy(Paths.get(aResultPath), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(aResultPath).fileName}"))
+                outputPaths.add(Paths.get(aResultPath).toString())
+            }
+        }
+        if (outputPaths.size > 0) {
+            logger.info("To paths: ")
+        }
+        outputPaths.forEach(logger::info)
+
+        if (infoResultPaths.size > 0) logger.info("Info copy started from paths:")
+        outputPaths = mutableListOf()
+        infoResultPaths.forEach {
+            aResultPath ->
+            if (Files.exists(Paths.get(aResultPath))) {
+                logger.info("\"$aResultPath\"")
+                Files.copy(Paths.get(aResultPath), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(aResultPath).fileName}"), StandardCopyOption.REPLACE_EXISTING)
+                outputPaths.add(Paths.get(aResultPath).toString())
+            }
+        }
+        if (outputPaths.size > 0) {
+            logger.info("To paths: ")
+        }
+        outputPaths.forEach(logger::info)
+
+        models.forEach {
+            model ->
+            if (Files.exists(Paths.get(model.getAggregatedDataMergedFilePath(true)))) {
+                logger.info("Merged aggregated data copy started from path:")
+                logger.info("\"${Paths.get(model.getAggregatedDataMergedFilePath(true))}\"")
+                Files.copy(Paths.get(model.getAggregatedDataMergedFilePath(true)), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getAggregatedDataMergedFilePath(true)).fileName}"), StandardCopyOption.REPLACE_EXISTING)
+                logger.info("To path: ")
+                logger.info(Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getAggregatedDataMergedFilePath(true)).fileName}"))
+            }
+            if (Files.exists(Paths.get(model.getAggregatedDataMergedFilePath(false)))) {
+                logger.info("\"${Paths.get(model.getAggregatedDataMergedFilePath(false))}\"")
+                logger.info("Merged aggregated data copy started from path:")
+                Files.copy(Paths.get(model.getAggregatedDataMergedFilePath(false)), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getAggregatedDataMergedFilePath(false)).fileName}"), StandardCopyOption.REPLACE_EXISTING)
+                logger.info("To path: ")
+                logger.info(Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getAggregatedDataMergedFilePath(false)).fileName}"))
+            }
+            if (Files.exists(Paths.get(model.getFunctionValuesMergedFilePath()))) {
+                logger.info("Merged function values data copy started from path:")
+                logger.info("\"${Paths.get(model.getFunctionValuesMergedFilePath())}\"")
+                Files.copy(Paths.get(model.getFunctionValuesMergedFilePath()), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getFunctionValuesMergedFilePath()).fileName}"), StandardCopyOption.REPLACE_EXISTING)
+                logger.info("To path: ")
+                logger.info(Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getFunctionValuesMergedFilePath()).fileName}"))
+            }
+            if (Files.exists(Paths.get(model.getVariableValuesMergedFilePath()))) {
+                logger.info("Merged variable values data copy started from path:")
+                logger.info("\"${Paths.get(model.getVariableValuesMergedFilePath())}\"")
+                Files.copy(Paths.get(model.getVariableValuesMergedFilePath()), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getVariableValuesMergedFilePath()).fileName}"), StandardCopyOption.REPLACE_EXISTING)
+                logger.info("To path: ")
+                logger.info(Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getVariableValuesMergedFilePath()).fileName}"))
+            }
+            if (Files.exists(Paths.get(model.getInfoMergedFilePath(true)))) {
+                logger.info("Merged info copy started from path:")
+                logger.info("\"${Paths.get(model.getInfoMergedFilePath(true))}\"")
+                Files.copy(Paths.get(model.getInfoMergedFilePath(true)), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getInfoMergedFilePath(true)).fileName}"), StandardCopyOption.REPLACE_EXISTING)
+                logger.info("To path: ")
+                logger.info(Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getInfoMergedFilePath(true)).fileName}"))
+            }
+            if (Files.exists(Paths.get(model.getInfoMergedFilePath(false)))) {
+                logger.info("Merged info copy started from path:")
+                logger.info("\"${Paths.get(model.getInfoMergedFilePath(false))}\"")
+                Files.copy(Paths.get(model.getInfoMergedFilePath(false)), Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getInfoMergedFilePath(false)).fileName}"), StandardCopyOption.REPLACE_EXISTING)
+                logger.info("To path: ")
+                logger.info(Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(model.getInfoMergedFilePath(false)).fileName}"))
+            }
+        }
+
+        logger.info("Execution result copy to ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} completed.")
+
+    }
+
 }

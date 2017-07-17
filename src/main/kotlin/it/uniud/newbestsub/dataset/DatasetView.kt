@@ -1,7 +1,6 @@
 package it.uniud.newbestsub.dataset
 
 import com.opencsv.CSVWriter
-import it.uniud.newbestsub.utils.Constants
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.runner.AbstractAlgorithmRunner
 import org.uma.jmetal.solution.BinarySolution

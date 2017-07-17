@@ -18,7 +18,7 @@ class DatasetModelTest {
 
         val testDatContr = DatasetController(Constants.TARGET_BEST)
         testDatContr.load("src/test/resources/AP96.csv")
-        val testParams = Parameters("AH99", Constants.CORRELATION_KENDALL, Constants.TARGET_BEST, 100000, 1000, 1000, 0,listOf(1, 5, 25, 99))
+        val testParams = Parameters("AH99", Constants.CORRELATION_KENDALL, Constants.TARGET_BEST, 100000, 1000, 1000, 0, listOf(1, 5, 25, 99))
         val testRes = testDatContr.models[0].solve(testParams).first
         val computedCards = IntArray(testRes.size)
         testRes.forEachIndexed { index, aSol -> computedCards[index] = aSol.getCardinality().toInt() }

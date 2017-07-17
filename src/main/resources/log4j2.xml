@@ -8,8 +8,10 @@
             <PatternLayout>
                 <ScriptPatternSelector>
                     <Script name="LevelSelector" language="javascript"><![CDATA[logEvent.getLevel();]]></Script>
-                    <PatternMatch key="INFO" pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Cyan,Bright}"/>
-                    <PatternMatch key="DEBUG" pattern="%style{%-5.5p}{FG_Yellow} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Yellow,Bright}"/>
+                    <PatternMatch key="INFO"
+                                  pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Cyan,Bright}"/>
+                    <PatternMatch key="DEBUG"
+                                  pattern="%style{%-5.5p}{FG_Yellow} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Yellow,Bright}"/>
                 </ScriptPatternSelector>
             </PatternLayout>
         </Console>
@@ -17,12 +19,15 @@
             <PatternLayout>
                 <ScriptPatternSelector>
                     <Script name="LevelSelector" language="javascript"><![CDATA[logEvent.getLevel();]]></Script>
-                    <PatternMatch key="INFO" pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{BG_Cyan,Bright}"/>
-                    <PatternMatch key="ERROR" pattern="%style{%highlight{%-5.5p}}{Bright} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{BG_Red,Bright}"/>
+                    <PatternMatch key="INFO"
+                                  pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{BG_Cyan,Bright}"/>
+                    <PatternMatch key="ERROR"
+                                  pattern="%style{%highlight{%-5.5p}}{Bright} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{BG_Red,Bright}"/>
                 </ScriptPatternSelector>
             </PatternLayout>
         </Console>
-        <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log" append="false">
+        <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log"
+                     append="false">
             <PatternLayout pattern="%-5.5p [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %m%n"/>
             <Policies>
                 <SizeBasedTriggeringPolicy size="5 MB"/>
