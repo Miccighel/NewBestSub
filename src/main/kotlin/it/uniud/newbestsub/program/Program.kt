@@ -160,8 +160,7 @@ object Program {
 
                         datasetController.merge(numberOfExecutions)
 
-                    } else
-                        datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
+                    }
 
                     if (commandLine.hasOption('e')) {
 
@@ -182,6 +181,7 @@ object Program {
                         }
                     }
 
+                    if(!commandLine.hasOption('e') && !commandLine.hasOption('m')) datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
                     if (commandLine.hasOption("copy")) datasetController.copy()
 
                     logger.info("NewBestSub execution terminated.")
