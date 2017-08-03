@@ -3,7 +3,7 @@
     <extension name="coverage" enabled="false" merge="false" sample_coverage="true" runner="idea" />
     <option name="MAIN_CLASS_NAME" value="it.uniud.newbestsub.program.Program" />
     <option name="VM_PARAMETERS" value="" />
-    <option name="PROGRAM_PARAMETERS" value="-fi &quot;AH99&quot; -c &quot;Pearson&quot; -r 1000000 -t &quot;Average&quot; -log Limited" />
+    <option name="PROGRAM_PARAMETERS" value="-fi &quot;AH99-Top96-LogAP&quot; -c &quot;Pearson&quot; -po 1000 -i 1000000 -r 2000 -t &quot;All&quot; -pe 1,100 -log Limited -copy -m 10" />
     <option name="WORKING_DIRECTORY" value="file://$PROJECT_DIR$" />
     <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
     <option name="ALTERNATIVE_JRE_PATH" />

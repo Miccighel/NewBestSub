@@ -110,6 +110,8 @@ class DatasetModel {
 
         datasetName = parameters.datasetName
         currentExecution = parameters.currentExecution
+        populationSize = parameters.populationSize
+        numberOfRepetitions = parameters.numberOfRepetitions
 
         val correlationStrategy = this.loadCorrelationMethod(parameters.correlationMethod)
         val targetStrategy = this.loadTargetToAchieve(parameters.targetToAchieve)
@@ -121,8 +123,6 @@ class DatasetModel {
         allSolutions = mutableListOf()
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
-
-            numberOfRepetitions = parameters.numberOfRepetitions
 
             val startTime = System.nanoTime()
 
@@ -202,7 +202,6 @@ class DatasetModel {
 
         } else {
 
-            populationSize = parameters.populationSize
             if (populationSize < numberOfTopics) throw ParseException("Value for the option <<p>> or <<po>> must be greater or equal than/to $numberOfTopics. Current value is $populationSize. Check the usage section below.")
             numberOfIterations = parameters.numberOfIterations
 
