@@ -215,7 +215,7 @@ class DatasetController(
 
         val computedCardinality = mutableMapOf(Constants.TARGET_BEST to 0, Constants.TARGET_WORST to 0, Constants.TARGET_AVERAGE to 0)
 
-        (0..models[0].numberOfTopics - 1).forEach {
+        (0..models[0].numberOfTopics-1).forEach {
             index ->
             val currentCardinality = (index + 1).toDouble()
             val currentLine = LinkedList<String>()
@@ -417,7 +417,7 @@ class DatasetController(
         })
         val info = LinkedList<LinkedList<String>>()
 
-        while (readCounter < models[0].numberOfTopics) {
+        while (readCounter < models[0].numberOfTopics + 1) {
             val currentAggregatedCardinality = LinkedList<Array<String>>()
             aggregatedDataReaders.forEach { anAggregatedDataReader -> currentAggregatedCardinality.plusAssign(anAggregatedDataReader.readNext()) }
             aggregatedCardinality.add(currentAggregatedCardinality)
