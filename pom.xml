@@ -93,8 +93,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <kotlin.version>1.2-M1</kotlin.version>
-        <kotlinx.version>0.16</kotlinx.version>
+        <kotlin.version>1.2-M2</kotlin.version>
+        <kotlinx.version>0.17</kotlinx.version>
         <kotlin.compiler.incremental>false</kotlin.compiler.incremental>
         <junit.platform.version>1.0.0-M5</junit.platform.version>
         <junit.jupiter.version>5.0.0-M5</junit.jupiter.version>
@@ -250,6 +250,11 @@
             <artifactId>junit-jupiter-engine</artifactId>
             <version>${junit.jupiter.version}</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib-jre8</artifactId>
+            <version>${kotlin.version}</version>
         </dependency>
 
     </dependencies>

@@ -1,0 +1,3 @@
+<component name="DependencyValidationManager">
+  <scope name="Other" pattern="src:it.uniud.newbestsub.program..*||src:it.uniud.newbestsub.utils..*" />
+</component>
