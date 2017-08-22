@@ -1,6 +1,10 @@
 package it.uniud.newbestsub.dataset
 
 import com.opencsv.CSVWriter
+import it.uniud.newbestsub.problem.BestSubsetSolution
+import it.uniud.newbestsub.problem.getCardinality
+import it.uniud.newbestsub.problem.getCorrelation
+import it.uniud.newbestsub.utils.Constants
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.runner.AbstractAlgorithmRunner
 import org.uma.jmetal.solution.BinarySolution
@@ -12,9 +16,9 @@ class DatasetView : AbstractAlgorithmRunner() {
 
     private val logger = LogManager.getLogger()
 
-    fun print(runResult: Pair<List<BinarySolution>, Triple<String, String, Long>>, datasetModel: DatasetModel) {
+    fun print(runResult: Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>>, datasetModel: DatasetModel) {
 
-        val (allSolutions, executionInfo) = runResult
+        val (allSolutions, topSolutions, executionInfo) = runResult
         val (targetToAchieve, threadName, computingTime) = executionInfo
         val populationHelper: SolutionListOutput = SolutionListOutput(allSolutions)
 
@@ -22,15 +26,35 @@ class DatasetView : AbstractAlgorithmRunner() {
 
         val variabileValuesFilePath = datasetModel.getVariableValuesFilePath()
         val functionValuesFilePath = datasetModel.getFunctionValuesFilePath()
+        val topSolutionsFilePath = datasetModel.getTopSolutionsFilePath()
 
         populationHelper
                 .setVarFileOutputContext(DefaultFileOutputContext(variabileValuesFilePath))
                 .setFunFileOutputContext(DefaultFileOutputContext(functionValuesFilePath))
                 .print()
 
+        if (datasetModel.targetToAchieve != Constants.TARGET_AVERAGE) {
+            val topSolutionsToPrint = mutableListOf<Array<String>>()
+            val header = mutableListOf<String>()
+            header.add("Cardinality")
+            header.add("Correlation")
+            header.add("Topics")
+            topSolutionsToPrint.add(header.toTypedArray())
+            topSolutions.forEach { aTopSolution ->
+                aTopSolution as BestSubsetSolution
+                val aTopSolutionToPrint = mutableListOf<String>()
+                aTopSolutionToPrint.add(aTopSolution.getCardinality().toString())
+                aTopSolutionToPrint.add(aTopSolution.getCorrelation().toString())
+                aTopSolutionToPrint.add(aTopSolution.getTopicLabelsFromTopicStatus())
+                topSolutionsToPrint.add(aTopSolutionToPrint.toTypedArray())
+            }
+            print(topSolutionsToPrint, datasetModel.getTopSolutionsFilePath())
+        }
+
         logger.info("Result for execution on \"$threadName\" with target \"$targetToAchieve\" available at:")
         logger.info("\"$variabileValuesFilePath\"")
         logger.info("\"$functionValuesFilePath\"")
+        logger.info("\"$topSolutionsFilePath\"")
 
         logger.info("Print completed.")
 

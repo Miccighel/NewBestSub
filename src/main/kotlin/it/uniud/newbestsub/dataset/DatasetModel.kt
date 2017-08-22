@@ -54,6 +54,7 @@ class DatasetModel {
 
     var notDominatedSolutions = mutableListOf<BinarySolution>()
     var dominatedSolutions = mutableListOf<BinarySolution>()
+    var topSolutions = mutableListOf<BinarySolution>()
     var allSolutions = mutableListOf<BinarySolution>()
 
     fun loadData(datasetPath: String) {
@@ -63,8 +64,7 @@ class DatasetModel {
         numberOfTopics = topicLabels.size - 1
         datasetName = File(datasetPath).nameWithoutExtension
 
-        reader.readAll().forEach {
-            nextLine ->
+        reader.readAll().forEach { nextLine ->
             val averagePrecisions = DoubleArray(nextLine.size - 1)
             (1..nextLine.size - 1).forEach { i -> averagePrecisions[i - 1] = nextLine[i].toDouble() }
             this.averagePrecisions.put(nextLine[0], averagePrecisions.toTypedArray())
@@ -79,8 +79,7 @@ class DatasetModel {
         this.expansionCoefficient = expansionCoefficient
         numberOfTopics += randomizedTopicLabels.size
 
-        averagePrecisions.entries.forEach {
-            (systemLabel, averagePrecisionValues) ->
+        averagePrecisions.entries.forEach { (systemLabel, averagePrecisionValues) ->
             averagePrecisions[systemLabel] = (averagePrecisionValues.toList() + (randomizedAveragePrecisions[systemLabel]?.toList() ?: emptyList())).toTypedArray()
         }
 
@@ -106,7 +105,7 @@ class DatasetModel {
 
     }
 
-    fun solve(parameters: Parameters): Pair<List<BinarySolution>, Triple<String, String, Long>> {
+    fun solve(parameters: Parameters): Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>> {
 
         datasetName = parameters.datasetName
         currentExecution = parameters.currentExecution
@@ -120,6 +119,7 @@ class DatasetModel {
 
         notDominatedSolutions = mutableListOf() // If data are expanded
         dominatedSolutions = mutableListOf()
+        topSolutions = mutableListOf()
         allSolutions = mutableListOf()
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
@@ -168,8 +168,7 @@ class DatasetModel {
                 correlationsToSum.sort()
                 meanCorrelation = correlationsSum / numberOfRepetitions
 
-                percentiles.entries.forEach {
-                    (percentileToFind, foundPercentiles) ->
+                percentiles.entries.forEach { (percentileToFind, foundPercentiles) ->
                     val percentilePosition = Math.ceil((percentileToFind / 100.0) * correlationsToSum.size).toInt()
                     val percentileValue = correlationsToSum[percentilePosition - 1]
                     percentiles[percentileToFind] = foundPercentiles.plus(percentileValue)
@@ -190,8 +189,7 @@ class DatasetModel {
 
             problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels, correlationStrategy, targetStrategy)
 
-            (0..numberOfTopics - 1).forEach {
-                index ->
+            (0..numberOfTopics - 1).forEach { index ->
                 val solution = BestSubsetSolution(problem as BinaryProblem, numberOfTopics)
                 solution.setVariableValue(0, solution.createNewBitSet(numberOfTopics, variableValues[index]))
                 solution.setObjective(0, cardinality[index].toDouble())
@@ -222,8 +220,7 @@ class DatasetModel {
             notDominatedSolutions = algorithm.result.toMutableList().distinct().toMutableList()
             notDominatedSolutions = fixObjectiveFunctionValues(notDominatedSolutions)
             var nonDominatedSolutionCardinality = listOf<Double>()
-            notDominatedSolutions.forEach {
-                aNonDominatedSolution ->
+            notDominatedSolutions.forEach { aNonDominatedSolution ->
                 nonDominatedSolutionCardinality = nonDominatedSolutionCardinality.plus(aNonDominatedSolution.getCardinality())
                 allSolutions.plusAssign(aNonDominatedSolution)
             }
@@ -231,12 +228,17 @@ class DatasetModel {
             dominatedSolutions = problem.dominatedSolutions.values.toMutableList()
             dominatedSolutions = fixObjectiveFunctionValues(dominatedSolutions)
             val dominatedSolutionsToRemove = mutableListOf<BinarySolution>()
-            dominatedSolutions.forEach {
-                aDominatedSolution ->
+            dominatedSolutions.forEach { aDominatedSolution ->
                 if (!nonDominatedSolutionCardinality.contains(aDominatedSolution.getCardinality())) allSolutions.plusAssign(aDominatedSolution)
                 else dominatedSolutionsToRemove.plusAssign(aDominatedSolution)
             }
             dominatedSolutionsToRemove.forEach { aDominatedSolutionToRemove -> dominatedSolutions.remove(aDominatedSolutionToRemove) }
+
+            problem.topSolutions.values.forEach {
+                aTopSolutionsList ->
+                val topSolutionsList = fixObjectiveFunctionValues(aTopSolutionsList)
+                topSolutionsList.forEach { aTopSolution -> topSolutions.plusAssign(aTopSolution) }
+            }
         }
 
         for (solutionToAnalyze in allSolutions) {
@@ -257,20 +259,19 @@ class DatasetModel {
             logger.info("Completed iterations: $numberOfIterations/$numberOfIterations (100%) for evaluations being computed on \"${Thread.currentThread().name}\" with target $targetToAchieve.")
         logger.info("Not dominated solutions generated by execution with target \"$targetToAchieve\": ${notDominatedSolutions.size}/$numberOfTopics.")
         logger.info("Dominated solutions generated by execution with target \"$targetToAchieve\": ${dominatedSolutions.size}/$numberOfTopics.")
-        logger.info("Total solutions generated by execution with target \"$targetToAchieve\": ${allSolutions.size}/$numberOfTopics.")
+        if(targetToAchieve != Constants.TARGET_AVERAGE)
+            logger.info("Total solutions generated by execution with target \"$targetToAchieve\": ${allSolutions.size}/$numberOfTopics.")
 
-        return Pair<List<BinarySolution>, Triple<String, String, Long>>(allSolutions, Triple(targetToAchieve, Thread.currentThread().name, computingTime))
+        return Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>>(allSolutions, topSolutions, Triple(targetToAchieve, Thread.currentThread().name, computingTime))
     }
 
     private fun loadCorrelationMethod(correlationMethod: String): (Array<Double>, Array<Double>) -> Double {
 
-        val pearsonCorrelation: (Array<Double>, Array<Double>) -> Double = {
-            firstArray, secondArray ->
+        val pearsonCorrelation: (Array<Double>, Array<Double>) -> Double = { firstArray, secondArray ->
             val pcorr = PearsonsCorrelation()
             pcorr.correlation(firstArray.toDoubleArray(), secondArray.toDoubleArray())
         }
-        val kendallCorrelation: (Array<Double>, Array<Double>) -> Double = {
-            firstArray, secondArray ->
+        val kendallCorrelation: (Array<Double>, Array<Double>) -> Double = { firstArray, secondArray ->
             val pcorr = KendallsCorrelation()
             pcorr.correlation(firstArray.toDoubleArray(), secondArray.toDoubleArray())
         }
@@ -286,14 +287,12 @@ class DatasetModel {
 
     private fun loadTargetToAchieve(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
 
-        val bestStrategy: (BinarySolution, Double) -> BinarySolution = {
-            solution, correlation ->
+        val bestStrategy: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
             solution.setObjective(0, (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble())
             solution.setObjective(1, correlation * -1)
             solution
         }
-        val worstStrategy: (BinarySolution, Double) -> BinarySolution = {
-            solution, correlation ->
+        val worstStrategy: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
             solution.setObjective(0, ((solution as BestSubsetSolution).numberOfSelectedTopics * -1).toDouble())
             solution.setObjective(1, correlation)
             solution
@@ -309,8 +308,7 @@ class DatasetModel {
     }
 
     private fun sortByCardinality(solutionsToSort: MutableList<BinarySolution>): MutableList<BinarySolution> {
-        solutionsToSort.sortWith(kotlin.Comparator {
-            sol1: BinarySolution, sol2: BinarySolution ->
+        solutionsToSort.sortWith(kotlin.Comparator { sol1: BinarySolution, sol2: BinarySolution ->
             (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
         })
         return solutionsToSort
@@ -371,6 +369,14 @@ class DatasetModel {
 
     fun getVariableValuesMergedFilePath(): String {
         return "${getBaseFilePath(false)}${Constants.VARIABLE_VALUES_FILE_SUFFIX}${Constants.FILE_NAME_SEPARATOR}${Constants.MERGED_RESULT_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
+    }
+
+    fun getTopSolutionsFilePath(): String {
+        return "${getBaseFilePath(false)}${Constants.TOP_SOLUTIONS_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
+    }
+
+    fun getTopSolutionsMergedFilePath(): String {
+        return "${getBaseFilePath(false)}${Constants.TOP_SOLUTIONS_FILE_SUFFIX}${Constants.FILE_NAME_SEPARATOR}${Constants.MERGED_RESULT_FILE_SUFFIX}${Constants.CSV_FILE_EXTENSION}"
     }
 
     fun getInfoFilePath(isTargetAll: Boolean): String {
