@@ -112,8 +112,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
 
     fun getTopicLabelsFromTopicStatus(): String {
         var selectedTopicLabels = "["
-        topicStatus.forEachIndexed {
-            index, aTopicStatusValue ->
+        topicStatus.forEachIndexed { index, aTopicStatusValue ->
             if (aTopicStatusValue)
                 selectedTopicLabels += "${topicLabels[index]} "
         }

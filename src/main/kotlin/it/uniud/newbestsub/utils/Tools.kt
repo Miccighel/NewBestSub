@@ -22,14 +22,10 @@ object Tools {
         var numberOfUsedCols = 0
 
         useColumns.forEachIndexed { _, value ->
-            if (value) {
-                numberOfUsedCols++
-            }
+            if (value) numberOfUsedCols++
         }
         useColumns.forEachIndexed { index, value ->
-            if (value) {
-                mean += run[index]
-            }
+            if (value) mean += run[index]
         }
 
         mean /= numberOfUsedCols.toDouble()

@@ -13,7 +13,8 @@ import java.io.FileNotFoundException
 
 object Program {
 
-    @JvmStatic fun main(arguments: Array<String>) {
+    @JvmStatic
+    fun main(arguments: Array<String>) {
 
         val commandLine: CommandLine
         val parser: CommandLineParser
@@ -152,8 +153,7 @@ object Program {
                             throw ParseException("Value for the option <<m>> or <<mrg>> is not an integer. Check the usage section below")
                         }
 
-                        (1..numberOfExecutions).forEach {
-                            currentExecution ->
+                        (1..numberOfExecutions).forEach { currentExecution ->
                             logger.info("Execution number: $currentExecution/$numberOfExecutions")
                             datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, currentExecution, percentiles))
                         }
@@ -181,7 +181,7 @@ object Program {
                         }
                     }
 
-                    if(!commandLine.hasOption('e') && !commandLine.hasOption('m')) datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
+                    if (!commandLine.hasOption('e') && !commandLine.hasOption('m')) datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
                     if (commandLine.hasOption("copy")) datasetController.copy()
 
                     logger.info("NewBestSub execution terminated.")

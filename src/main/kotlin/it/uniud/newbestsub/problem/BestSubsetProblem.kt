@@ -6,7 +6,6 @@ import it.uniud.newbestsub.utils.Tools
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.problem.impl.AbstractBinaryProblem
 import org.uma.jmetal.solution.BinarySolution
-import kotlin.math.abs
 
 class BestSubsetProblem(
 
@@ -50,8 +49,10 @@ class BestSubsetProblem(
 
         solution as BestSubsetSolution
 
+        // FIRST EVALUATION PART: The selected solution is evaluated to compute correlation with MAP values.
+
         val loggingFactor = (parameters.numberOfIterations * Constants.LOGGING_FACTOR) / 100
-        if ((iterationCounter % loggingFactor) == 0 && parameters.numberOfIterations > loggingFactor) {
+        if ((iterationCounter % loggingFactor) == 0 && parameters.numberOfIterations > loggingFactor && iterationCounter <= parameters.numberOfIterations) {
             logger.info("Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
             progressCounter += Constants.LOGGING_FACTOR
         }
@@ -67,6 +68,8 @@ class BestSubsetProblem(
 
         targetStrategy(solution, correlation)
 
+        // SECOND EVALUATION PART: A copy of the selected solution is evaluated to verify if it's a better dominated solution
+
         val firstSolutionCopy = solution.copy()
         if (oldSolution != null) {
             oldSolution as BestSubsetSolution
@@ -78,6 +81,8 @@ class BestSubsetProblem(
                 Constants.TARGET_WORST -> if (correlation < oldCorrelation) dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = firstSolutionCopy
             }
         } else dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = firstSolutionCopy
+
+        // THIRD EVALUATION PART: A copy of the selected solution is pushed into the top solutions list. At every evaluation, only the first CONSTANTS.TOP_SOLUTIONS_NUMBER are retained.
 
         val secondSolutionCopy = solution.copy()
         var topSolutionsList = topSolutions[solution.numberOfSelectedTopics.toDouble()]

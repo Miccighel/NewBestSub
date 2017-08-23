@@ -54,7 +54,7 @@ class DatasetView : AbstractAlgorithmRunner() {
         logger.info("Result for execution on \"$threadName\" with target \"$targetToAchieve\" available at:")
         logger.info("\"$variabileValuesFilePath\"")
         logger.info("\"$functionValuesFilePath\"")
-        logger.info("\"$topSolutionsFilePath\"")
+        if (datasetModel.targetToAchieve != Constants.TARGET_AVERAGE) logger.info("\"$topSolutionsFilePath\"")
 
         logger.info("Print completed.")
 
