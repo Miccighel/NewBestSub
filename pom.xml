@@ -261,7 +261,7 @@
 
         <plugins>
 
-           <!--<plugin>
+           <plugin>
                 <artifactId>maven-assembly-plugin</artifactId>
                 <configuration>
                     <archive>
@@ -284,7 +284,7 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>-->
+            </plugin>
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
