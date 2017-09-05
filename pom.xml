@@ -96,8 +96,8 @@
         <kotlin.version>1.2-M2</kotlin.version>
         <kotlinx.version>0.16</kotlinx.version>
         <kotlin.compiler.incremental>false</kotlin.compiler.incremental>
-        <junit.platform.version>1.0.0-M5</junit.platform.version>
-        <junit.jupiter.version>5.0.0-M5</junit.jupiter.version>
+        <junit.platform.version>1.0.0-RC3</junit.platform.version>
+        <junit.jupiter.version>5.0.0-RC3</junit.jupiter.version>
         <dokka.version>0.9.13</dokka.version>
         <apache.commons.version>3.6.1</apache.commons.version>
         <apache.commons.cli>1.4</apache.commons.cli>
