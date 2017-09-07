@@ -15,7 +15,6 @@ import java.nio.file.StandardCopyOption
 import java.util.*
 import kotlin.collections.LinkedHashMap
 
-
 class DatasetController(
 
         private var targetToAchieve: String
@@ -335,88 +334,83 @@ class DatasetController(
         })
         val aggregatedCardinality = LinkedList<LinkedList<Array<String>>>()
 
-        var executionIndex: Int
-
-        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
-            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -3 else executionIndex = -1
-            logger.info("Loading function values for experiment \"${Constants.TARGET_BEST}\" for all executions.")
+        val dataSetup = {
+            model : DatasetModel ->
+            var executionIndex = 0
+            val setIndex = {
+                shouldBeIncremented: Boolean ->
+                if(shouldBeIncremented) {
+                    if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+                } else {
+                    when(model.targetToAchieve) {
+                        Constants.TARGET_BEST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -3 else executionIndex = -1
+                        Constants.TARGET_WORST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
+                        Constants.TARGET_AVERAGE -> executionIndex = -1
+                    }
+                }
+            }
+            setIndex(false)
+            logger.info("Loading function values for experiment \"${model.targetToAchieve}\" for all executions.")
             logger.info("Function values paths:")
-            bestFunctionValuesReaders = Array(numberOfExecutions, { _ ->
-                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+            val functionValuesReaders = Array(numberOfExecutions, { _ ->
+                setIndex(true)
                 logger.info("\"${functionValuesResultPaths[executionIndex]}\"")
                 Files.newBufferedReader(Paths.get(functionValuesResultPaths[executionIndex]))
             })
-            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -3 else executionIndex = -1
-            bestFunctionValues = LinkedList()
-            logger.info("Loading variable values for experiment \"${Constants.TARGET_BEST}\" for all executions.")
+            setIndex(false)
+            val functionValues : LinkedList<LinkedList<String>> = LinkedList()
+            logger.info("Loading variable values for experiment \"${model.targetToAchieve}\" for all executions.")
             logger.info("Variable values paths:")
-            bestVariableValuesReaders = Array(numberOfExecutions, { _ ->
-                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+            val variableValuesReaders = Array(numberOfExecutions, { _ ->
+                setIndex(true)
                 logger.info("\"${variableValuesResultPaths[executionIndex]}\"")
                 Files.newBufferedReader(Paths.get(variableValuesResultPaths[executionIndex]))
             })
-            bestVariableValues = LinkedList()
-            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -3 else executionIndex = -1
-            logger.info("Loading top solutions for experiment \"${Constants.TARGET_BEST}\" for all executions.")
-            logger.info("Top solutions paths:")
-            bestTopSolutionsReaders = Array(numberOfExecutions, { _ ->
-                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
-                logger.info("\"${topSolutionsResultPaths[executionIndex]}\"")
-                Files.newBufferedReader(Paths.get(topSolutionsResultPaths[executionIndex]))
-            })
-            bestTopSolutions = LinkedList()
+            val variableValues : LinkedList<LinkedList<String>> = LinkedList()
+            var topSolutionsReaders = emptyArray<BufferedReader>()
+            var topSolutions = LinkedList<LinkedList<String>>()
+            if(model.targetToAchieve != Constants.TARGET_AVERAGE) {
+                setIndex(false)
+                logger.info("Loading top solutions for experiment \"${model.targetToAchieve}\" for all executions.")
+                logger.info("Top solutions paths:")
+                topSolutionsReaders = Array(numberOfExecutions, { _ ->
+                    setIndex(true)
+                    logger.info("\"${topSolutionsResultPaths[executionIndex]}\"")
+                    Files.newBufferedReader(Paths.get(topSolutionsResultPaths[executionIndex]))
+                })
+                topSolutions = LinkedList()
+            }
+            when(model.targetToAchieve) {
+                Constants.TARGET_BEST -> {
+                    bestFunctionValuesReaders = functionValuesReaders
+                    bestFunctionValues = functionValues
+                    bestVariableValuesReaders = variableValuesReaders
+                    bestVariableValues = variableValues
+                    bestTopSolutionsReaders = topSolutionsReaders
+                    bestTopSolutions = topSolutions
+                }
+                Constants.TARGET_WORST -> {
+                    worstFunctionValuesReaders = functionValuesReaders
+                    worstFunctionValues = functionValues
+                    worstVariableValuesReaders = variableValuesReaders
+                    worstVariableValues = variableValues
+                    worstTopSolutionsReaders = topSolutionsReaders
+                    worstTopSolutions = topSolutions
+                }
+                Constants.TARGET_AVERAGE -> {
+                    averageFunctionValuesReaders = functionValuesReaders
+                    averageFunctionValues = functionValues
+                    averageVariableValuesReaders = variableValuesReaders
+                    averageVariableValues = variableValues
+                }
+            }
         }
 
-        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
-            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
-            logger.info("Loading function values for experiment \"${Constants.TARGET_WORST}\" for all executions.")
-            logger.info("Function values paths:")
-            worstFunctionValuesReaders = Array(numberOfExecutions, { _ ->
-                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
-                logger.info("\"${functionValuesResultPaths[executionIndex]}\"")
-                Files.newBufferedReader(Paths.get(functionValuesResultPaths[executionIndex]))
-            })
-            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
-            worstFunctionValues = LinkedList()
-            logger.info("Loading variable values for experiment \"${Constants.TARGET_WORST}\" for all executions.")
-            logger.info("Variable values paths:")
-            worstVariableValuesReaders = Array(numberOfExecutions, { _ ->
-                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
-                logger.info("\"${variableValuesResultPaths[executionIndex]}\"")
-                Files.newBufferedReader(Paths.get(variableValuesResultPaths[executionIndex]))
-            })
-            worstVariableValues = LinkedList()
-            if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
-            logger.info("Loading top solutions for experiment \"${Constants.TARGET_WORST}\" for all executions.")
-            logger.info("Top solutions paths:")
-            worstTopSolutionsReaders = Array(numberOfExecutions, { _ ->
-                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
-                logger.info("\"${topSolutionsResultPaths[executionIndex]}\"")
-                Files.newBufferedReader(Paths.get(topSolutionsResultPaths[executionIndex]))
-            })
-            worstTopSolutions = LinkedList()
-        }
-
-        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
-            executionIndex = -1
-            logger.info("Loading function values for experiment \"${Constants.TARGET_AVERAGE}\" for all executions.")
-            logger.info("Function values paths:")
-            averageFunctionValuesReaders = Array(numberOfExecutions, { _ ->
-                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
-                logger.info("\"${functionValuesResultPaths[executionIndex]}\"")
-                Files.newBufferedReader(Paths.get(functionValuesResultPaths[executionIndex]))
-            })
-            executionIndex = -1
-            averageFunctionValues = LinkedList()
-            logger.info("Loading variable values for experiment \"${Constants.TARGET_WORST}\" for all executions.")
-            logger.info("Variable values paths:")
-            averageVariableValuesReaders = Array(numberOfExecutions, { _ ->
-                if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
-                logger.info("\"${variableValuesResultPaths[executionIndex]}\"")
-                Files.newBufferedReader(Paths.get(variableValuesResultPaths[executionIndex]))
-            })
-            averageVariableValues = LinkedList()
-        }
+        if (targetToAchieve == Constants.TARGET_ALL) {
+            dataSetup(models[0])
+            dataSetup(models[1])
+            dataSetup(models[2])
+        } else dataSetup(models[0])
 
         logger.info("Loading info for all executions.")
         logger.info("Info paths:")
@@ -435,78 +429,79 @@ class DatasetController(
         }
         aggregatedDataReaders.forEach(CSVReader::close)
 
-        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
+        val dataReader = {
+            model : DatasetModel ->
+            var functionValuesReaders = emptyArray<BufferedReader>()
+            var variableValuesReaders = emptyArray<BufferedReader>()
+            var topSolutionsReaders = emptyArray<BufferedReader>()
+            val functionValues = LinkedList<LinkedList<String>>()
+            val variableValues = LinkedList<LinkedList<String>>()
+            val topSolutions = LinkedList<LinkedList<String>>()
+            when(model.targetToAchieve) {
+                Constants.TARGET_BEST -> {
+                    functionValuesReaders = bestFunctionValuesReaders
+                    variableValuesReaders = bestVariableValuesReaders
+                    topSolutionsReaders = bestTopSolutionsReaders
+                }
+                Constants.TARGET_WORST -> {
+                    functionValuesReaders = worstFunctionValuesReaders
+                    variableValuesReaders = worstVariableValuesReaders
+                    topSolutionsReaders = worstTopSolutionsReaders
+                }
+                Constants.TARGET_AVERAGE -> {
+                    functionValuesReaders = averageFunctionValuesReaders
+                    variableValuesReaders = averageVariableValuesReaders
+                }
+            }
             readCounter = 0
-            while (readCounter < models[0].numberOfTopics) {
-                val currentBestFunctionValue = LinkedList<String>()
-                bestFunctionValuesReaders.forEach { aFunctionValuesReader -> currentBestFunctionValue.plusAssign(aFunctionValuesReader.readLine()) }
-                bestFunctionValues.add(currentBestFunctionValue)
+            while (readCounter < model.numberOfTopics) {
+                val currentFunctionValue = LinkedList<String>()
+                functionValuesReaders.forEach { aFunctionValuesReader -> currentFunctionValue.plusAssign(aFunctionValuesReader.readLine()) }
+                functionValues.add(currentFunctionValue)
                 readCounter++
             }
-            bestFunctionValuesReaders.forEach(BufferedReader::close)
+            functionValuesReaders.forEach(BufferedReader::close)
             readCounter = 0
-            while (readCounter < models[0].numberOfTopics) {
-                val currentBestVariableValue = LinkedList<String>()
-                bestVariableValuesReaders.forEach { aVariableValuesReader -> currentBestVariableValue.plusAssign(aVariableValuesReader.readLine()) }
-                bestVariableValues.add(currentBestVariableValue)
+            while (readCounter < model.numberOfTopics) {
+                val currentVariableValue = LinkedList<String>()
+                variableValuesReaders.forEach { aVariableValuesReader -> currentVariableValue.plusAssign(aVariableValuesReader.readLine()) }
+                variableValues.add(currentVariableValue)
                 readCounter++
             }
-            bestVariableValuesReaders.forEach(BufferedReader::close)
-            readCounter = 0
-            while (readCounter < models[0].topSolutions.size) {
-                val currentBestTopSolution = LinkedList<String>()
-                bestTopSolutionsReaders.forEach { aTopSolutionReader -> currentBestTopSolution.plusAssign(aTopSolutionReader.readLine()) }
-                bestTopSolutions.add(currentBestTopSolution)
-                readCounter++
+            variableValuesReaders.forEach(BufferedReader::close)
+            if(model.targetToAchieve != Constants.TARGET_AVERAGE) {
+                readCounter = 0
+                while (readCounter < model.topSolutions.size) {
+                    val currentTopSolution = LinkedList<String>()
+                    topSolutionsReaders.forEach { aTopSolutionReader -> currentTopSolution.plusAssign(aTopSolutionReader.readLine()) }
+                    topSolutions.add(currentTopSolution)
+                    readCounter++
+                }
+                topSolutionsReaders.forEach(BufferedReader::close)
             }
-            bestTopSolutionsReaders.forEach(BufferedReader::close)
+            when(model.targetToAchieve) {
+                Constants.TARGET_BEST -> {
+                    bestFunctionValues = functionValues
+                    bestVariableValues = variableValues
+                    bestTopSolutions = topSolutions
+                }
+                Constants.TARGET_WORST -> {
+                    worstFunctionValues = functionValues
+                    worstVariableValues = variableValues
+                    worstTopSolutions = topSolutions
+                }
+                Constants.TARGET_AVERAGE -> {
+                    averageFunctionValues = functionValues
+                    averageVariableValues = variableValues
+                }
+            }
         }
 
-        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
-            readCounter = 0
-            while (readCounter < models[0].numberOfTopics) {
-                val currentWorstFunctionValue = LinkedList<String>()
-                worstFunctionValuesReaders.forEach { aFunctionValuesReader -> currentWorstFunctionValue.plusAssign(aFunctionValuesReader.readLine()) }
-                worstFunctionValues.add(currentWorstFunctionValue)
-                readCounter++
-            }
-            worstFunctionValuesReaders.forEach(BufferedReader::close)
-            readCounter = 0
-            while (readCounter < models[0].numberOfTopics) {
-                val currentWorstVariableValue = LinkedList<String>()
-                worstVariableValuesReaders.forEach { aVariableValuesReader -> currentWorstVariableValue.plusAssign(aVariableValuesReader.readLine()) }
-                worstVariableValues.add(currentWorstVariableValue)
-                readCounter++
-            }
-            worstVariableValuesReaders.forEach(BufferedReader::close)
-            readCounter = 0
-            while (readCounter < models[0].topSolutions.size) {
-                val currentWorstTopSolution = LinkedList<String>()
-                worstTopSolutionsReaders.forEach { aTopSolutionReader -> currentWorstTopSolution.plusAssign(aTopSolutionReader.readLine()) }
-                worstTopSolutions.add(currentWorstTopSolution)
-                readCounter++
-            }
-            worstTopSolutionsReaders.forEach(BufferedReader::close)
-        }
-
-        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
-            readCounter = 0
-            while (readCounter < models[0].numberOfTopics) {
-                val currentAverageFunctionValue = LinkedList<String>()
-                averageFunctionValuesReaders.forEach { aFunctionValuesReader -> currentAverageFunctionValue.plusAssign(aFunctionValuesReader.readLine()) }
-                averageFunctionValues.add(currentAverageFunctionValue)
-                readCounter++
-            }
-            averageFunctionValuesReaders.forEach(BufferedReader::close)
-            readCounter = 0
-            while (readCounter < models[0].numberOfTopics) {
-                val currentAverageVariableValue = LinkedList<String>()
-                averageVariableValuesReaders.forEach { aVariableValuesReader -> currentAverageVariableValue.plusAssign(aVariableValuesReader.readLine()) }
-                averageVariableValues.add(currentAverageVariableValue)
-                readCounter++
-            }
-            averageVariableValuesReaders.forEach(BufferedReader::close)
-        }
+        if(targetToAchieve == Constants.TARGET_ALL) {
+            dataReader(models[0])
+            dataReader(models[1])
+            dataReader(models[2])
+        } else dataReader(models[0])
 
         readCounter = 0
         while (readCounter <= 3) {
@@ -687,108 +682,58 @@ class DatasetController(
         mergedAggregatedDataWriter.writeAll(mergedAggregatedData)
         mergedAggregatedDataWriter.close()
 
-        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
-            logger.info("Merged function values for experiment \"${Constants.TARGET_BEST}\" for all executions available at:")
-            logger.info("\"${models[0].getFunctionValuesMergedFilePath()}\"")
-            val bestFunctionValuesDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(models[0].getFunctionValuesMergedFilePath()))
-            mergedBestFunctionValues.forEach { aMergedBestFunctionValues ->
-                bestFunctionValuesDataWriter.write(aMergedBestFunctionValues)
-                bestFunctionValuesDataWriter.newLine()
+        val dataWriter = {
+            model : DatasetModel ->
+            logger.info("Merged function values for experiment \"${model.targetToAchieve}\" for all executions available at:")
+            logger.info("\"${model.getFunctionValuesMergedFilePath()}\"")
+            var mergedFunctionValues = LinkedList<String>()
+            when(model.targetToAchieve) {
+                Constants.TARGET_BEST -> mergedFunctionValues = mergedBestFunctionValues
+                Constants.TARGET_WORST -> mergedFunctionValues = mergedWorstFunctionValues
+                Constants.TARGET_AVERAGE -> mergedFunctionValues = mergedAverageFunctionValues
             }
-            bestFunctionValuesDataWriter.close()
-            logger.info("Merged variable values for experiment \"${Constants.TARGET_BEST}\" for all executions available at:")
-            logger.info("\"${models[0].getVariableValuesMergedFilePath()}\"")
-            val bestVariableValuesDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(models[0].getVariableValuesMergedFilePath()))
-            mergedBestVariableValues.forEach { aMergedBestVariableValues ->
-                bestVariableValuesDataWriter.write(aMergedBestVariableValues)
-                bestVariableValuesDataWriter.newLine()
+            val functionValuesDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(model.getFunctionValuesMergedFilePath()))
+            mergedFunctionValues.forEach { aMergedFunctionValues ->
+                functionValuesDataWriter.write(aMergedFunctionValues)
+                functionValuesDataWriter.newLine()
             }
-            bestVariableValuesDataWriter.close()
-            logger.info("Merged top solutions for experiment \"${Constants.TARGET_BEST}\" for all executions available at:")
-            logger.info("\"${models[0].getTopSolutionsMergedFilePath()}\"")
-            val bestTopSolutionsDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(models[0].getTopSolutionsMergedFilePath()))
-            mergedBestTopSolutions.forEach { aMergedBestTopSolution ->
-                bestTopSolutionsDataWriter.write(aMergedBestTopSolution)
-                bestTopSolutionsDataWriter.newLine()
+            functionValuesDataWriter.close()
+            logger.info("Merged variable values for experiment \"${model.targetToAchieve}\" for all executions available at:")
+            logger.info("\"${model.getVariableValuesMergedFilePath()}\"")
+            var mergedVariableValues = LinkedList<String>()
+            when(model.targetToAchieve) {
+                Constants.TARGET_BEST -> mergedVariableValues = mergedBestVariableValues
+                Constants.TARGET_WORST -> mergedVariableValues = mergedWorstVariableValues
+                Constants.TARGET_AVERAGE -> mergedVariableValues = mergedAverageVariableValues
             }
-            bestTopSolutionsDataWriter.close()
+            val variableValuesDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(model.getVariableValuesMergedFilePath()))
+            mergedVariableValues.forEach { aMergedVariableValues ->
+                variableValuesDataWriter.write(aMergedVariableValues)
+                variableValuesDataWriter.newLine()
+            }
+            variableValuesDataWriter.close()
+            if(model.targetToAchieve != Constants.TARGET_AVERAGE) {
+                logger.info("Merged top solutions for experiment \"${model.targetToAchieve}\" for all executions available at:")
+                logger.info("\"${model.getTopSolutionsMergedFilePath()}\"")
+                var mergedTopSolutions = LinkedList<String>()
+                when(model.targetToAchieve) {
+                    Constants.TARGET_BEST -> mergedTopSolutions = mergedBestTopSolutions
+                    Constants.TARGET_WORST -> mergedTopSolutions = mergedWorstTopSolutions
+                }
+                val topSolutionsDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(model.getTopSolutionsMergedFilePath()))
+                mergedTopSolutions.forEach { aMergedTopSolution ->
+                    topSolutionsDataWriter.write(aMergedTopSolution)
+                    topSolutionsDataWriter.newLine()
+                }
+                topSolutionsDataWriter.close()
+            }
         }
 
-        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
-            logger.info("Merged function values for experiment \"${Constants.TARGET_WORST}\" for all executions available at:")
-            val worstFunctionValuesDataWriter: BufferedWriter
-            if (targetToAchieve == Constants.TARGET_ALL) {
-                worstFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get(models[1].getFunctionValuesMergedFilePath()))
-                logger.info("\"${models[1].getFunctionValuesMergedFilePath()}\"")
-            } else {
-                worstFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get(models[0].getFunctionValuesMergedFilePath()))
-                logger.info("\"${models[0].getFunctionValuesMergedFilePath()}\"")
-            }
-            mergedWorstFunctionValues.forEach { aMergedWorstFunctionValues ->
-                worstFunctionValuesDataWriter.write(aMergedWorstFunctionValues)
-                worstFunctionValuesDataWriter.newLine()
-            }
-            worstFunctionValuesDataWriter.close()
-            logger.info("Merged variable values for experiment \"${Constants.TARGET_WORST}\" for all executions available at:")
-            val worstVariableValuesDataWriter: BufferedWriter
-            if (targetToAchieve == Constants.TARGET_ALL) {
-                worstVariableValuesDataWriter = Files.newBufferedWriter(Paths.get(models[1].getVariableValuesMergedFilePath()))
-                logger.info("\"${models[1].getVariableValuesMergedFilePath()}\"")
-            } else {
-                worstVariableValuesDataWriter = Files.newBufferedWriter(Paths.get(models[0].getVariableValuesMergedFilePath()))
-                logger.info("\"${models[0].getVariableValuesMergedFilePath()}\"")
-            }
-            mergedWorstVariableValues.forEach { aMergedWorstVariableValues ->
-                worstVariableValuesDataWriter.write(aMergedWorstVariableValues)
-                worstVariableValuesDataWriter.newLine()
-            }
-            worstVariableValuesDataWriter.close()
-            logger.info("Merged top solutions for experiment \"${Constants.TARGET_WORST}\" for all executions available at:")
-            val worstTopSolutionsDataWriter: BufferedWriter
-            if (targetToAchieve == Constants.TARGET_ALL) {
-                worstTopSolutionsDataWriter = Files.newBufferedWriter(Paths.get(models[1].getTopSolutionsMergedFilePath()))
-                logger.info("\"${models[1].getTopSolutionsMergedFilePath()}\"")
-            } else {
-                worstTopSolutionsDataWriter = Files.newBufferedWriter(Paths.get(models[0].getTopSolutionsMergedFilePath()))
-                logger.info("\"${models[0].getTopSolutionsMergedFilePath()}\"")
-            }
-            mergedWorstTopSolutions.forEach { aMergedWorstTopSolution ->
-                worstTopSolutionsDataWriter.write(aMergedWorstTopSolution)
-                worstTopSolutionsDataWriter.newLine()
-            }
-            worstTopSolutionsDataWriter.close()
-        }
-
-        if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
-            logger.info("Merged function values for experiment \"${Constants.TARGET_AVERAGE}\" for all executions available at:")
-            val averageFunctionValuesDataWriter: BufferedWriter
-            if (targetToAchieve == Constants.TARGET_ALL) {
-                averageFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get(models[2].getFunctionValuesMergedFilePath()))
-                logger.info("\"${models[2].getFunctionValuesMergedFilePath()}\"")
-            } else {
-                averageFunctionValuesDataWriter = Files.newBufferedWriter(Paths.get(models[0].getFunctionValuesMergedFilePath()))
-                logger.info("\"${models[0].getFunctionValuesMergedFilePath()}\"")
-            }
-            mergedAverageFunctionValues.forEach { aMergedAverageFunctionValues ->
-                averageFunctionValuesDataWriter.write(aMergedAverageFunctionValues)
-                averageFunctionValuesDataWriter.newLine()
-            }
-            averageFunctionValuesDataWriter.close()
-            logger.info("Merged variable values for experiment \"${Constants.TARGET_AVERAGE}\" for all executions available at:")
-            val averageVariableValuesDataWriter: BufferedWriter
-            if (targetToAchieve == Constants.TARGET_ALL) {
-                averageVariableValuesDataWriter = Files.newBufferedWriter(Paths.get(models[2].getVariableValuesMergedFilePath()))
-                logger.info("\"${models[2].getVariableValuesMergedFilePath()}\"")
-            } else {
-                averageVariableValuesDataWriter = Files.newBufferedWriter(Paths.get(models[0].getVariableValuesMergedFilePath()))
-                logger.info("\"${models[0].getVariableValuesMergedFilePath()}\"")
-            }
-            mergedAverageVariableValues.forEach { aMergedAverageVariableValues ->
-                averageVariableValuesDataWriter.write(aMergedAverageVariableValues)
-                averageVariableValuesDataWriter.newLine()
-            }
-            averageVariableValuesDataWriter.close()
-        }
+        if(targetToAchieve == Constants.TARGET_ALL) {
+            dataWriter(models[0])
+            dataWriter(models[1])
+            dataWriter(models[2])
+        } else dataWriter(models[0])
 
         logger.info("Merged info for all executions available at:")
         val infoValuesWriter: BufferedWriter
