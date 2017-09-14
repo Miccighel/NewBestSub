@@ -96,14 +96,14 @@
         <kotlin.version>1.2-M2</kotlin.version>
         <kotlinx.version>0.16</kotlinx.version>
         <kotlin.compiler.incremental>false</kotlin.compiler.incremental>
-        <junit.platform.version>1.0.0-RC3</junit.platform.version>
-        <junit.jupiter.version>5.0.0-RC3</junit.jupiter.version>
-        <dokka.version>0.9.13</dokka.version>
+        <junit.platform.version>1.0.0</junit.platform.version>
+        <junit.jupiter.version>5.0.0</junit.jupiter.version>
+        <dokka.version>0.9.15</dokka.version>
         <apache.commons.version>3.6.1</apache.commons.version>
         <apache.commons.cli>1.4</apache.commons.cli>
-        <log4j.api.version>2.8.2</log4j.api.version>
-        <log4j.core.version>2.8.2</log4j.core.version>
-        <opencsv.version>3.10</opencsv.version>
+        <log4j.api.version>2.9.0</log4j.api.version>
+        <log4j.core.version>2.9.0</log4j.core.version>
+        <opencsv.version>4.0</opencsv.version>
         <jmetal.version>5.2</jmetal.version>
         <maven.dependency-plugin.version>3.0.0</maven.dependency-plugin.version>
         <maven.jar-plugin.version>3.0.2</maven.jar-plugin.version>
