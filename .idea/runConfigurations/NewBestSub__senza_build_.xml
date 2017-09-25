@@ -2,7 +2,7 @@
   <configuration default="false" name="NewBestSub (senza build)" type="JarApplication" factoryName="JAR Application">
     <extension name="coverage" enabled="false" merge="false" sample_coverage="true" runner="idea" />
     <option name="JAR_PATH" value="$PROJECT_DIR$/target/NewBestSub-1.0.jar" />
-    <option name="PROGRAM_PARAMETERS" value="-fi &quot;WEB14AP-Top25-Binary-0-0-Soboroff&quot; -c &quot;Pearson&quot; -po 2000 -r 5000 -i 1000 -t &quot;All&quot; -pe 1,100 -log Limited" />
+    <option name="PROGRAM_PARAMETERS" value="-fi &quot;WEB14GD-Top25&quot; -c &quot;Kendall&quot; -po 2000 -r 5000 -i 10000000 -t &quot;All&quot; -pe 1,100 -log Limited" />
     <option name="WORKING_DIRECTORY" value="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub" />
     <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="true" />
     <option name="ALTERNATIVE_JRE_PATH" value="1.8" />
