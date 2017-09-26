@@ -42,6 +42,8 @@ class DatasetModel {
     var topicDistribution = linkedMapOf<String, MutableMap<Double, Boolean>>()
     var computingTime: Long = 0
 
+    private var originalAveragePrecisions = linkedMapOf<String, Array<Double>>()
+
     private val logger = LogManager.getLogger()
 
     private lateinit var problem: BestSubsetProblem
@@ -70,20 +72,45 @@ class DatasetModel {
             this.averagePrecisions.put(nextLine[0], averagePrecisions.toTypedArray())
         }
 
+        originalAveragePrecisions = averagePrecisions
+        numberOfSystems = averagePrecisions.entries.size
+
         topicLabels = topicLabels.sliceArray(1..topicLabels.size - 1)
         updateData()
     }
 
-    fun expandData(expansionCoefficient: Int, randomizedAveragePrecisions: Map<String, DoubleArray>, randomizedTopicLabels: Array<String>) {
+    fun expandTopics(expansionCoefficient: Int, randomizedAveragePrecisions: Map<String, DoubleArray>, randomizedTopicLabels: Array<String>) {
 
         this.expansionCoefficient = expansionCoefficient
         numberOfTopics += randomizedTopicLabels.size
 
-        averagePrecisions.entries.forEach { (systemLabel, averagePrecisionValues) ->
-            averagePrecisions[systemLabel] = (averagePrecisionValues.toList() + (randomizedAveragePrecisions[systemLabel]?.toList() ?: emptyList())).toTypedArray()
+        averagePrecisions.entries.forEach { (aSystemLabel, averagePrecisionValues) ->
+            averagePrecisions[aSystemLabel] = (averagePrecisionValues.toList() + (randomizedAveragePrecisions[aSystemLabel]?.toList() ?: emptyList())).toTypedArray()
         }
 
         topicLabels = (topicLabels.toList() + randomizedTopicLabels.toList()).toTypedArray()
+
+        updateData()
+    }
+
+    fun expandSystems(expansionCoefficient: Int, trueNumberOfSystems: Int, randomizedAveragePrecisions: Map<String, DoubleArray>, randomizedSystemLabels: Array<String>) {
+
+        this.expansionCoefficient = expansionCoefficient
+        val newNumberOfSystems = numberOfSystems + expansionCoefficient
+
+        if (newNumberOfSystems < trueNumberOfSystems) {
+            averagePrecisions = originalAveragePrecisions
+            val systemsToKeep = averagePrecisions.entries.take(newNumberOfSystems)
+            averagePrecisions = linkedMapOf()
+            systemsToKeep.forEach { aSystemToKeep ->
+                averagePrecisions.put(aSystemToKeep.key, aSystemToKeep.value)
+            }
+        } else {
+            randomizedSystemLabels.forEach { randomizedSystemLabel ->
+                averagePrecisions.put(randomizedSystemLabel, (randomizedAveragePrecisions[randomizedSystemLabel]?.toList() ?: emptyList()).toTypedArray())
+            }
+            systemLabels = (systemLabels.toList() + randomizedSystemLabels.toList()).toTypedArray()
+        }
 
         updateData()
     }
@@ -335,7 +362,7 @@ class DatasetModel {
     }
 
     private fun getBaseFilePath(isTargetAll: Boolean): String {
-        var baseResultPath = "${Constants.NEWBESTSUB_OUTPUT_PATH}$datasetName${Constants.FILE_NAME_SEPARATOR}$correlationMethod${Constants.FILE_NAME_SEPARATOR}$numberOfTopics${Constants.FILE_NAME_SEPARATOR}"
+        var baseResultPath = "${Constants.NEWBESTSUB_OUTPUT_PATH}$datasetName${Constants.FILE_NAME_SEPARATOR}$correlationMethod${Constants.FILE_NAME_SEPARATOR}$numberOfTopics${Constants.FILE_NAME_SEPARATOR}$numberOfSystems${Constants.FILE_NAME_SEPARATOR}"
         if (targetToAchieve != Constants.TARGET_AVERAGE && targetToAchieve != Constants.TARGET_ALL)
             baseResultPath += "$numberOfIterations${Constants.FILE_NAME_SEPARATOR}$populationSize${Constants.FILE_NAME_SEPARATOR}"
         if (targetToAchieve == Constants.TARGET_AVERAGE || isTargetAll)

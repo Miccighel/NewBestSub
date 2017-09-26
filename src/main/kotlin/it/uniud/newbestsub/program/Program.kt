@@ -28,7 +28,8 @@ object Program {
         var numberOfRepetitions: Int
         var populationSize: Int
         var percentiles: List<Int>
-        val expansionCoefficient: Int
+        val topicExpansionCoefficient: Int
+        val systemExpansionCoefficient: Int
         val numberOfExecutions: Int
         val loggingLevel: Level
         var logger: Logger
@@ -162,26 +163,48 @@ object Program {
 
                     }
 
-                    if (commandLine.hasOption('e')) {
+                    if (commandLine.hasOption("et")) {
 
                         try {
-                            expansionCoefficient = Integer.parseInt(commandLine.getOptionValue('e'))
+                            topicExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("et"))
                         } catch (exception: NumberFormatException) {
-                            throw ParseException("Value for the option <<e>> or <<exp>> is not an integer. Check the usage section below")
+                            throw ParseException("Value for the option <<et>> or <<expt>> is not an integer. Check the usage section below")
                         }
                         val trueTopicNumber = datasetController.models[0].numberOfTopics
 
                         logger.info("Base execution (true data)")
 
                         datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
-                        while (datasetController.models[0].numberOfTopics + expansionCoefficient < Constants.MAXIMUM_EXPANSION) {
-                            logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + expansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $expansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_EXPANSION}, Original Topic Number: $trueTopicNumber>")
-                            datasetController.expand(expansionCoefficient)
+                        while (datasetController.models[0].numberOfTopics + topicExpansionCoefficient < Constants.MAXIMUM_TOPIC_EXPANSION) {
+                            logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + topicExpansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $topicExpansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_TOPIC_EXPANSION}, True Topic Number: $trueTopicNumber>")
+                            datasetController.expandTopics(topicExpansionCoefficient)
                             datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
                         }
                     }
 
-                    if (!commandLine.hasOption('e') && !commandLine.hasOption('m')) datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
+                    if (commandLine.hasOption("es")) {
+
+                        try {
+                            systemExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("es"))
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<es>> or <<exps> is not an integer. Check the usage section below")
+                        }
+                        val trueNumberOfSystems = datasetController.models[0].numberOfSystems
+
+                        datasetController.models.forEach { model ->
+                            model.numberOfSystems = 0
+                        }
+
+                        logger.info("Base execution (true data)")
+
+                        while (datasetController.models[0].numberOfSystems + systemExpansionCoefficient < Constants.MAXIMUM_SYSTEM_EXPANSION) {
+                            logger.info("Data expansion: <New System Number: ${datasetController.models[0].numberOfSystems + systemExpansionCoefficient}, Earlier System Number: ${datasetController.models[0].numberOfSystems}, Expansion Coefficient: $systemExpansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_SYSTEM_EXPANSION}, Initial System Number: $systemExpansionCoefficient, True System Number: $trueNumberOfSystems>")
+                            datasetController.expandSystems(systemExpansionCoefficient, trueNumberOfSystems)
+                            datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
+                        }
+                    }
+
+                    if (!commandLine.hasOption("et") && !commandLine.hasOption("es") && !commandLine.hasOption('m')) datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
                     if (commandLine.hasOption("copy")) datasetController.copy()
 
                     logger.info("NewBestSub execution terminated.")
@@ -230,7 +253,9 @@ object Program {
         options.addOption(source)
         source = Option.builder("pe").longOpt("perc").desc("Set of percentiles to be calculated. There must be two comma separated integer values. Example: \"-pe 1,100\". It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArgs().valueSeparator(',').argName("Percentile").build()
         options.addOption(source)
-        source = Option.builder("e").longOpt("exp").desc("Number of fake topics to be added at each iteration. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Expansion Coefficient").build()
+        source = Option.builder("et").longOpt("expt").desc("Number of fake topics to be added at each iteration. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Expansion Coefficient (Topics)").build()
+        options.addOption(source)
+        source = Option.builder("es").longOpt("exps").desc("Number of fake systems to be added at each iteration. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Expansion Coefficient (Systems)").build()
         options.addOption(source)
         source = Option.builder("m").longOpt("mrg").desc("Number of executions of the program to do. The results of the executions will be merged together. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)

@@ -74,17 +74,30 @@ class DatasetController(
         logger.info("Data set loading for input file \"${models[0].datasetName}\" completed.")
     }
 
-    fun expand(expansionCoefficient: Int) {
+    fun expandTopics(expansionCoefficient: Int) {
 
         val random = Random()
         val systemLabels = models[0].systemLabels
-        val topicLabels = Array(expansionCoefficient, { "${random.nextInt(998 + 1 - 100) + 100} (F)" })
+        val topicLabels = Array(expansionCoefficient, { "${random.nextInt(998 + 1 - 800) + 800} (F)" })
         val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
 
         systemLabels.forEach { systemLabel ->
             randomizedAveragePrecisions[systemLabel] = DoubleArray(expansionCoefficient, { Math.random() })
         }
-        models.forEach { model -> model.expandData(expansionCoefficient, randomizedAveragePrecisions, topicLabels) }
+        models.forEach { model -> model.expandTopics(expansionCoefficient, randomizedAveragePrecisions, topicLabels) }
+    }
+
+    fun expandSystems(expansionCoefficient: Int, trueNumberOfSystems: Int) {
+
+        val random = Random()
+        val systemLabels = Array(expansionCoefficient, { "Sys${random.nextInt(998 + 1 - 800) + 800} (F)" })
+        val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
+
+        systemLabels.forEach { systemLabel ->
+            randomizedAveragePrecisions[systemLabel] = DoubleArray(models[0].numberOfTopics + expansionCoefficient, { Math.random() })
+        }
+        models.forEach { model -> model.expandSystems(expansionCoefficient, trueNumberOfSystems, randomizedAveragePrecisions, systemLabels) }
+
     }
 
     fun solve(parameters: Parameters) {
