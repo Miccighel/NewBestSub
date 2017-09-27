@@ -90,7 +90,7 @@ class DatasetController(
     fun expandSystems(expansionCoefficient: Int, trueNumberOfSystems: Int) {
 
         val random = Random()
-        val systemLabels = Array(expansionCoefficient, { "Sys${random.nextInt(998 + 1 - 800) + 800} (F)" })
+        val systemLabels = Array(expansionCoefficient, { index -> "Sys$index${random.nextInt(998 + 1 - 800) + 800} (F)" })
         val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
 
         systemLabels.forEach { systemLabel ->
