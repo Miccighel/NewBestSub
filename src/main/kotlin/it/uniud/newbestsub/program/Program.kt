@@ -30,6 +30,8 @@ object Program {
         var percentiles: List<Int>
         val topicExpansionCoefficient: Int
         val systemExpansionCoefficient: Int
+        val topicMaximumExpansionCoefficient: Int
+        val systemMaximumExpansionCoefficient: Int
         val numberOfExecutions: Int
         val loggingLevel: Level
         var logger: Logger
@@ -145,13 +147,13 @@ object Program {
                     datasetController = DatasetController(targetToAchieve)
                     datasetController.load(datasetPath)
 
-                    if (commandLine.hasOption('m')) {
+                    if (commandLine.hasOption("mr")) {
 
                         try {
-                            numberOfExecutions = Integer.parseInt(commandLine.getOptionValue("m"))
-                            if (numberOfExecutions <= 0) throw ParseException("Value for the option <<m>> or <<mrg>> must be a positive value. Check the usage section below")
+                            numberOfExecutions = Integer.parseInt(commandLine.getOptionValue("mr"))
+                            if (numberOfExecutions <= 0) throw ParseException("Value for the option <<me>> or <<mrg>> must be a positive value. Check the usage section below")
                         } catch (exception: NumberFormatException) {
-                            throw ParseException("Value for the option <<m>> or <<mrg>> is not an integer. Check the usage section below")
+                            throw ParseException("Value for the option <<mr>> or <<mrg>> is not an integer. Check the usage section below")
                         }
 
                         (1..numberOfExecutions).forEach { currentExecution ->
@@ -163,6 +165,30 @@ object Program {
 
                     }
 
+                    val parseMaximumExpansionCoefficient = {
+
+                        val maximumExpansionCoefficient: Int
+
+                        if (!commandLine.hasOption("mx")) throw ParseException("Value for the option <<mx>> or <<max>> is missing. Check the usage section below.")
+                        try {
+                            maximumExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("mx"))
+                            if (maximumExpansionCoefficient <= 0) throw ParseException("Value for the option <<mx>> or <<max>> must be a positive value. Check the usage section below")
+                        } catch (exception: NumberFormatException) {
+                            throw ParseException("Value for the option <<m>> or <<max>> is not an integer. Check the usage section below")
+                        }
+
+                        maximumExpansionCoefficient
+                    }
+
+                    val resultCleaner = {
+                        logger.info("Cleaning of useless results from last expansion started.")
+                        datasetController.clean(datasetController.aggregatedDataResultPaths, "Cleaning aggregated data at paths:")
+                        datasetController.clean(datasetController.functionValuesResultPaths, "Cleaning function values at paths:")
+                        datasetController.clean(datasetController.variableValuesResultPaths, "Cleaning variable values at paths:")
+                        datasetController.clean(datasetController.topSolutionsResultPaths, "Cleaning top solutions at paths:")
+                        logger.info("Cleaning completed.")
+                    }
+
                     if (commandLine.hasOption("et")) {
 
                         try {
@@ -170,16 +196,21 @@ object Program {
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<et>> or <<expt>> is not an integer. Check the usage section below")
                         }
+
+                        topicMaximumExpansionCoefficient = parseMaximumExpansionCoefficient.invoke()
                         val trueTopicNumber = datasetController.models[0].numberOfTopics
 
                         logger.info("Base execution (true data)")
 
                         datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
-                        while (datasetController.models[0].numberOfTopics + topicExpansionCoefficient < Constants.MAXIMUM_TOPIC_EXPANSION) {
-                            logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + topicExpansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $topicExpansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_TOPIC_EXPANSION}, True Topic Number: $trueTopicNumber>")
+                        resultCleaner.invoke()
+                        while (datasetController.models[0].numberOfTopics + topicExpansionCoefficient <= topicMaximumExpansionCoefficient) {
+                            logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + topicExpansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $topicExpansionCoefficient, Maximum Expansion: $topicMaximumExpansionCoefficient, True Topic Number: $trueTopicNumber>")
                             datasetController.expandTopics(topicExpansionCoefficient)
                             datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
+                            resultCleaner.invoke()
                         }
+
                     }
 
                     if (commandLine.hasOption("es")) {
@@ -189,6 +220,8 @@ object Program {
                         } catch (exception: NumberFormatException) {
                             throw ParseException("Value for the option <<es>> or <<exps> is not an integer. Check the usage section below")
                         }
+
+                        systemMaximumExpansionCoefficient = parseMaximumExpansionCoefficient.invoke()
                         val trueNumberOfSystems = datasetController.models[0].numberOfSystems
 
                         datasetController.models.forEach { model ->
@@ -197,11 +230,13 @@ object Program {
 
                         logger.info("Base execution (true data)")
 
-                        while (datasetController.models[0].numberOfSystems + systemExpansionCoefficient < Constants.MAXIMUM_SYSTEM_EXPANSION) {
-                            logger.info("Data expansion: <New System Number: ${datasetController.models[0].numberOfSystems + systemExpansionCoefficient}, Earlier System Number: ${datasetController.models[0].numberOfSystems}, Expansion Coefficient: $systemExpansionCoefficient, Maximum Expansion: ${Constants.MAXIMUM_SYSTEM_EXPANSION}, Initial System Number: $systemExpansionCoefficient, True System Number: $trueNumberOfSystems>")
+                        while (datasetController.models[0].numberOfSystems + systemExpansionCoefficient <= systemMaximumExpansionCoefficient) {
+                            logger.info("Data expansion: <New System Number: ${datasetController.models[0].numberOfSystems + systemExpansionCoefficient}, Earlier System Number: ${datasetController.models[0].numberOfSystems}, Expansion Coefficient: $systemExpansionCoefficient, Maximum Expansion: $systemMaximumExpansionCoefficient, Initial System Number: $systemExpansionCoefficient, True System Number: $trueNumberOfSystems>")
                             datasetController.expandSystems(systemExpansionCoefficient, trueNumberOfSystems)
                             datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
+                            resultCleaner.invoke()
                         }
+
                     }
 
                     if (!commandLine.hasOption("et") && !commandLine.hasOption("es") && !commandLine.hasOption('m')) datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
@@ -257,7 +292,9 @@ object Program {
         options.addOption(source)
         source = Option.builder("es").longOpt("exps").desc("Number of fake systems to be added at each iteration. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Expansion Coefficient (Systems)").build()
         options.addOption(source)
-        source = Option.builder("m").longOpt("mrg").desc("Number of executions of the program to do. The results of the executions will be merged together. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Value").build()
+        source = Option.builder("mx").longOpt("max").desc("Maximum number of fake topics or systems to reach using expansion options. [OPTIONAL]").hasArg().argName("Maximum Expansion Coefficient").build()
+        options.addOption(source)
+        source = Option.builder("mr").longOpt("mrg").desc("Number of executions of the program to do. The results of the executions will be merged together. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Value").build()
         options.addOption(source)
         source = Option.builder("copy").desc("NewBestSub should search the folder or NewBestSub-Experiments and copy the results of the current execution inside its data folders. The following structure into filesystem must be respected: \"baseFolder/NewBestSub/..\" and \"baseFolder/NewBestSub-Experiments/..\" otherwise, an exception will be raised. [OPTIONAL]").build()
         options.addOption(source)

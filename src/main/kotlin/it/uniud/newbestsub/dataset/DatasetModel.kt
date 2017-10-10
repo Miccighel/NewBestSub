@@ -145,6 +145,7 @@ class DatasetModel {
         logger.info("Execution started on \"${Thread.currentThread().name}\" with target \"${parameters.targetToAchieve}\". Wait please...")
 
         // The following four data structures need to be reinitialized during a data expansion session. During other experiments this set of instructions won't cause any trouble.
+
         notDominatedSolutions = mutableListOf()
         dominatedSolutions = mutableListOf()
         topSolutions = mutableListOf()

@@ -25,11 +25,11 @@ class DatasetController(
     private var view = DatasetView()
     private lateinit var parameters: Parameters
     private lateinit var datasetPath: String
-    private var aggregatedDataResultPaths = mutableListOf<String>()
-    private var variableValuesResultPaths = mutableListOf<String>()
-    private var functionValuesResultPaths = mutableListOf<String>()
-    private var topSolutionsResultPaths = mutableListOf<String>()
-    private var infoResultPaths = mutableListOf<String>()
+    var aggregatedDataResultPaths = mutableListOf<String>()
+    var variableValuesResultPaths = mutableListOf<String>()
+    var functionValuesResultPaths = mutableListOf<String>()
+    var topSolutionsResultPaths = mutableListOf<String>()
+    var infoResultPaths = mutableListOf<String>()
     private var logger = LogManager.getLogger()
 
     init {
@@ -85,6 +85,7 @@ class DatasetController(
             randomizedAveragePrecisions[systemLabel] = DoubleArray(expansionCoefficient, { Math.random() })
         }
         models.forEach { model -> model.expandTopics(expansionCoefficient, randomizedAveragePrecisions, topicLabels) }
+
     }
 
     fun expandSystems(expansionCoefficient: Int, trueNumberOfSystems: Int) {
@@ -143,7 +144,8 @@ class DatasetController(
             models.forEach { model ->
                 functionValuesResultPaths.add(model.getFunctionValuesFilePath())
                 variableValuesResultPaths.add(model.getVariableValuesFilePath())
-                topSolutionsResultPaths.add(model.getTopSolutionsFilePath())
+                if (model.targetToAchieve != Constants.TARGET_AVERAGE)
+                    topSolutionsResultPaths.add(model.getTopSolutionsFilePath())
             }
             infoResultPaths.add(models[0].getInfoFilePath(true))
 
@@ -765,24 +767,11 @@ class DatasetController(
 
         logger.info("Cleaning of not merged results for all executions started.")
 
-        val dataCleaner = { dataList: MutableList<String>, logMessage: String ->
-            logger.info(logMessage)
-            val toBeRemoved = mutableListOf<String>()
-            dataList.forEach { aResultPath ->
-                if (Files.exists(Paths.get(aResultPath))) {
-                    Files.delete(Paths.get(aResultPath))
-                    toBeRemoved.add(aResultPath)
-                }
-                logger.info("\"$aResultPath\"")
-            }
-            dataList.removeAll(toBeRemoved)
-        }
-
-        dataCleaner(aggregatedDataResultPaths, "Cleaning aggregated data at paths:")
-        dataCleaner(functionValuesResultPaths, "Cleaning function values at paths:")
-        dataCleaner(variableValuesResultPaths, "Cleaning variable values at paths:")
-        dataCleaner(topSolutionsResultPaths, "Cleaning top solutions at paths:")
-        dataCleaner(infoResultPaths, "Cleaning info at paths:")
+        clean(aggregatedDataResultPaths, "Cleaning aggregated data at paths:")
+        clean(functionValuesResultPaths, "Cleaning function values at paths:")
+        clean(variableValuesResultPaths, "Cleaning variable values at paths:")
+        clean(topSolutionsResultPaths, "Cleaning top solutions at paths:")
+        clean(infoResultPaths, "Cleaning info at paths:")
 
         logger.info("Cleaning of not merged results for all executions completed.")
         logger.info("Executions result merging completed.")
@@ -857,6 +846,22 @@ class DatasetController(
         }
 
         logger.info("Execution result copy to ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} completed.")
+
+    }
+
+    fun clean(dataList: MutableList<String>, logMessage: String) {
+
+        logger.info(logMessage)
+
+        val toBeRemoved = mutableListOf<String>()
+        dataList.forEach { aResultPath ->
+            if (Files.exists(Paths.get(aResultPath))) {
+                Files.delete(Paths.get(aResultPath))
+                toBeRemoved.add(aResultPath)
+            }
+            logger.info("\"$aResultPath\"")
+        }
+        dataList.removeAll(toBeRemoved)
 
     }
 

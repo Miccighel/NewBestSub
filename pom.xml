@@ -93,21 +93,24 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <kotlin.version>1.2-M2</kotlin.version>
+        <kotlin.version>1.2.0-beta-31-IJ2017.2-1</kotlin.version>
+        <kotlin.stdlib.version>1.2-M2</kotlin.stdlib.version>
+        <kotlin.test.version>1.2-M2</kotlin.test.version>
         <kotlinx.version>0.16</kotlinx.version>
+        <kotlin.maven.plugin.version>1.2-M2</kotlin.maven.plugin.version>
         <kotlin.compiler.incremental>false</kotlin.compiler.incremental>
         <junit.platform.version>1.0.0</junit.platform.version>
         <junit.jupiter.version>5.0.0</junit.jupiter.version>
         <dokka.version>0.9.15</dokka.version>
         <apache.commons.version>3.6.1</apache.commons.version>
         <apache.commons.cli>1.4</apache.commons.cli>
-        <log4j.api.version>2.9.0</log4j.api.version>
-        <log4j.core.version>2.9.0</log4j.core.version>
+        <log4j.api.version>2.9.1</log4j.api.version>
+        <log4j.core.version>2.9.1</log4j.core.version>
         <opencsv.version>4.0</opencsv.version>
         <jmetal.version>5.2</jmetal.version>
         <maven.dependency-plugin.version>3.0.0</maven.dependency-plugin.version>
         <maven.jar-plugin.version>3.0.2</maven.jar-plugin.version>
-        <maven.surefire-plugin.version>2.20</maven.surefire-plugin.version>
+        <maven.surefire-plugin.version>2.20.1</maven.surefire-plugin.version>
     </properties>
 
     <dependencies>
@@ -215,7 +218,7 @@
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-stdlib-jre8</artifactId>
-            <version>${kotlin.version}</version>
+            <version>${kotlin.stdlib.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.jetbrains.kotlin</groupId>
@@ -227,7 +230,7 @@
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-test</artifactId>
-            <version>${kotlin.version}</version>
+            <version>${kotlin.test.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -332,7 +335,7 @@
             <plugin>
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-maven-plugin</artifactId>
-                <version>${kotlin.version}</version>
+                <version>${kotlin.maven.plugin.version}</version>
                 <executions>
                     <execution>
                         <id>compile</id>
