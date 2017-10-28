@@ -14,7 +14,6 @@
           <option name="pluginClasspaths">
             <array />
           </option>
-          <option name="version" value="true" />
           <option name="coroutinesEnable" value="true" />
         </compilerArguments>
       </configuration>

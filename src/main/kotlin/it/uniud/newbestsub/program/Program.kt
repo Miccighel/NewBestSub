@@ -177,6 +177,8 @@ object Program {
                             throw ParseException("Value for the option <<m>> or <<max>> is not an integer. Check the usage section below")
                         }
 
+                        if(populationSize <= maximumExpansionCoefficient) throw ParseException("Value for the option <<p>> or <<pop>> must be greater than value for the option <<mx>> or <<max>>. Check the usage section below")
+
                         maximumExpansionCoefficient
                     }
 
@@ -284,7 +286,7 @@ object Program {
         options.addOption(source)
         source = Option.builder("r").longOpt("rep").desc("Number of repetitions to be done to compute a single cardinality during Average experiment. It must be a positive integer value. It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArg().argName("Number of Repetitions").build()
         options.addOption(source)
-        source = Option.builder("po").longOpt("pop").desc("Size of the initial population to be generated. It must be an integer value. It must be greater or equal than/to of the number of topics of the data set. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Population Size").build()
+        source = Option.builder("po").longOpt("pop").desc("Size of the initial population to be generated. It must be an integer value. It must be greater or equal than/to of the number of topics of the data set. It must be greater than the value for the option <<mx>> or <<max>> if this one is used.a It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Population Size").build()
         options.addOption(source)
         source = Option.builder("pe").longOpt("perc").desc("Set of percentiles to be calculated. There must be two comma separated integer values. Example: \"-pe 1,100\". It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArgs().valueSeparator(',').argName("Percentile").build()
         options.addOption(source)

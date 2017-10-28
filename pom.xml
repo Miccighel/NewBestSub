@@ -90,10 +90,11 @@
     </pluginRepositories>
 
     <properties>
+
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <kotlin.version>1.2.0-beta-31-IJ2017.2-1</kotlin.version>
+        <kotlin.version> 1.2.0-beta-88-IJ2017.3-1.</kotlin.version>
         <kotlin.stdlib.version>1.2-M2</kotlin.stdlib.version>
         <kotlin.test.version>1.2-M2</kotlin.test.version>
         <kotlinx.version>0.16</kotlinx.version>

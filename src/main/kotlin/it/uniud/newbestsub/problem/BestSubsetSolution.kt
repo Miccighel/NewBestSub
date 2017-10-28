@@ -6,11 +6,12 @@ import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.problem.BinaryProblem
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.solution.impl.AbstractGenericSolution
+import org.uma.jmetal.solution.impl.DefaultBinarySolution
 import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 import java.util.*
 
-class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, BinarySolution, Comparable<BestSubsetSolution> {
+class BestSubsetSolution : DefaultBinarySolution, Comparable<BestSubsetSolution> {
 
     var topicStatus: Array<Boolean>
     var numberOfSelectedTopics = 0
