@@ -6,12 +6,11 @@ import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.problem.BinaryProblem
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.solution.impl.AbstractGenericSolution
-import org.uma.jmetal.solution.impl.DefaultBinarySolution
 import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 import java.util.*
 
-class BestSubsetSolution : DefaultBinarySolution, Comparable<BestSubsetSolution> {
+class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, BinarySolution, Comparable<BestSubsetSolution> {
 
     var topicStatus: Array<Boolean>
     var numberOfSelectedTopics = 0
@@ -21,8 +20,6 @@ class BestSubsetSolution : DefaultBinarySolution, Comparable<BestSubsetSolution>
     constructor(problem: BinaryProblem, numberOfTopics: Int, cardinalityToGenerate: Int) : super(problem) {
 
         problem as BestSubsetProblem
-
-        initializeObjectiveValues()
 
         val generator = Random()
         numberOfSelectedTopics = 0
@@ -45,8 +42,6 @@ class BestSubsetSolution : DefaultBinarySolution, Comparable<BestSubsetSolution>
     constructor(problem: BinaryProblem, numberOfTopics: Int) : super(problem) {
 
         problem as BestSubsetProblem
-
-        initializeObjectiveValues()
 
         numberOfSelectedTopics = 0
         topicLabels = problem.topicLabels

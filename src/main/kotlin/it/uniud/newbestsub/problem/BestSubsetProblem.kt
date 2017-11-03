@@ -37,6 +37,10 @@ class BestSubsetProblem(
         return solution.getNumberOfBits(0)
     }
 
+    override fun getNumberOfBits(index: Int): Int {
+        return solution.getNumberOfBits(0)
+    }
+
     override fun createSolution(): BestSubsetSolution {
         if (cardinalityToGenerate < numberOfTopics) {
             solution = BestSubsetSolution(this, numberOfTopics, cardinalityToGenerate)

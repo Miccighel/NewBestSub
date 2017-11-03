@@ -177,7 +177,7 @@ object Program {
                             throw ParseException("Value for the option <<m>> or <<max>> is not an integer. Check the usage section below")
                         }
 
-                        if(populationSize <= maximumExpansionCoefficient) throw ParseException("Value for the option <<p>> or <<pop>> must be greater than value for the option <<mx>> or <<max>>. Check the usage section below")
+                        if (populationSize <= maximumExpansionCoefficient) throw ParseException("Value for the option <<p>> or <<pop>> must be greater than value for the option <<mx>> or <<max>>. Check the usage section below")
 
                         maximumExpansionCoefficient
                     }
