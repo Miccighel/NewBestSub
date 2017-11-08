@@ -8,6 +8,7 @@ import org.apache.commons.cli.*
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
+import org.uma.jmetal.util.JMetalException
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -265,6 +266,17 @@ object Program {
         } catch (exception: FileSystemException) {
 
             logger.error(exception.message)
+            logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
+
+        } catch (exception: JMetalException) {
+
+            logger.error(exception.message)
+            logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
+
+        } catch (exception: OutOfMemoryError) {
+
+            logger.error("NewBestSub hasn't enough heap space to go further. Please, launch it with option -XX:-UseGCOverheadLimit.")
+            logger.info("Example: java -jar NewBestSub-1.0.jar -UseGCOverheadLimit -fi \"AH99-Top96\" -c \"Pearson\" -pop 2000 -r 5000 -i 1000000 -t \"All\" -pe 1,100 -l Limited")
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
 
         }
