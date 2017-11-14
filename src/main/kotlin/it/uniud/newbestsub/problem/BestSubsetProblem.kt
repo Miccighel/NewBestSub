@@ -97,7 +97,7 @@ class BestSubsetProblem(
                 if (firstSolution.getCorrelation() < secondSolution.getCorrelation()) 1 else if (firstSolution.getCorrelation() == secondSolution.getCorrelation()) 0 else -1
             })
             topSolutionsList = topSolutionsList.distinct().toMutableList()
-            topSolutionsList = topSolutionsList.asReversed().take(10).toMutableList()
+            topSolutionsList = topSolutionsList.asReversed().take(Constants.TOP_SOLUTIONS_NUMBER).toMutableList()
         }
         topSolutions[solution.numberOfSelectedTopics.toDouble()] = topSolutionsList
 
