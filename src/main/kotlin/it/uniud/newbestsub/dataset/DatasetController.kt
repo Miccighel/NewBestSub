@@ -351,31 +351,41 @@ class DatasetController(
 
         val dataSetup = { model: DatasetModel ->
             var executionIndex = 0
-            val setIndex = { shouldBeIncremented: Boolean ->
+            val setIndex = { shouldBeIncremented: Boolean, isTopSolutionsScan: Boolean ->
                 if (shouldBeIncremented) {
-                    if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
+                    if (isTopSolutionsScan)
+                        if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 2 else executionIndex += 1
+                    else
+                        if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
                 } else {
-                    when (model.targetToAchieve) {
-                        Constants.TARGET_BEST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -3 else executionIndex = -1
-                        Constants.TARGET_WORST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
-                        Constants.TARGET_AVERAGE -> executionIndex = -1
+                    if (isTopSolutionsScan) {
+                        when (model.targetToAchieve) {
+                            Constants.TARGET_BEST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
+                            Constants.TARGET_WORST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -1
+                        }
+                    } else {
+                        when (model.targetToAchieve) {
+                            Constants.TARGET_BEST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -3 else executionIndex = -1
+                            Constants.TARGET_WORST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
+                            Constants.TARGET_AVERAGE -> executionIndex = -1
+                        }
                     }
                 }
             }
-            setIndex(false)
+            setIndex(false, false)
             logger.info("Loading function values for experiment \"${model.targetToAchieve}\" for all executions.")
             logger.info("Function values paths:")
             val functionValuesReaders = Array(numberOfExecutions, { _ ->
-                setIndex(true)
+                setIndex(true, false)
                 logger.info("\"${functionValuesResultPaths[executionIndex]}\"")
                 Files.newBufferedReader(Paths.get(functionValuesResultPaths[executionIndex]))
             })
-            setIndex(false)
+            setIndex(false, false)
             val functionValues: LinkedList<LinkedList<String>> = LinkedList()
             logger.info("Loading variable values for experiment \"${model.targetToAchieve}\" for all executions.")
             logger.info("Variable values paths:")
             val variableValuesReaders = Array(numberOfExecutions, { _ ->
-                setIndex(true)
+                setIndex(true, false)
                 logger.info("\"${variableValuesResultPaths[executionIndex]}\"")
                 Files.newBufferedReader(Paths.get(variableValuesResultPaths[executionIndex]))
             })
@@ -383,11 +393,11 @@ class DatasetController(
             var topSolutionsReaders = emptyArray<BufferedReader>()
             var topSolutions = LinkedList<LinkedList<String>>()
             if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
-                setIndex(false)
+                setIndex(false, true)
                 logger.info("Loading top solutions for experiment \"${model.targetToAchieve}\" for all executions.")
                 logger.info("Top solutions paths:")
                 topSolutionsReaders = Array(numberOfExecutions, { _ ->
-                    setIndex(true)
+                    setIndex(true, true)
                     logger.info("\"${topSolutionsResultPaths[executionIndex]}\"")
                     Files.newBufferedReader(Paths.get(topSolutionsResultPaths[executionIndex]))
                 })
@@ -610,7 +620,7 @@ class DatasetController(
                     var bestTopSolutionCardinality = ""
                     try {
                         bestTopSolutionCardinality = bestTopSolution.split(',')[0]
-                    } catch (exception: IllegalArgumentException) {
+                    } catch (exception: Exception) {
                     }
                     bestTopSolutionCardinality = bestTopSolutionCardinality.drop(1).dropLast(3)
                     if (bestTopSolutionCardinality == (index + 1).toString()) mergedBestTopSolutions.add(aBestTopSolution[bestAggregatedCorrelationIndex])
@@ -624,7 +634,7 @@ class DatasetController(
                     var worstTopSolutionCardinality = ""
                     try {
                         worstTopSolutionCardinality = worstTopSolution.split(',')[0]
-                    } catch (exception: IllegalArgumentException) {
+                    } catch (exception: Exception) {
                     }
                     worstTopSolutionCardinality = worstTopSolutionCardinality.drop(1).dropLast(3)
                     if (worstTopSolutionCardinality == (index + 1).toString()) mergedWorstTopSolutions.add(aWorstTopSolution[worstAggregatedCorrelationIndex])

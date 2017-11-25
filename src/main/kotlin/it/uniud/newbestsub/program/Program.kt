@@ -242,7 +242,7 @@ object Program {
 
                     }
 
-                    if (!commandLine.hasOption("et") && !commandLine.hasOption("es") && !commandLine.hasOption('m')) datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
+                    if (!commandLine.hasOption("et") && !commandLine.hasOption("es") && !commandLine.hasOption("mr")) datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
                     if (commandLine.hasOption("copy")) datasetController.copy()
 
                     logger.info("NewBestSub execution terminated.")
