@@ -93,9 +93,9 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <kotlin.version>1.2.10</kotlin.version>
-        <kotlin.stdlib.version>1.2.10</kotlin.stdlib.version>
-        <kotlin.test.version>1.2.10</kotlin.test.version>
+        <kotlin.version>1.2.20</kotlin.version>
+        <kotlin.stdlib.version>1.2.20</kotlin.stdlib.version>
+        <kotlin.test.version>1.2.20</kotlin.test.version>
         <kotlinx.version>0.20</kotlinx.version>
         <kotlin.maven.plugin.version>1.2.0</kotlin.maven.plugin.version>
         <kotlin.compiler.incremental>true</kotlin.compiler.incremental>
@@ -107,7 +107,7 @@
         <log4j.api.version>2.9.1</log4j.api.version>
         <log4j.core.version>2.9.1</log4j.core.version>
         <opencsv.version>4.1</opencsv.version>
-        <jmetal.version>5.4</jmetal.version>
+        <jmetal.version>5.2</jmetal.version>
         <maven.dependency-plugin.version>3.0.0</maven.dependency-plugin.version>
         <maven.jar-plugin.version>3.0.2</maven.jar-plugin.version>
         <maven.surefire-plugin.version>2.20.1</maven.surefire-plugin.version>
