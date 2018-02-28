@@ -93,10 +93,10 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <kotlin.version>1.2.20</kotlin.version>
-        <kotlin.stdlib.version>1.2.20</kotlin.stdlib.version>
-        <kotlin.test.version>1.2.20</kotlin.test.version>
-        <kotlinx.version>0.20</kotlinx.version>
+        <kotlin.version>1.2.21</kotlin.version>
+        <kotlin.stdlib.version>1.2.21</kotlin.stdlib.version>
+        <kotlin.test.version>1.2.21</kotlin.test.version>
+        <kotlinx.version>0.22.3</kotlinx.version>
         <kotlin.maven.plugin.version>1.2.0</kotlin.maven.plugin.version>
         <kotlin.compiler.incremental>true</kotlin.compiler.incremental>
         <junit.platform.version>1.0.1</junit.platform.version>
