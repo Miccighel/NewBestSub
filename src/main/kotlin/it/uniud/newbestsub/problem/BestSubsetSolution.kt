@@ -1,5 +1,6 @@
 package it.uniud.newbestsub.problem
 
+import it.uniud.newbestsub.program.Program
 import org.apache.commons.lang3.builder.EqualsBuilder
 import org.apache.commons.lang3.builder.HashCodeBuilder
 import org.apache.logging.log4j.LogManager
@@ -15,7 +16,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
     var topicStatus: Array<Boolean>
     var numberOfSelectedTopics = 0
     private var topicLabels: Array<String>
-    private val logger = LogManager.getLogger()
+    private val logger = LogManager.getLogger(Program::class.java)
 
     constructor(problem: BinaryProblem, numberOfTopics: Int, cardinalityToGenerate: Int) : super(problem) {
 

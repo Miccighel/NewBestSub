@@ -3,31 +3,21 @@
     <Properties>
         <Property name="baseLogFileName">${sys:baseLogFileName}</Property>
     </Properties>
+
     <Appenders>
+        <!-- Console Appender for Main Logs -->
         <Console name="Console-Main" target="SYSTEM_OUT">
-            <PatternLayout>
-                <ScriptPatternSelector>
-                    <Script name="LevelSelector" language="javascript"><![CDATA[logEvent.getLevel();]]></Script>
-                    <PatternMatch key="INFO"
-                                  pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Cyan,Bright}"/>
-                    <PatternMatch key="DEBUG"
-                                  pattern="%style{%-5.5p}{FG_Yellow} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Yellow,Bright}"/>
-                </ScriptPatternSelector>
-            </PatternLayout>
+            <PatternLayout pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Cyan}"/>
         </Console>
+
+        <!-- Console Appender for Program-specific Logs (INFO level) -->
         <Console name="Console-Program" target="SYSTEM_OUT">
-            <PatternLayout>
-                <ScriptPatternSelector>
-                    <Script name="LevelSelector" language="javascript"><![CDATA[logEvent.getLevel();]]></Script>
-                    <PatternMatch key="INFO"
-                                  pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{BG_Cyan,Bright}"/>
-                    <PatternMatch key="ERROR"
-                                  pattern="%style{%highlight{%-5.5p}}{Bright} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{BG_Red,Bright}"/>
-                </ScriptPatternSelector>
-            </PatternLayout>
+            <!-- INFO logs with cyan text (foreground) -->
+            <PatternLayout pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Cyan}"/>
         </Console>
-        <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log"
-                     append="false">
+
+        <!-- Rolling File Appender -->
+        <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log" append="false">
             <PatternLayout pattern="%-5.5p [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %m%n"/>
             <Policies>
                 <SizeBasedTriggeringPolicy size="5 MB"/>
@@ -35,12 +25,16 @@
             <DefaultRolloverStrategy max="10"/>
         </RollingFile>
     </Appenders>
+
     <Loggers>
+        <!-- Root Logger -->
         <Root level="warn">
             <AppenderRef ref="Console-Main"/>
             <AppenderRef ref="Rolling"/>
         </Root>
-        <Logger name="it.uniud.newbestsub.program.Program" additivity="false">
+
+        <!-- Program-specific Logger (INFO level) -->
+        <Logger name="it.uniud.newbestsub.program.Program" level="info" additivity="false">
             <AppenderRef ref="Console-Program"/>
         </Logger>
     </Loggers>

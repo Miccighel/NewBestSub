@@ -4,6 +4,7 @@ import com.opencsv.CSVWriter
 import it.uniud.newbestsub.problem.BestSubsetSolution
 import it.uniud.newbestsub.problem.getCardinality
 import it.uniud.newbestsub.problem.getCorrelation
+import it.uniud.newbestsub.program.Program
 import it.uniud.newbestsub.utils.Constants
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.runner.AbstractAlgorithmRunner
@@ -14,7 +15,7 @@ import java.io.FileWriter
 
 class DatasetView : AbstractAlgorithmRunner() {
 
-    private val logger = LogManager.getLogger()
+    private val logger = LogManager.getLogger(Program::class.java)
 
     fun print(runResult: Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>>, datasetModel: DatasetModel) {
 

@@ -17,6 +17,8 @@ object Program {
     @JvmStatic
     fun main(arguments: Array<String>) {
 
+        println("Program started.")
+
         val commandLine: CommandLine
         val parser: CommandLineParser
         val options = loadCommandLineOptions()
@@ -38,7 +40,7 @@ object Program {
         var logger: Logger
 
         System.setProperty("baseLogFileName", "${Constants.LOG_PATH}${Constants.LOG_FILE_NAME}${Constants.LOG_FILE_SUFFIX}")
-        logger = updateLogger(LogManager.getLogger("it.uniud.newbestsub.program.Program"), Level.INFO)
+        logger = updateLogger(LogManager.getLogger(Program::class.java), Level.INFO)
 
         try {
 
@@ -92,7 +94,7 @@ object Program {
 
                     }
 
-                    logger = updateLogger(LogManager.getLogger(), loggingLevel)
+                    logger = updateLogger(LogManager.getLogger(Program::class.java), loggingLevel)
                     logger.info("${Constants.NEWBESTSUB_NAME} execution started.")
                     logger.info("Base path:")
                     logger.info("\"${Constants.BASE_PATH}\"")

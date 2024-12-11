@@ -2,6 +2,7 @@ package it.uniud.newbestsub.dataset
 
 import com.opencsv.CSVReader
 import it.uniud.newbestsub.problem.*
+import it.uniud.newbestsub.program.Program
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools
 import org.apache.commons.cli.ParseException
@@ -44,7 +45,7 @@ class DatasetModel {
 
     private var originalAveragePrecisions = linkedMapOf<String, Array<Double>>()
 
-    private val logger = LogManager.getLogger()
+    private val logger = LogManager.getLogger(Program::class.java)
 
     private lateinit var problem: BestSubsetProblem
     private lateinit var crossover: CrossoverOperator<BinarySolution>

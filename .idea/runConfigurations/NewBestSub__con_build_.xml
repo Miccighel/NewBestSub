@@ -1,19 +1,12 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="NewBestSub (con build)" type="Application" factoryName="Application">
-    <extension name="coverage" enabled="false" merge="false" sample_coverage="true" runner="idea" />
+    <option name="ALTERNATIVE_JRE_PATH" value="corretto-11" />
+    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="true" />
     <option name="MAIN_CLASS_NAME" value="it.uniud.newbestsub.program.Program" />
-    <option name="VM_PARAMETERS" value="" />
-    <option name="PROGRAM_PARAMETERS" value="-fi &quot;AH99-Top96-LogAP&quot; -c &quot;Pearson&quot; -po 1000 -i 1000 -r 2000 -t &quot;All&quot; -pe 1,100 -log Limited -copy -es 20" />
-    <option name="WORKING_DIRECTORY" value="file://$PROJECT_DIR$" />
-    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
-    <option name="ALTERNATIVE_JRE_PATH" />
-    <option name="ENABLE_SWING_INSPECTOR" value="false" />
-    <option name="ENV_VARIABLES" />
-    <option name="PASS_PARENT_ENVS" value="false" />
     <module name="NewBestSub" />
-    <envs />
-    <method>
-      <option name="Make" enabled="false" />
+    <option name="PASS_PARENT_ENVS" value="false" />
+    <option name="PROGRAM_PARAMETERS" value="-fi &quot;AH99-Top96-LogAP&quot; -c &quot;Pearson&quot; -po 1000 -i 1000 -r 2000 -t &quot;All&quot; -pe 1,100 -log Limited -copy -es 20" />
+    <method v="2">
       <option name="RunConfigurationTask" enabled="true" run_configuration_name="NewBestSub" run_configuration_type="MavenRunConfiguration" />
     </method>
   </configuration>

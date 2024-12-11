@@ -2,10 +2,11 @@ package it.uniud.newbestsub.dataset
 
 import com.opencsv.CSVReader
 import com.opencsv.CSVWriter
+import it.uniud.newbestsub.program.Program
 import it.uniud.newbestsub.utils.Constants
-import kotlinx.coroutines.experimental.CommonPool
-import kotlinx.coroutines.experimental.async
-import kotlinx.coroutines.experimental.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import org.apache.commons.lang3.StringUtils
 import org.apache.logging.log4j.LogManager
 import java.io.*
@@ -30,10 +31,11 @@ class DatasetController(
     var functionValuesResultPaths = mutableListOf<String>()
     var topSolutionsResultPaths = mutableListOf<String>()
     var infoResultPaths = mutableListOf<String>()
-    private var logger = LogManager.getLogger()
+    private val logger = LogManager.getLogger(Program::class.java)
 
     init {
         logger.info("Problem resolution started.")
+        println("ciao")
     }
 
     fun load(datasetPath: String) {
@@ -130,11 +132,13 @@ class DatasetController(
             val worstParameters = Parameters(parameters.datasetName, parameters.correlationMethod, Constants.TARGET_WORST, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.currentExecution, parameters.percentiles)
             val averageParameters = Parameters(parameters.datasetName, parameters.correlationMethod, Constants.TARGET_AVERAGE, parameters.numberOfIterations, parameters.numberOfRepetitions, parameters.populationSize, parameters.currentExecution, parameters.percentiles)
 
-            val bestResult = { async(CommonPool) { models[0].solve(bestParameters) } }.invoke()
-            val worstResult = { async(CommonPool) { models[1].solve(worstParameters) } }.invoke()
-            val averageResult = { async(CommonPool) { models[2].solve(averageParameters) } }.invoke()
-
             runBlocking {
+                // Use async to run the tasks concurrently
+                val bestResult = async(Dispatchers.Default) { models[0].solve(bestParameters) }
+                val worstResult = async(Dispatchers.Default) { models[1].solve(worstParameters) }
+                val averageResult = async(Dispatchers.Default) { models[2].solve(averageParameters) }
+
+                // Await the results and print them
                 view.print(bestResult.await(), models[0])
                 view.print(worstResult.await(), models[1])
                 view.print(averageResult.await(), models[2])
