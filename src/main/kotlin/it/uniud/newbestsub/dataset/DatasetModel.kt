@@ -45,7 +45,7 @@ class DatasetModel {
 
     private var originalAveragePrecisions = linkedMapOf<String, Array<Double>>()
 
-    private val logger = LogManager.getLogger(Program::class.java)
+    private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     private lateinit var problem: BestSubsetProblem
     private lateinit var crossover: CrossoverOperator<BinarySolution>

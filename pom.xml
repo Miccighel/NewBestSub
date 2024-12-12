@@ -75,7 +75,7 @@
         <kotlin.stdlib.version>1.2.51</kotlin.stdlib.version>
         <kotlin.test.version>1.2.51</kotlin.test.version>
         <kotlinx.version>0.23.4</kotlinx.version>
-        <kotlin.maven.plugin.version>1.2.51</kotlin.maven.plugin.version>
+        <kotlin.maven.plugin.version>1.8.0</kotlin.maven.plugin.version>
         <kotlin.compiler.incremental>true</kotlin.compiler.incremental>
         <kotlin.coroutines.version>1.7.3</kotlin.coroutines.version>
         <junit.platform.version>1.2.0</junit.platform.version>
@@ -247,7 +247,7 @@
 
         <plugins>
 
-           <plugin>
+            <plugin>
                 <artifactId>maven-assembly-plugin</artifactId>
                 <configuration>
                     <archive>
@@ -335,12 +335,6 @@
                         </goals>
                     </execution>
                 </executions>
-                <configuration>
-                    <args>
-                        <arg>-Xcoroutines=enable</arg>
-                    </args>
-                    <jvmTarget>1.8</jvmTarget>
-                </configuration>
             </plugin>
 
             <plugin>

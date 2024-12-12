@@ -1,6 +1,5 @@
 package it.uniud.newbestsub.problem
 
-import it.uniud.newbestsub.program.Program
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.CrossoverOperator
 import org.uma.jmetal.solution.BinarySolution
@@ -9,7 +8,7 @@ import java.util.*
 
 class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<BinarySolution> {
 
-    private val logger = LogManager.getLogger(Program::class.java)
+    private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     override fun getNumberOfParents(): Int {
         return 2

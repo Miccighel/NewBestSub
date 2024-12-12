@@ -1,7 +1,6 @@
 package it.uniud.newbestsub.problem
 
 import it.uniud.newbestsub.dataset.Parameters
-import it.uniud.newbestsub.program.Program
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools
 import org.apache.logging.log4j.LogManager
@@ -24,7 +23,7 @@ class BestSubsetProblem(
     val topSolutions = linkedMapOf<Double, MutableList<BinarySolution>>()
     private var iterationCounter = 0
     private lateinit var solution: BestSubsetSolution
-    private val logger = LogManager.getLogger(Program::class.java)
+    private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
     private var progressCounter = 0
     private var cardinalityToGenerate = 1
 

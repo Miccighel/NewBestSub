@@ -2,7 +2,6 @@ package it.uniud.newbestsub.dataset
 
 import com.opencsv.CSVReader
 import com.opencsv.CSVWriter
-import it.uniud.newbestsub.program.Program
 import it.uniud.newbestsub.utils.Constants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -31,11 +30,10 @@ class DatasetController(
     var functionValuesResultPaths = mutableListOf<String>()
     var topSolutionsResultPaths = mutableListOf<String>()
     var infoResultPaths = mutableListOf<String>()
-    private val logger = LogManager.getLogger(Program::class.java)
+    private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     init {
         logger.info("Problem resolution started.")
-        println("ciao")
     }
 
     fun load(datasetPath: String) {

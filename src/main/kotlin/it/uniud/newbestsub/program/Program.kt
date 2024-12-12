@@ -40,7 +40,7 @@ object Program {
         var logger: Logger
 
         System.setProperty("baseLogFileName", "${Constants.LOG_PATH}${Constants.LOG_FILE_NAME}${Constants.LOG_FILE_SUFFIX}")
-        logger = updateLogger(LogManager.getLogger(Program::class.java), Level.INFO)
+        logger = updateLogger(LogManager.getLogger(LogManager.ROOT_LOGGER_NAME), Level.INFO)
 
         try {
 
@@ -94,7 +94,7 @@ object Program {
 
                     }
 
-                    logger = updateLogger(LogManager.getLogger(Program::class.java), loggingLevel)
+                    logger = updateLogger(LogManager.getLogger(LogManager.ROOT_LOGGER_NAME), loggingLevel)
                     logger.info("${Constants.NEWBESTSUB_NAME} execution started.")
                     logger.info("Base path:")
                     logger.info("\"${Constants.BASE_PATH}\"")

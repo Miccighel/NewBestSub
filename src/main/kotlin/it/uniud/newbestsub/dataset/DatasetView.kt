@@ -15,7 +15,7 @@ import java.io.FileWriter
 
 class DatasetView : AbstractAlgorithmRunner() {
 
-    private val logger = LogManager.getLogger(Program::class.java)
+    private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     fun print(runResult: Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>>, datasetModel: DatasetModel) {
 

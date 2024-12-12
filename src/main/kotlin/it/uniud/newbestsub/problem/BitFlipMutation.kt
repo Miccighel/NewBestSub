@@ -1,6 +1,5 @@
 package it.uniud.newbestsub.problem
 
-import it.uniud.newbestsub.program.Program
 import it.uniud.newbestsub.utils.Tools
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.MutationOperator
@@ -9,7 +8,7 @@ import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
 class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution> {
 
-    private val logger = LogManager.getLogger(Program::class.java)
+    private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     override fun execute(solution: BinarySolution): BinarySolution {
 
