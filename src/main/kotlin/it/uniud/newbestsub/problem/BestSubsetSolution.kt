@@ -15,6 +15,7 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
     var topicStatus: Array<Boolean>
     var numberOfSelectedTopics = 0
     private var topicLabels: Array<String>
+    private val attributesMap: MutableMap<Any, Any> = java.util.LinkedHashMap()
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     constructor(problem: BinaryProblem, numberOfTopics: Int, cardinalityToGenerate: Int) : super(problem) {
@@ -145,6 +146,14 @@ class BestSubsetSolution : AbstractGenericSolution<BinarySet, BinaryProblem>, Bi
     override fun hashCode(): Int {
         return HashCodeBuilder(17, 37).append(this.getCorrelation()).append(this.getCardinality()).toHashCode()
     }
+
+    override fun getAttributes(): MutableMap<Any, Any> = attributesMap
+
+    override fun setAttribute(id: Any, value: Any) {
+        attributesMap[id] = value
+    }
+
+    override fun getAttribute(id: Any): Any? = attributesMap[id]
 
 }
 

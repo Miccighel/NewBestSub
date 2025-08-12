@@ -50,7 +50,6 @@ class DatasetModel {
     private lateinit var crossover: CrossoverOperator<BinarySolution>
     private lateinit var mutation: MutationOperator<BinarySolution>
     private lateinit var selection: SelectionOperator<List<BinarySolution>, BinarySolution>
-    private lateinit var builder: NSGAIIBuilder<BinarySolution>
     private lateinit var algorithm: Algorithm<List<BinarySolution>>
     private lateinit var algorithmRunner: AlgorithmRunner
 
@@ -240,10 +239,15 @@ class DatasetModel {
             mutation = BitFlipMutation(0.3)
             selection = BinaryTournamentSelection(RankingAndCrowdingDistanceComparator())
 
-            builder = NSGAIIBuilder(problem, crossover, mutation)
-            builder.selectionOperator = selection
-            builder.populationSize = populationSize
-            builder.setMaxEvaluations(numberOfIterations)
+            val builder = NSGAIIBuilder(
+                problem,
+                crossover,
+                mutation,
+                populationSize
+            )
+                .setSelectionOperator(selection)
+                .setMaxEvaluations(numberOfIterations)
+
 
             algorithm = builder.build()
             algorithmRunner = AlgorithmRunner.Executor(algorithm).execute()

@@ -66,6 +66,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\res\Execution-2025-08-12-11-29-23\AH99-Pearson-50-129-1000-1000-Best-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
       </map>
     </option>
   </component>
