@@ -24,7 +24,77 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\README.md">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\data\AH99.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-13-01-30-57\AH99-Pearson-50-129-1000-1000-Best-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="&#9;" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-13-01-30-57\AH99-Pearson-50-129-1000-1000-Best-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-13-01-30-57\AH99-Pearson-50-129-1000-1000-Worst-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="&#9;" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-13-01-30-57\AH99-Pearson-50-129-1000-1000-Worst-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-13-01-33-44\AH99-Pearson-50-129-1000-10000-Best-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="&#9;" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-13-01-33-44\AH99-Pearson-50-129-1000-10000-Worst-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="&#9;" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-13-01-33-44\AH99-Pearson-50-129-2000-Average-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="&#9;" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res_sample\AH99-Pearson-50-10000000-2000-Best-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res_sample\AH99-Pearson-50-10000000-2000-Worst-Fun.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
