@@ -4,7 +4,27 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="12096839-9992-44ab-bdf6-5f0e2f82a36f" name="Default" comment="" />
+    <list default="true" id="12096839-9992-44ab-bdf6-5f0e2f82a36f" name="Default" comment="">
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-5000-All-Final.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-5000-All-Info.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Best-Fun.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Best-Top-10-Solutions.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Best-Var.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Worst-Fun.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Worst-Top-10-Solutions.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Worst-Var.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-5000-Average-Fun.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-5000-Average-Var.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/csv-editor.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/csv-editor.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/kotlinc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/kotlinc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__con_build_.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__con_build_.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__senza_build_.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__senza_build_.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -330,30 +350,33 @@
     "Maven.NewBestSub [package].executor": "Run",
     "Maven.NewBestSub.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "master",
+    "git-widget-placeholder": "feature-jmetal-5.x-migration",
     "ignore.virus.scanning.warn.message": "true",
+    "junie.onboarding.icon.badge.shown": "true",
     "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "/Users/michaelsoprano/Dropbox/Lavoro/Progetti/NewBestSub/Sorgenti/NewBestSub/data",
+    "last_opened_file_path": "E:/Dropbox/Lavoro/Progetti/NewBestSub/Sorgenti/NewBestSub/res_sample",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
-    "project.structure.last.edited": "Project",
+    "project.structure.last.edited": "SDKs",
     "project.structure.proportion": "0.15",
     "project.structure.side.proportion": "0.2",
-    "settings.editor.selected.configurable": "configurable.group.language",
+    "settings.editor.selected.configurable": "configurable.group.build",
+    "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="E:\Dropbox\Lavoro\Progetti\NewBestSub\Sorgenti\NewBestSub\res_sample" />
       <recent name="$PROJECT_DIR$/data" />
       <recent name="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub\src\test\resources" />
       <recent name="$PROJECT_DIR$/src/test/resources" />
       <recent name="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub\src\main\resources" />
-      <recent name="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub\src\main\kotlin\it\uniud\newbestsub\program" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="E:\Dropbox\Documenti\Universita\Tesi\Magistrale\NewBestSub\src\main\assembly" />
@@ -366,7 +389,7 @@
       <recent name="it.uniud.newbestsub.problem" />
     </key>
   </component>
-  <component name="RunManager" selected="JAR Application.NewBestSub (senza build)">
+  <component name="RunManager" selected="Application.NewBestSub (con build)">
     <configuration default="true" type="AndroidTestRunConfigurationType" factoryName="Android Tests">
       <module name="" />
       <option name="TESTING_TYPE" value="0" />
@@ -619,8 +642,8 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-jdk-9823dce3aa75-fdfe4dae3a2d-intellij.indexing.shared.core-IU-243.21565.193" />
-        <option value="bundled-js-predefined-d6986cc7102b-e768b9ed790e-JavaScript-IU-243.21565.193" />
+        <option value="bundled-jdk-9823dce3aa75-bf35d07a577b-intellij.indexing.shared.core-IU-252.23892.409" />
+        <option value="bundled-js-predefined-d6986cc7102b-e03c56caf84a-JavaScript-IU-252.23892.409" />
       </set>
     </attachedChunks>
   </component>
@@ -1000,6 +1023,8 @@
       <workItem from="1733863722294" duration="501000" />
       <workItem from="1733864237398" duration="1865000" />
       <workItem from="1733908681356" duration="6445000" />
+      <workItem from="1755026140750" duration="3818000" />
+      <workItem from="1755030398994" duration="557000" />
     </task>
     <servers />
   </component>
