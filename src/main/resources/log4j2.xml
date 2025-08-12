@@ -8,8 +8,10 @@
     <Appenders>
         <!-- Console Appender for Main Logs -->
         <Console name="Console-Main" target="SYSTEM_OUT">
-            <PatternLayout pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Cyan}"/>
+            <PatternLayout disableAnsi="false"
+                           pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Cyan}"/>
         </Console>
+
 
         <!-- Rolling File Appender -->
         <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log" append="false">

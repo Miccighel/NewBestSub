@@ -65,7 +65,7 @@ class DatasetController(
                 models.plusAssign(DatasetModel())
                 models[2].loadData(this.datasetPath)
             }
-        } catch (exception: FileNotFoundException) {
+        } catch (_: FileNotFoundException) {
             logger.warn("Data set not found. Is file inside a \"data\" dir.?")
         } catch (exception: IOException) {
             logger.warn(exception.message as String)
@@ -622,7 +622,7 @@ class DatasetController(
                     var bestTopSolutionCardinality = ""
                     try {
                         bestTopSolutionCardinality = bestTopSolution.split(',')[0]
-                    } catch (exception: Exception) {
+                    } catch (_: Exception) {
                     }
                     bestTopSolutionCardinality = bestTopSolutionCardinality.drop(1).dropLast(3)
                     if (bestTopSolutionCardinality == (index + 1).toString()) mergedBestTopSolutions.add(aBestTopSolution[bestAggregatedCorrelationIndex])
@@ -636,7 +636,7 @@ class DatasetController(
                     var worstTopSolutionCardinality = ""
                     try {
                         worstTopSolutionCardinality = worstTopSolution.split(',')[0]
-                    } catch (exception: Exception) {
+                    } catch (_: Exception) {
                     }
                     worstTopSolutionCardinality = worstTopSolutionCardinality.drop(1).dropLast(3)
                     if (worstTopSolutionCardinality == (index + 1).toString()) mergedWorstTopSolutions.add(aWorstTopSolution[worstAggregatedCorrelationIndex])
@@ -807,7 +807,7 @@ class DatasetController(
         }
 
         val dataCopier = { dataList: MutableList<String>, logMessage: String ->
-            if (dataList.size > 0) logger.info(logMessage)
+            if (dataList.isNotEmpty()) logger.info(logMessage)
             val outputPaths = mutableListOf<String>()
             dataList.forEach { aResultPath ->
                 if (Files.exists(Paths.get(aResultPath))) {
@@ -816,7 +816,7 @@ class DatasetController(
                     outputPaths.add(Paths.get(aResultPath).toString())
                 }
             }
-            if (outputPaths.size > 0) logger.info("To paths: ")
+            if (outputPaths.isNotEmpty()) logger.info("To paths: ")
             outputPaths.forEach(logger::info)
         }
 

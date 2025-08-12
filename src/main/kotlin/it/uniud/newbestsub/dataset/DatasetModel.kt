@@ -2,7 +2,6 @@ package it.uniud.newbestsub.dataset
 
 import com.opencsv.CSVReader
 import it.uniud.newbestsub.problem.*
-import it.uniud.newbestsub.program.Program
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools
 import org.apache.commons.cli.ParseException
@@ -175,7 +174,6 @@ class DatasetModel {
                 }
 
                 var correlationsSum = 0.0
-                var meanCorrelation: Double
                 var topicStatusToString = ""
                 var topicStatus = BooleanArray(0)
                 val generator = Random()
@@ -198,7 +196,7 @@ class DatasetModel {
 
                 correlationsToSum.forEach { singleCorrelation -> correlationsSum += singleCorrelation }
                 correlationsToSum.sort()
-                meanCorrelation = correlationsSum / numberOfRepetitions
+                val meanCorrelation: Double = correlationsSum / numberOfRepetitions
 
                 percentiles.entries.forEach { (percentileToFind, foundPercentiles) ->
                     val percentilePosition = Math.ceil((percentileToFind / 100.0) * correlationsToSum.size).toInt()
@@ -240,7 +238,7 @@ class DatasetModel {
             problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels, correlationStrategy, targetStrategy)
             crossover = BinaryPruningCrossover(0.7)
             mutation = BitFlipMutation(0.3)
-            selection = BinaryTournamentSelection(RankingAndCrowdingDistanceComparator<BinarySolution>())
+            selection = BinaryTournamentSelection(RankingAndCrowdingDistanceComparator())
 
             builder = NSGAIIBuilder(problem, crossover, mutation)
             builder.selectionOperator = selection

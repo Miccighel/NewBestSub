@@ -80,7 +80,6 @@
         <kotlin.test.version>${kotlin.version}</kotlin.test.version>
         <kotlinx.version>0.23.4</kotlinx.version> <!-- kept for structure -->
         <kotlin.maven.plugin.version>${kotlin.version}</kotlin.maven.plugin.version>
-        <kotlin.compiler.incremental>true</kotlin.compiler.incremental>
         <kotlin.coroutines.version>1.10.2</kotlin.coroutines.version>
 
         <!-- Testing -->
@@ -92,16 +91,30 @@
         <!-- Libraries -->
         <apache.commons.version>3.6.1</apache.commons.version> <!-- commons-math3 -->
         <apache.commons.cli>1.10.0</apache.commons.cli>
-        <log4j.api.version>2.25.1</log4j.api.version>
-        <log4j.core.version>2.25.1</log4j.core.version>
+        <log4j.api.version>2.24.3</log4j.api.version>
+        <log4j.core.version>2.24.3</log4j.core.version>
         <opencsv.version>5.12.0</opencsv.version>
-        <jmetal.version>5.2</jmetal.version>
+        <jmetal.version>5.5.3</jmetal.version>
 
         <!-- Plugins -->
         <maven.dependency-plugin.version>3.7.0</maven.dependency-plugin.version>
         <maven.jar-plugin.version>3.4.2</maven.jar-plugin.version>
         <maven.surefire-plugin.version>3.5.3</maven.surefire-plugin.version>
+
+        <jansi.version>2.4.2</jansi.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-bom</artifactId>
+                <version>${log4j.api.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
 
@@ -231,6 +244,13 @@
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-stdlib</artifactId>
             <version>${kotlin.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.fusesource.jansi</groupId>
+            <artifactId>jansi</artifactId>
+            <version>${jansi.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
     </dependencies>

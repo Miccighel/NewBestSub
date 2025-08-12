@@ -11,6 +11,7 @@ import org.apache.logging.log4j.Logger
 import org.uma.jmetal.util.JMetalException
 import java.io.File
 import java.io.FileNotFoundException
+import org.apache.commons.cli.help.HelpFormatter as CliHelpFormatter
 
 object Program {
 
@@ -66,7 +67,10 @@ object Program {
 
                 } else throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
 
-                if (commandLine.getOptionValue("t") == Constants.TARGET_BEST || commandLine.getOptionValue("t") == Constants.TARGET_WORST || commandLine.getOptionValue("t") == Constants.TARGET_AVERAGE || commandLine.getOptionValue("t") == Constants.TARGET_ALL) {
+                if (commandLine.getOptionValue("t") == Constants.TARGET_BEST || commandLine.getOptionValue("t") == Constants.TARGET_WORST || commandLine.getOptionValue("t") == Constants.TARGET_AVERAGE || commandLine.getOptionValue(
+                        "t"
+                    ) == Constants.TARGET_ALL
+                ) {
 
                     targetToAchieve = commandLine.getOptionValue("t")
                     numberOfIterations = 0
@@ -80,7 +84,7 @@ object Program {
                         try {
                             numberOfIterations = Integer.parseInt(commandLine.getOptionValue("i"))
                             if (numberOfIterations <= 0) throw ParseException("Value for the option <<i>> or <<iter>> must be a positive value. Check the usage section below")
-                        } catch (exception: NumberFormatException) {
+                        } catch (_: NumberFormatException) {
                             throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
                         }
 
@@ -88,7 +92,7 @@ object Program {
                         try {
                             populationSize = Integer.parseInt(commandLine.getOptionValue("po"))
                             if (populationSize <= 0) throw ParseException("Value for the option <<p>> or <<po>> must be a positive value. Check the usage section below")
-                        } catch (exception: NumberFormatException) {
+                        } catch (_: NumberFormatException) {
                             throw ParseException("Value for the option <<po>> or <<pop>> is not an integer. Check the usage section below")
                         }
 
@@ -116,7 +120,8 @@ object Program {
 
                         logger.info("Checking if ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} exists.")
 
-                        val errorMessage = "${Constants.NEWBESTSUB_EXPERIMENTS_NAME} not found. Please, place its folder the same one where ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} is located. Path: \"${Constants.BASE_PATH}\""
+                        val errorMessage =
+                            "${Constants.NEWBESTSUB_EXPERIMENTS_NAME} not found. Please, place its folder the same one where ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} is located. Path: \"${Constants.BASE_PATH}\""
                         if (!File(Constants.NEWBESTSUB_EXPERIMENTS_PATH).exists()) throw FileNotFoundException(errorMessage) else {
                             logger.info("${Constants.NEWBESTSUB_EXPERIMENTS_NAME} detected.")
                         }
@@ -129,7 +134,7 @@ object Program {
                         try {
                             numberOfRepetitions = Integer.parseInt(commandLine.getOptionValue("r"))
                             if (numberOfRepetitions <= 0) throw ParseException("Value for the option <<r>> or <<rep>> must be a positive value. Check the usage section below")
-                        } catch (exception: NumberFormatException) {
+                        } catch (_: NumberFormatException) {
                             throw ParseException("Value for the option <<r>> or <<rep>> is not an integer. Check the usage section below")
                         }
 
@@ -141,7 +146,7 @@ object Program {
                             val lastPercentile = Integer.parseInt(percentilesToParse[1])
                             for (currentPercentile in firstPercentile..lastPercentile)
                                 percentiles = percentiles.plus(currentPercentile)
-                        } catch (exception: NumberFormatException) {
+                        } catch (_: NumberFormatException) {
                             throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
                         }
 
@@ -155,7 +160,7 @@ object Program {
                         try {
                             numberOfExecutions = Integer.parseInt(commandLine.getOptionValue("mr"))
                             if (numberOfExecutions <= 0) throw ParseException("Value for the option <<me>> or <<mrg>> must be a positive value. Check the usage section below")
-                        } catch (exception: NumberFormatException) {
+                        } catch (_: NumberFormatException) {
                             throw ParseException("Value for the option <<mr>> or <<mrg>> is not an integer. Check the usage section below")
                         }
 
@@ -176,7 +181,7 @@ object Program {
                         try {
                             maximumExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("mx"))
                             if (maximumExpansionCoefficient <= 0) throw ParseException("Value for the option <<mx>> or <<max>> must be a positive value. Check the usage section below")
-                        } catch (exception: NumberFormatException) {
+                        } catch (_: NumberFormatException) {
                             throw ParseException("Value for the option <<m>> or <<max>> is not an integer. Check the usage section below")
                         }
 
@@ -198,7 +203,7 @@ object Program {
 
                         try {
                             topicExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("et"))
-                        } catch (exception: NumberFormatException) {
+                        } catch (_: NumberFormatException) {
                             throw ParseException("Value for the option <<et>> or <<expt>> is not an integer. Check the usage section below")
                         }
 
@@ -222,7 +227,7 @@ object Program {
 
                         try {
                             systemExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("es"))
-                        } catch (exception: NumberFormatException) {
+                        } catch (_: NumberFormatException) {
                             throw ParseException("Value for the option <<es>> or <<exps> is not an integer. Check the usage section below")
                         }
 
@@ -244,7 +249,18 @@ object Program {
 
                     }
 
-                    if (!commandLine.hasOption("et") && !commandLine.hasOption("es") && !commandLine.hasOption("mr")) datasetController.solve(Parameters(datasetName, correlationMethod, targetToAchieve, numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles))
+                    if (!commandLine.hasOption("et") && !commandLine.hasOption("es") && !commandLine.hasOption("mr")) datasetController.solve(
+                        Parameters(
+                            datasetName,
+                            correlationMethod,
+                            targetToAchieve,
+                            numberOfIterations,
+                            numberOfRepetitions,
+                            populationSize,
+                            0,
+                            percentiles
+                        )
+                    )
                     if (commandLine.hasOption("copy")) datasetController.copy()
 
                     logger.info("NewBestSub execution terminated.")
@@ -255,8 +271,8 @@ object Program {
         } catch (exception: ParseException) {
 
             logger.error(exception.message)
-            val formatter = HelpFormatter()
-            formatter.printHelp(Constants.NEWBESTSUB_NAME, options)
+            val formatter = CliHelpFormatter.builder().get()
+            formatter.printHelp(Constants.NEWBESTSUB_NAME, "", options, "", true)
             logger.error("End of the usage section.")
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
 
@@ -275,7 +291,7 @@ object Program {
             logger.error(exception.message)
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
 
-        } catch (exception: OutOfMemoryError) {
+        } catch (_: OutOfMemoryError) {
 
             logger.error("NewBestSub hasn't enough heap space to go further. Please, launch it with option -XX:-UseGCOverheadLimit.")
             logger.info("Example: java -jar NewBestSub-1.0.jar -UseGCOverheadLimit -fi \"AH99-Top96\" -c \"Pearson\" -pop 2000 -r 5000 -i 1000000 -t \"All\" -pe 1,100 -l Limited")
@@ -288,35 +304,75 @@ object Program {
     fun loadCommandLineOptions(): Options {
 
         val options = Options()
-        var source = Option.builder("fi").longOpt("fileIn").desc("Relative path to the CSV dataset file (do not use any extension in filename) [REQUIRED].").hasArg().argName("Source File").required().build()
-        options.addOption(source)
-        source = Option.builder("c").longOpt("corr").desc("Strategy that must be used to compute correlations. Available methods: Pearson, Kendall. [REQUIRED]").hasArg().argName("Correlation").required().build()
-        options.addOption(source)
-        source = Option.builder("t").longOpt("targ").desc("Target that must be achieved. Available targets: Best, Worst, Average, All. [REQUIRED]").hasArg().argName("Target").required().build()
-        options.addOption(source)
-        source = Option.builder("l").longOpt("log").desc("Required level of logging. Available levels: Verbose, Limited, Off. [REQUIRED]").required().hasArg().argName("Logging Level").build()
-        options.addOption(source)
-        source = Option.builder("i").longOpt("iter").desc("Number of iterations to be done. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Number of Iterations").build()
-        options.addOption(source)
-        source = Option.builder("r").longOpt("rep").desc("Number of repetitions to be done to compute a single cardinality during Average experiment. It must be a positive integer value. It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArg().argName("Number of Repetitions").build()
-        options.addOption(source)
-        source = Option.builder("po").longOpt("pop").desc("Size of the initial population to be generated. It must be an integer value. It must be greater or equal than/to of the number of topics of the data set. It must be greater than the value for the option <<mx>> or <<max>> if this one is used.a It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]").hasArg().argName("Population Size").build()
-        options.addOption(source)
-        source = Option.builder("pe").longOpt("perc").desc("Set of percentiles to be calculated. There must be two comma separated integer values. Example: \"-pe 1,100\". It is mandatory only if the selected target is: Average, All. [OPTIONAL]").hasArgs().valueSeparator(',').argName("Percentile").build()
-        options.addOption(source)
-        source = Option.builder("et").longOpt("expt").desc("Number of fake topics to be added at each iteration. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Expansion Coefficient (Topics)").build()
-        options.addOption(source)
-        source = Option.builder("es").longOpt("exps").desc("Number of fake systems to be added at each iteration. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Expansion Coefficient (Systems)").build()
-        options.addOption(source)
-        source = Option.builder("mx").longOpt("max").desc("Maximum number of fake topics or systems to reach using expansion options. [OPTIONAL]").hasArg().argName("Maximum Expansion Coefficient").build()
-        options.addOption(source)
-        source = Option.builder("mr").longOpt("mrg").desc("Number of executions of the program to do. The results of the executions will be merged together. It must be a positive integer value. [OPTIONAL]").hasArg().argName("Value").build()
-        options.addOption(source)
-        source = Option.builder("copy").desc("NewBestSub should search the folder or NewBestSub-Experiments and copy the results of the current execution inside its data folders. The following structure into filesystem must be respected: \"baseFolder/NewBestSub/..\" and \"baseFolder/NewBestSub-Experiments/..\" otherwise, an exception will be raised. [OPTIONAL]").build()
-        options.addOption(source)
-        return options
 
+        var source = Option.builder("fi").longOpt("fileIn")
+            .desc("Relative path to the CSV dataset file (do not use any extension in filename) [REQUIRED].")
+            .hasArg().argName("Source File").required().get()
+        options.addOption(source)
+
+        source = Option.builder("c").longOpt("corr")
+            .desc("Strategy that must be used to compute correlations. Available methods: Pearson, Kendall. [REQUIRED]")
+            .hasArg().argName("Correlation").required().get()
+        options.addOption(source)
+
+        source = Option.builder("t").longOpt("targ")
+            .desc("Target that must be achieved. Available targets: Best, Worst, Average, All. [REQUIRED]")
+            .hasArg().argName("Target").required().get()
+        options.addOption(source)
+
+        source = Option.builder("l").longOpt("log")
+            .desc("Required level of logging. Available levels: Verbose, Limited, Off. [REQUIRED]")
+            .required().hasArg().argName("Logging Level").get()
+        options.addOption(source)
+
+        source = Option.builder("i").longOpt("iter")
+            .desc("Number of iterations to be done. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]")
+            .hasArg().argName("Number of Iterations").get()
+        options.addOption(source)
+
+        source = Option.builder("r").longOpt("rep")
+            .desc("Number of repetitions to be done to compute a single cardinality during Average experiment. It must be a positive integer value. It is mandatory only if the selected target is: Average, All. [OPTIONAL]")
+            .hasArg().argName("Number of Repetitions").get()
+        options.addOption(source)
+
+        source = Option.builder("po").longOpt("pop")
+            .desc("Size of the initial population to be generated. It must be an integer value. It must be greater or equal than/to of the number of topics of the data set. It must be greater than the value for the option <<mx>> or <<max>> if this one is used.a It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]")
+            .hasArg().argName("Population Size").get()
+        options.addOption(source)
+
+        source = Option.builder("pe").longOpt("perc")
+            .desc("Set of percentiles to be calculated. There must be two comma separated integer values. Example: \"-pe 1,100\". It is mandatory only if the selected target is: Average, All. [OPTIONAL]")
+            .hasArgs().valueSeparator(',').argName("Percentile").get()
+        options.addOption(source)
+
+        source = Option.builder("et").longOpt("expt")
+            .desc("Number of fake topics to be added at each iteration. It must be a positive integer value. [OPTIONAL]")
+            .hasArg().argName("Expansion Coefficient (Topics)").get()
+        options.addOption(source)
+
+        source = Option.builder("es").longOpt("exps")
+            .desc("Number of fake systems to be added at each iteration. It must be a positive integer value. [OPTIONAL]")
+            .hasArg().argName("Expansion Coefficient (Systems)").get()
+        options.addOption(source)
+
+        source = Option.builder("mx").longOpt("max")
+            .desc("Maximum number of fake topics or systems to reach using expansion options. [OPTIONAL]")
+            .hasArg().argName("Maximum Expansion Coefficient").get()
+        options.addOption(source)
+
+        source = Option.builder("mr").longOpt("mrg")
+            .desc("Number of executions of the program to do. The results of the executions will be merged together. It must be a positive integer value. [OPTIONAL]")
+            .hasArg().argName("Value").get()
+        options.addOption(source)
+
+        source = Option.builder("copy")
+            .desc("NewBestSub should search the folder or NewBestSub-Experiments and copy the results of the current execution inside its data folders. The following structure into filesystem must be respected: \"baseFolder/NewBestSub/..\" and \"baseFolder/NewBestSub-Experiments/..\" otherwise, an exception will be raised. [OPTIONAL]")
+            .get()
+        options.addOption(source)
+
+        return options
     }
+
 
 }
 

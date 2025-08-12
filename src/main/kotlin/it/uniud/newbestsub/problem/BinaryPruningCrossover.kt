@@ -4,25 +4,21 @@ import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.CrossoverOperator
 import org.uma.jmetal.solution.BinarySolution
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
-import java.util.*
 
 class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<BinarySolution> {
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
-    override fun getNumberOfParents(): Int {
-        return 2
-    }
+    override fun getNumberOfRequiredParents(): Int = 2
+    override fun getNumberOfGeneratedChildren(): Int = 2
 
-    override fun execute(solutionList: List<BinarySolution>): List<BinarySolution> {
-
+    override fun execute(solutionList: MutableList<BinarySolution>): MutableList<BinarySolution> {
         val firstSolution = solutionList[0] as BestSubsetSolution
         val secondSolution = solutionList[1] as BestSubsetSolution
         val firstTopicStatus = firstSolution.retrieveTopicStatus()
         val secondTopicStatus = secondSolution.retrieveTopicStatus()
 
-        val childrenSolution = LinkedList<BinarySolution>()
-
+        val childrenSolution = mutableListOf<BinarySolution>()
         childrenSolution.add(BestSubsetSolution(firstSolution))
         childrenSolution.add(BestSubsetSolution(secondSolution))
 
@@ -30,7 +26,6 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
         val secondChildren = childrenSolution[1] as BestSubsetSolution
 
         if (JMetalRandom.getInstance().nextDouble() < probability) {
-
             for (i in firstTopicStatus.indices) {
                 firstChildren.setBitValue(i, firstTopicStatus[i] && secondTopicStatus[i])
                 secondChildren.setBitValue(i, firstTopicStatus[i] || secondTopicStatus[i])
@@ -41,7 +36,6 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
                 if (flipIndex == firstChildren.getNumberOfBits(0)) flipIndex -= 1
                 firstChildren.setBitValue(flipIndex, true)
             }
-
         }
 
         logger.debug("<Num. Sel. Topics: ${firstSolution.numberOfSelectedTopics}, Parent 1: ${firstSolution.getVariableValueString(0)}>")

@@ -31,6 +31,41 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\res\Execution-2025-08-12-11-01-48\AH99-Pearson-50-129-1000-1000-Best-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-12-11-01-48\AH99-Pearson-50-129-1000-1000-Best-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-12-11-04-28\AH99-Pearson-50-129-1000-1000-Best-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-12-11-10-18\AH99-Pearson-50-129-1000-1000-Best-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\Execution-2025-08-12-11-11-28\AH99-Pearson-50-129-1000-1000-Best-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
       </map>
     </option>
   </component>

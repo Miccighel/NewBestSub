@@ -5,25 +5,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="12096839-9992-44ab-bdf6-5f0e2f82a36f" name="Default" comment="">
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-5000-All-Final.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-5000-All-Info.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Best-Fun.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Best-Top-10-Solutions.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Best-Var.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Worst-Fun.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Worst-Top-10-Solutions.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-10000000-2000-Worst-Var.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-5000-Average-Fun.csv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/res_sample/AH99-Pearson-50-5000-Average-Var.csv" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/csv-editor.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/csv-editor.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/kotlinc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/kotlinc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__con_build_.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__con_build_.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__senza_build_.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__senza_build_.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetController.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetController.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BinaryPruningCrossover.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/problem/BinaryPruningCrossover.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/program/Program.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/program/Program.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -347,6 +335,8 @@
   "keyToString": {
     "Application.NewBestSub (con build).executor": "Run",
     "JAR Application.NewBestSub (senza build).executor": "Run",
+    "Maven.NewBestSub [clean].executor": "Run",
+    "Maven.NewBestSub [compile].executor": "Run",
     "Maven.NewBestSub [package].executor": "Run",
     "Maven.NewBestSub.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
@@ -356,7 +346,7 @@
     "ignore.virus.scanning.warn.message": "true",
     "junie.onboarding.icon.badge.shown": "true",
     "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "E:/Dropbox/Lavoro/Progetti/NewBestSub/Sorgenti/NewBestSub/res_sample",
+    "last_opened_file_path": "E:/Dropbox/Lavoro/Progetti/NewBestSub/Sorgenti/NewBestSub",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -372,18 +362,18 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="E:\Dropbox\Lavoro\Progetti\NewBestSub\Sorgenti\NewBestSub" />
       <recent name="E:\Dropbox\Lavoro\Progetti\NewBestSub\Sorgenti\NewBestSub\res_sample" />
       <recent name="$PROJECT_DIR$/data" />
       <recent name="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub\src\test\resources" />
       <recent name="$PROJECT_DIR$/src/test/resources" />
-      <recent name="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub\src\main\resources" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="E:\Dropbox\Lavoro\Progetti\NewBestSub\Sorgenti\NewBestSub" />
       <recent name="E:\Dropbox\Documenti\Universita\Tesi\Magistrale\NewBestSub\src\main\assembly" />
       <recent name="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub" />
       <recent name="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub\src\test\resources" />
       <recent name="E:\Dropbox\Universita\Tesi - Magistrale\NewBestSub\src\test\kotlin" />
-      <recent name="$PROJECT_DIR$/src/main" />
     </key>
     <key name="MoveKotlinTopLevelDeclarationsDialog.RECENTS_KEY">
       <recent name="it.uniud.newbestsub.problem" />
@@ -573,6 +563,66 @@
         <option name="Make" enabled="true" />
       </method>
     </configuration>
+    <configuration name="NewBestSub [compile]" type="MavenRunConfiguration" factoryName="Maven" temporary="true">
+      <MavenSettings>
+        <option name="myGeneralSettings" />
+        <option name="myRunnerSettings" />
+        <option name="myRunnerParameters">
+          <MavenRunnerParameters>
+            <option name="cmdOptions" />
+            <option name="profiles">
+              <set />
+            </option>
+            <option name="goals">
+              <list>
+                <option value="compile" />
+              </list>
+            </option>
+            <option name="multimoduleDir" />
+            <option name="pomFileName" value="pom.xml" />
+            <option name="profilesMap">
+              <map />
+            </option>
+            <option name="projectsCmdOptionValues">
+              <list />
+            </option>
+            <option name="resolveToWorkspace" value="false" />
+            <option name="workingDirPath" value="$PROJECT_DIR$" />
+          </MavenRunnerParameters>
+        </option>
+      </MavenSettings>
+      <method v="2" />
+    </configuration>
+    <configuration name="NewBestSub [package]" type="MavenRunConfiguration" factoryName="Maven" temporary="true">
+      <MavenSettings>
+        <option name="myGeneralSettings" />
+        <option name="myRunnerSettings" />
+        <option name="myRunnerParameters">
+          <MavenRunnerParameters>
+            <option name="cmdOptions" />
+            <option name="profiles">
+              <set />
+            </option>
+            <option name="goals">
+              <list>
+                <option value="package" />
+              </list>
+            </option>
+            <option name="multimoduleDir" />
+            <option name="pomFileName" value="pom.xml" />
+            <option name="profilesMap">
+              <map />
+            </option>
+            <option name="projectsCmdOptionValues">
+              <list />
+            </option>
+            <option name="resolveToWorkspace" value="false" />
+            <option name="workingDirPath" value="$PROJECT_DIR$" />
+          </MavenRunnerParameters>
+        </option>
+      </MavenSettings>
+      <method v="2" />
+    </configuration>
     <configuration default="true" type="MavenRunConfiguration" factoryName="Maven">
       <MavenSettings>
         <option name="myGeneralSettings" />
@@ -632,9 +682,13 @@
       <item itemvalue="JUnit.NewBestSub (test)" />
       <item itemvalue="JUnit.DatasetModelTest.testSolve" />
       <item itemvalue="Maven.NewBestSub" />
+      <item itemvalue="Maven.NewBestSub [compile]" />
+      <item itemvalue="Maven.NewBestSub [package]" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Maven.NewBestSub [package]" />
+        <item itemvalue="Maven.NewBestSub [compile]" />
         <item itemvalue="JUnit.DatasetModelTest.testSolve" />
       </list>
     </recent_temporary>
@@ -1024,7 +1078,9 @@
       <workItem from="1733864237398" duration="1865000" />
       <workItem from="1733908681356" duration="6445000" />
       <workItem from="1755026140750" duration="3818000" />
-      <workItem from="1755030398994" duration="557000" />
+      <workItem from="1755030398994" duration="945000" />
+      <workItem from="1755031367794" duration="873000" />
+      <workItem from="1755032257198" duration="679000" />
     </task>
     <servers />
   </component>
