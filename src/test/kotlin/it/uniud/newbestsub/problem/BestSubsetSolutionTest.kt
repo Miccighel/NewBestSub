@@ -5,7 +5,7 @@ import it.uniud.newbestsub.utils.Constants
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.uma.jmetal.solution.BinarySolution
+import org.uma.jmetal.solution.binarysolution.BinarySolution
 import java.util.*
 import kotlin.test.assertEquals
 
@@ -19,27 +19,59 @@ class BestSubsetSolutionTest {
 
     @BeforeEach
     @DisplayName("BestSubsetSolution - Initialize Tests")
-
     fun initTest() {
-        val length = 10
-        for (index in 0..length) {
-            val fakeAvgPrec = Array(length, { 0.0 })
+        /* Prepare a tiny synthetic dataset:
+         * - topics = 10
+         * - systems = topics + 1 (11)
+         */
+        val numTopics = 10
+        val numSystems = numTopics + 1
+
+        for (index in 0 until numSystems) {
+            val fakeAvgPrec = Array(numTopics) { 0.0 }
             val random = Random()
-            for (aIndex in 0..fakeAvgPrec.size - 1) {
+            for (aIndex in 0 until fakeAvgPrec.size) {
                 fakeAvgPrec[aIndex] = (1 + (100 - 1) * random.nextDouble()) / 100
             }
             testAvgPrec["Test $index"] = fakeAvgPrec
         }
+
         testCorr = { _, _ -> 0.0 }
         testTarg = { sol, _ -> sol }
-        val parameters = Parameters("AH99", Constants.CORRELATION_PEARSON, Constants.TARGET_BEST, 100000, 1000, 1000, 0, listOf(50))
-        testProb = BestSubsetProblem(parameters, testAvgPrec.size, testAvgPrec, Array(0, { 0.0 }), Array(50, { "Test" }), testCorr, testTarg)
-        testSol = BestSubsetSolution(testProb, testAvgPrec.size)
+
+        val parameters = Parameters(
+            "AH99",
+            Constants.CORRELATION_PEARSON,
+            Constants.TARGET_BEST,
+            10000, 1000, 1000, 0,
+            listOf(50)
+        )
+
+        val meanAP = Array(numSystems) { 0.0 }
+        val topicLabels = Array(numTopics) { "Test" }
+
+        testProb = BestSubsetProblem(
+            parameters,
+            numTopics,
+            testAvgPrec,
+            meanAP,
+            topicLabels,
+            testCorr,
+            testTarg
+        )
+
+        /* New constructor: we don’t pass the problem anymore */
+        testSol = BestSubsetSolution(
+            numberOfVariables = 1,
+            numberOfObjectives = 2,
+            numberOfTopics = numTopics,
+            topicLabels = topicLabels,
+            forcedCardinality = null
+        )
     }
 
     @Test
     @DisplayName("SetBitValue")
-
     fun setBitValueTest() {
 
         println("[BestSubsetSolutionTest setBitValue] - Test begins.")
@@ -47,7 +79,7 @@ class BestSubsetSolutionTest {
         val oldSelTop = testSol.numberOfSelectedTopics
         val oldTopStat = testSol.retrieveTopicStatus()
         var oldSum = 0; oldTopStat.forEach { value -> oldSum += if (value) 1 else 0 }
-        val valueToSet = oldTopStat[0] xor true
+        val valueToSet = !oldTopStat[0]
         testSol.setBitValue(0, valueToSet)
         val newSelTop = testSol.numberOfSelectedTopics
         val newTopStat = testSol.retrieveTopicStatus()
@@ -65,27 +97,26 @@ class BestSubsetSolutionTest {
 
     @Test
     @DisplayName("GetTotalNumberOfBits")
-
     fun getTotalNumberOfBitsTest() {
 
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test begins.")
 
-        var sum = 0; (0..testSol.numberOfVariables - 1).forEachIndexed { index, _ -> sum += testSol.getVariableValue(index).binarySetLength }
+        var sum = 0
+        (0 until testSol.numberOfVariables).forEach { index ->
+            sum += testSol.getVariable(index).binarySetLength
+        }
         println("[BestSubsetSolutionTest setBitValue] - Testing: <Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits}>.")
         assertEquals(true, sum == testSol.totalNumberOfBits, "<Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits}>.")
 
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test ends.")
-
     }
 
     @Test
     @DisplayName("Copy")
-
     fun copyTest() {
 
         println("[BestSubsetSolutionTest copy] - Test begins.")
         assertEquals(true, testSol.copy() == testSol)
         println("[BestSubsetSolutionTest copy] - Test ends.")
-
     }
 }

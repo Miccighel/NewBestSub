@@ -15,10 +15,8 @@ import java.nio.file.StandardCopyOption
 import java.util.*
 import kotlin.collections.LinkedHashMap
 
-class DatasetController(
-
+class DatasetController (
         private var targetToAchieve: String
-
 ) {
 
     var models = mutableListOf<DatasetModel>()

@@ -94,7 +94,7 @@
         <log4j.api.version>2.24.3</log4j.api.version>
         <log4j.core.version>2.24.3</log4j.core.version>
         <opencsv.version>5.12.0</opencsv.version>
-        <jmetal.version>5.9</jmetal.version>
+        <jmetal.version>5.10</jmetal.version>
 
         <!-- Plugins -->
         <maven.dependency-plugin.version>3.7.0</maven.dependency-plugin.version>
@@ -150,54 +150,18 @@
         <!-- jMetal 5.x layout preserved -->
         <dependency>
             <groupId>org.uma.jmetal</groupId>
-            <artifactId>jmetal-problem</artifactId>
-            <version>${jmetal.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.uma.jmetal</groupId>
-                    <artifactId>jmetal-core</artifactId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>commons-lang3</artifactId>
-                    <groupId>org.apache.commons</groupId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <dependency>
-            <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-core</artifactId>
             <version>${jmetal.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.maven.reporting</groupId>
-                    <artifactId>maven-reporting-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.commons</groupId>
-                    <artifactId>commons-lang3</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.commons</groupId>
-                    <artifactId>commons-math3</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
-
         <dependency>
             <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-algorithm</artifactId>
             <version>${jmetal.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.uma.jmetal</groupId>
-                    <artifactId>jmetal-core</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.uma.jmetal</groupId>
-                    <artifactId>jmetal-problem</artifactId>
-                </exclusion>
-            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.uma.jmetal</groupId>
+            <artifactId>jmetal-problem</artifactId>
+            <version>${jmetal.version}</version>
         </dependency>
 
         <!-- Kotlin stdlib setup (kept as in your structure) -->

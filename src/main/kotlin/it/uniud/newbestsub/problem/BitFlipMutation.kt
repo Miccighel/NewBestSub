@@ -2,8 +2,8 @@ package it.uniud.newbestsub.problem
 
 import it.uniud.newbestsub.utils.Tools
 import org.apache.logging.log4j.LogManager
-import org.uma.jmetal.operator.MutationOperator
-import org.uma.jmetal.solution.BinarySolution
+import org.uma.jmetal.operator.mutation.MutationOperator
+import org.uma.jmetal.solution.binarysolution.BinarySolution
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
 class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution> {
@@ -11,33 +11,39 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     override fun execute(solution: BinarySolution): BinarySolution {
+        val s = solution as BestSubsetSolution
 
-        val topicStatus = solution.getVariableValue(0)
-        val totalNumberOfTopics = solution.getNumberOfBits(0)
-        val oldGene = solution.getVariableValueString(0)
+        /* (Pre) state */
+        val oldGene = s.getVariableValueString(0)
+        logger.debug("<(Pre) Num. Sel. Topics: ${s.numberOfSelectedTopics}, (Pre) Gene: $oldGene>")
 
-        logger.debug("<(Pre) Num. Sel. Topics: ${(solution as BestSubsetSolution).numberOfSelectedTopics}, " +
-                "<(Pre) Gene: ${solution.getVariableValueString(0)}>")
+        val bitset = s.getVariableValue(0)
+        val totalNumberOfTopics = s.getNumberOfBits(0)
 
         if (JMetalRandom.getInstance().nextDouble() < probability) {
 
-            var flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * totalNumberOfTopics).toInt()
-            if (flipIndex == totalNumberOfTopics) flipIndex -= 1
-            solution.setBitValue(flipIndex, !topicStatus.get(flipIndex))
+            var flipIndex = if (totalNumberOfTopics <= 1) 0
+            else JMetalRandom.getInstance().nextInt(0, totalNumberOfTopics - 1)  /* inclusive upper */
 
-            if (solution.numberOfSelectedTopics == 0) {
-                flipIndex = Math.floor(JMetalRandom.getInstance().nextDouble() * totalNumberOfTopics).toInt()
-                if (flipIndex == totalNumberOfTopics) flipIndex -= 1
-                solution.setBitValue(flipIndex, !topicStatus[flipIndex])
+            /* Toggle without '!' to avoid platform-type quirks */
+            val currentVal = bitset.get(flipIndex)
+            val toggledVal = (currentVal == false)
+            s.setBitValue(flipIndex, toggledVal)
+
+            /* Ensure at least one topic remains selected */
+            if (s.numberOfSelectedTopics == 0) {
+                flipIndex = if (totalNumberOfTopics <= 1) 0
+                else JMetalRandom.getInstance().nextInt(0, totalNumberOfTopics - 1)  /* inclusive upper */
+                s.setBitValue(flipIndex, true)
             }
-
         }
 
-        val newGene = solution.getVariableValueString(0)
+        val newGene = s.getVariableValueString(0)
+        logger.debug("<Hamming Distance: ${Tools.stringComparison(oldGene, newGene)}, (Post) Num. Sel. Topics: ${s.numberOfSelectedTopics}, (Post) Gene: $newGene>")
 
-        logger.debug("<Hamming Distance: ${Tools.stringComparison(oldGene, newGene)}, (Post) Num. Sel. Topics: ${solution.numberOfSelectedTopics}, " + "(Post) Gene: $newGene>")
-
-        return solution
-
+        return s
     }
+
+
+    override fun getMutationProbability(): Double = probability
 }

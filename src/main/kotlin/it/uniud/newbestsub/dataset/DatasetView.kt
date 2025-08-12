@@ -6,7 +6,7 @@ import it.uniud.newbestsub.problem.getCardinality
 import it.uniud.newbestsub.problem.getCorrelation
 import it.uniud.newbestsub.utils.Constants
 import org.apache.logging.log4j.LogManager
-import org.uma.jmetal.solution.BinarySolution
+import org.uma.jmetal.solution.binarysolution.BinarySolution
 import org.uma.jmetal.util.fileoutput.SolutionListOutput
 import org.uma.jmetal.util.fileoutput.impl.DefaultFileOutputContext
 import java.io.FileWriter

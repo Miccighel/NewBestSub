@@ -10,13 +10,11 @@ import org.apache.commons.math3.stat.correlation.PearsonsCorrelation
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.algorithm.Algorithm
 import org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAIIBuilder
-import org.uma.jmetal.operator.CrossoverOperator
-import org.uma.jmetal.operator.MutationOperator
-import org.uma.jmetal.operator.SelectionOperator
-import org.uma.jmetal.operator.impl.selection.BinaryTournamentSelection
-import org.uma.jmetal.problem.BinaryProblem
-import org.uma.jmetal.solution.BinarySolution
-import org.uma.jmetal.util.AlgorithmRunner
+import org.uma.jmetal.operator.crossover.CrossoverOperator
+import org.uma.jmetal.operator.mutation.MutationOperator
+import org.uma.jmetal.operator.selection.SelectionOperator
+import org.uma.jmetal.operator.selection.impl.BinaryTournamentSelection
+import org.uma.jmetal.solution.binarysolution.BinarySolution
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
 import java.io.File
 import java.io.FileReader
@@ -51,7 +49,6 @@ class DatasetModel {
     private lateinit var mutation: MutationOperator<BinarySolution>
     private lateinit var selection: SelectionOperator<List<BinarySolution>, BinarySolution>
     private lateinit var algorithm: Algorithm<List<BinarySolution>>
-    private lateinit var algorithmRunner: AlgorithmRunner
 
     var notDominatedSolutions = mutableListOf<BinarySolution>()
     var dominatedSolutions = mutableListOf<BinarySolution>()
@@ -218,13 +215,33 @@ class DatasetModel {
 
             problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels, correlationStrategy, targetStrategy)
 
-            (0..numberOfTopics - 1).forEach { index ->
-                val solution = BestSubsetSolution(problem as BinaryProblem, numberOfTopics)
-                solution.setVariableValue(0, solution.createNewBitSet(numberOfTopics, variableValues[index]))
+            /* Build solutions from precomputed gene vectors */
+            for (index in 0 until numberOfTopics) {
+
+                /* Create an empty solution (objectives/attributes will be filled below) */
+                val solution = BestSubsetSolution(
+                    numberOfVariables = 1,
+                    numberOfObjectives = 2,
+                    numberOfTopics = numberOfTopics,
+                    topicLabels = problem.topicLabels,
+                    forcedCardinality = null /* random init not used; we overwrite the bitset */
+                )
+
+                /* Accept either Array<Boolean> or BooleanArray */
+                val genes: Array<Boolean> = when (val v = variableValues[index]) {
+                    is Array<*> -> @Suppress("UNCHECKED_CAST") v
+                }
+
+                /* Encode genes into the binary variable 0 */
+                solution.setVariable(0, solution.createNewBitSet(numberOfTopics, genes))
+
+                /* objective[0] = cardinality, objective[1] = correlation */
                 solution.setObjective(0, cardinality[index].toDouble())
                 solution.setObjective(1, correlations[index])
-                notDominatedSolutions.add(solution as BinarySolution)
-                allSolutions.add(solution as BinarySolution)
+
+                /* Collect */
+                notDominatedSolutions.add(solution)
+                allSolutions.add(solution)
             }
 
         } else {
@@ -234,24 +251,26 @@ class DatasetModel {
             if (populationSize < numberOfTopics) throw ParseException("Value for the option <<p>> or <<po>> must be greater or equal than/to $numberOfTopics. Current value is $populationSize. Check the usage section below.")
             numberOfIterations = parameters.numberOfIterations
 
+            /* Build NSGA-II */
             problem = BestSubsetProblem(parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels, correlationStrategy, targetStrategy)
             crossover = BinaryPruningCrossover(0.7)
             mutation = BitFlipMutation(0.3)
             selection = BinaryTournamentSelection(RankingAndCrowdingDistanceComparator())
 
+            /* jMetal 5.10: use the 3-arg builder and set the population size explicitly */
             val builder = NSGAIIBuilder(
                 problem,
                 crossover,
                 mutation,
                 populationSize
-            )
-                .setSelectionOperator(selection)
-                .setMaxEvaluations(numberOfIterations)
-
+            ).setSelectionOperator(selection).setMaxEvaluations(numberOfIterations)
 
             algorithm = builder.build()
-            algorithmRunner = AlgorithmRunner.Executor(algorithm).execute()
-            computingTime = algorithmRunner.computingTime
+
+            /* --- Option A: simplest/robust — run + time manually (recommended) --- */
+            val startNs = System.nanoTime()
+            algorithm.run()
+            computingTime = (System.nanoTime() - startNs) / 1_000_000
 
             notDominatedSolutions = algorithm.result.toMutableList().distinct().toMutableList()
             notDominatedSolutions = fixObjectiveFunctionValues(notDominatedSolutions)
@@ -366,7 +385,8 @@ class DatasetModel {
     }
 
     private fun getBaseFilePath(isTargetAll: Boolean): String {
-        var baseResultPath = "${Constants.NEWBESTSUB_OUTPUT_PATH}$datasetName${Constants.FILE_NAME_SEPARATOR}$correlationMethod${Constants.FILE_NAME_SEPARATOR}$numberOfTopics${Constants.FILE_NAME_SEPARATOR}$numberOfSystems${Constants.FILE_NAME_SEPARATOR}"
+        var baseResultPath =
+            "${Constants.NEWBESTSUB_OUTPUT_PATH}$datasetName${Constants.FILE_NAME_SEPARATOR}$correlationMethod${Constants.FILE_NAME_SEPARATOR}$numberOfTopics${Constants.FILE_NAME_SEPARATOR}$numberOfSystems${Constants.FILE_NAME_SEPARATOR}"
         if (targetToAchieve != Constants.TARGET_AVERAGE && targetToAchieve != Constants.TARGET_ALL)
             baseResultPath += "$numberOfIterations${Constants.FILE_NAME_SEPARATOR}$populationSize${Constants.FILE_NAME_SEPARATOR}"
         if (targetToAchieve == Constants.TARGET_AVERAGE || isTargetAll)
