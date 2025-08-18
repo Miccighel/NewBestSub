@@ -38,59 +38,38 @@
             </Attribute>
           </value>
         </entry>
-        <entry key="\res\Execution-2025-08-13-01-30-57\AH99-Pearson-50-129-1000-1000-Best-Fun.csv">
+        <entry key="\res\AH99-Pearson-top50-sys129-po1000-i1000-r2000-time2025-08-18-03-56-24\AH99-Pearson-Worst-top50-sys129-po1000-i1000-r2000-ex3-Fun-Merged.csv">
           <value>
             <Attribute>
               <option name="separator" value="&#9;" />
             </Attribute>
           </value>
         </entry>
-        <entry key="\res\Execution-2025-08-13-01-30-57\AH99-Pearson-50-129-1000-1000-Best-Top-10-Solutions.csv">
+        <entry key="\res\AH99-Pearson-top50-sys129-po1000-i1000-r2000-time2025-08-18-03-56-24\AH99-Pearson-Worst-top50-sys129-po1000-i1000-r2000-ex3-Var-Merged.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\res\Execution-2025-08-13-01-30-57\AH99-Pearson-50-129-1000-1000-Worst-Fun.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="&#9;" />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\Execution-2025-08-13-01-30-57\AH99-Pearson-50-129-1000-1000-Worst-Top-10-Solutions.csv">
+        <entry key="\res\AH99-Pearson-top50-sys129-po10000-i1000-r2000-2025-08-18-03-31-11\AH99-Pearson-All-top50-sys129-po10000-i1000-r2000-Info.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="\res\Execution-2025-08-13-01-33-44\AH99-Pearson-50-129-1000-10000-Best-Fun.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="&#9;" />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\Execution-2025-08-13-01-33-44\AH99-Pearson-50-129-1000-10000-Worst-Fun.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="&#9;" />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\Execution-2025-08-13-01-33-44\AH99-Pearson-50-129-2000-Average-Fun.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="&#9;" />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res_sample\AH99-Pearson-50-10000000-2000-Best-Fun.csv">
+        <entry key="\res\AH99-Pearson-top50-sys129-po10000-i1000-r2000-time2025-08-18-03-37-20\AH99-Pearson-Best-top50-sys129-po10000-i1000-r2000-Var.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\res\AH99-Pearson-top50-sys129-po10000-i1000-r2000-time2025-08-18-03-37-20\AH99-Pearson-Worst-top50-sys129-po10000-i1000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="&#9;" />
             </Attribute>
           </value>
         </entry>

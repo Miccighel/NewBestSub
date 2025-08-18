@@ -5,16 +5,30 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 object Constants {
+
     val PATH_SEPARATOR = System.getProperty("file.separator").toString()
     val BASE_PATH = "${Paths.get("").toAbsolutePath().parent}$PATH_SEPARATOR"
     val NEWBESTSUB_NAME = "NewBestSub"
     val NEWBESTSUB_PATH = "${Paths.get("").toAbsolutePath()}$PATH_SEPARATOR"
     val NEWBESTSUB_INPUT_PATH = "${NEWBESTSUB_PATH}data$PATH_SEPARATOR"
-    val EXECUTION_FOLDER_NAME = "Execution-${SimpleDateFormat("yyyy-MM-dd-hh-mm-ss").format(Date())}"
-    val NEWBESTSUB_OUTPUT_PATH = "${NEWBESTSUB_PATH}res$PATH_SEPARATOR$EXECUTION_FOLDER_NAME$PATH_SEPARATOR"
-    val LOG_PATH = "${NEWBESTSUB_PATH}log$PATH_SEPARATOR$EXECUTION_FOLDER_NAME$PATH_SEPARATOR"
+
+    /* Single timestamp token for this run; used at the END of the run folder name */
+    val RUN_TIMESTAMP: String? = SimpleDateFormat("yyyy-MM-dd-hh-mm-ss").format(Date())
+
+    /* Name of the run container folder (params + timestamp).
+     * Initialized to timestamp, then overwritten by DatasetView.ensureRunDir() to the FINAL name. */
+    var RUN_CONTAINER_FOLDER_NAME: String = SimpleDateFormat("yyyy-MM-dd-hh-mm-ss").format(Date())
+
+    /* Logs: same naming as the run container, under /log/<same-folder>/ */
+    val LOG_PATH: String
+        get() = "${NEWBESTSUB_PATH}log$PATH_SEPARATOR$RUN_CONTAINER_FOLDER_NAME$PATH_SEPARATOR"
+
     val LOG_FILE_NAME = "Execution"
     val LOG_FILE_SUFFIX = ".log"
+
+    /* Output base dir */
+    val NEWBESTSUB_OUTPUT_PATH = "${NEWBESTSUB_PATH}res$PATH_SEPARATOR"
+
     val LOGGING_FACTOR = 10
     val TARGET_BEST = "Best"
     val TARGET_WORST = "Worst"
@@ -32,7 +46,9 @@ object Constants {
     val MERGED_RESULT_FILE_SUFFIX = "Merged"
     val FILE_NAME_SEPARATOR = "-"
     val CSV_FILE_EXTENSION = ".csv"
+
     val NEWBESTSUB_EXPERIMENTS_NAME = "NewBestSub-Experiments"
     val NEWBESTSUB_EXPERIMENTS_PATH = "$BASE_PATH$NEWBESTSUB_EXPERIMENTS_NAME$PATH_SEPARATOR"
-    val NEWBESTSUB_EXPERIMENTS_INPUT_PATH = "${NEWBESTSUB_EXPERIMENTS_PATH}data$PATH_SEPARATOR$NEWBESTSUB_NAME$PATH_SEPARATOR$EXECUTION_FOLDER_NAME"
+    val NEWBESTSUB_EXPERIMENTS_INPUT_PATH =
+        "${NEWBESTSUB_EXPERIMENTS_PATH}data$PATH_SEPARATOR$NEWBESTSUB_NAME$PATH_SEPARATOR$RUN_TIMESTAMP"
 }

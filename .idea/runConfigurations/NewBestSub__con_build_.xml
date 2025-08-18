@@ -5,7 +5,7 @@
     <option name="MAIN_CLASS_NAME" value="it.uniud.newbestsub.program.Program" />
     <module name="NewBestSub" />
     <option name="PASS_PARENT_ENVS" value="false" />
-    <option name="PROGRAM_PARAMETERS" value="-fi &quot;AH99&quot; -c &quot;Pearson&quot; -po 10000 -i 1000 -r 2000 -t &quot;All&quot; -pe 1,100 -log Limited" />
+    <option name="PROGRAM_PARAMETERS" value="-fi &quot;AH99&quot; -c &quot;Pearson&quot; -po 1000 -i 1000 -r 2000 -t &quot;All&quot; -pe 1,100 -log Limited -mr 3" />
     <method v="2">
       <option name="RunConfigurationTask" enabled="true" run_configuration_name="NewBestSub" run_configuration_type="MavenRunConfiguration" />
     </method>

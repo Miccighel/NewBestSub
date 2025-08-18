@@ -183,7 +183,6 @@ class BestSubsetSolution(
     fun getVariableValue(index: Int) = getVariable(index)
     fun setVariableValue(index: Int, value: BinarySet) = setVariable(index, value)
 
-
     override fun compareTo(other: BestSubsetSolution): Int {
         return this.getCardinality().compareTo(other.getCardinality())
     }
