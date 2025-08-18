@@ -3,17 +3,19 @@ package it.uniud.newbestsub.dataset
 import com.opencsv.CSVReader
 import com.opencsv.CSVWriter
 import it.uniud.newbestsub.utils.Constants
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import org.apache.commons.lang3.StringUtils
 import org.apache.logging.log4j.LogManager
+import org.uma.jmetal.solution.binarysolution.BinarySolution
 import java.io.*
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.util.*
 import kotlin.collections.LinkedHashMap
+
+typealias RunResult = Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>>
 
 class DatasetController(
     private var targetToAchieve: String
@@ -30,7 +32,9 @@ class DatasetController(
     var infoResultPaths = mutableListOf<String>()
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
-    init { logger.info("Problem resolution started.") }
+    init {
+        logger.info("Problem resolution started.")
+    }
 
     fun load(datasetPath: String) {
 
@@ -115,12 +119,35 @@ class DatasetController(
             val averageParameters = bestParameters.copy(targetToAchieve = Constants.TARGET_AVERAGE)
 
             runBlocking {
-                val bestResult = async(Dispatchers.Default) { models[0].solve(bestParameters) }
-                val worstResult = async(Dispatchers.Default) { models[1].solve(worstParameters) }
-                val averageResult = async(Dispatchers.Default) { models[2].solve(averageParameters) }
-                view.print(bestResult.await(), models[0])
-                view.print(worstResult.await(), models[1])
-                view.print(averageResult.await(), models[2])
+                /* Rendezvous channel (capacity = 0) applies back-pressure: no buffering of big results */
+                val done: Channel<Pair<Int, RunResult>> = Channel(0)
+
+                supervisorScope {
+                    /* Launch CPU-bound solves in parallel on Default */
+                    launch(Dispatchers.Default) {
+                        val r: RunResult = models[0].solve(bestParameters)
+                        done.send(0 to r)  /* blocks until printer receives */
+                    }
+                    launch(Dispatchers.Default) {
+                        val r: RunResult = models[1].solve(worstParameters)
+                        done.send(1 to r)
+                    }
+                    launch(Dispatchers.Default) {
+                        val r: RunResult = models[2].solve(averageParameters)
+                        done.send(2 to r)
+                    }
+
+                    /* Single printer: prints immediately on completion, one at a time */
+                    repeat(3) {
+                        val (idx, result) = done.receive()
+                        withContext(Dispatchers.IO) {
+                            /* File I/O on IO dispatcher; avoids stealing CPU threads */
+                            view.print(result, models[idx])
+                        }
+                        /* After this returns, 'result' can be GC’d */
+                    }
+                    done.close()
+                }
             }
 
             aggregatedDataResultPaths.add(view.getAggregatedDataFilePath(models[0], isTargetAll = true))
@@ -394,6 +421,7 @@ class DatasetController(
                     bestTopSolutionsReaders = topSolutionsReaders
                     bestTopSolutions = topSolutions
                 }
+
                 Constants.TARGET_WORST -> {
                     worstFunctionValuesReaders = functionValuesReaders
                     worstFunctionValues = functionValues
@@ -402,6 +430,7 @@ class DatasetController(
                     worstTopSolutionsReaders = topSolutionsReaders
                     worstTopSolutions = topSolutions
                 }
+
                 Constants.TARGET_AVERAGE -> {
                     averageFunctionValuesReaders = functionValuesReaders
                     averageFunctionValues = functionValues
@@ -441,9 +470,17 @@ class DatasetController(
             val variableValues = LinkedList<LinkedList<String>>()
             val topSolutions = LinkedList<LinkedList<String>>()
             when (model.targetToAchieve) {
-                Constants.TARGET_BEST -> { functionValuesReaders = bestFunctionValuesReaders; variableValuesReaders = bestVariableValuesReaders; topSolutionsReaders = bestTopSolutionsReaders }
-                Constants.TARGET_WORST -> { functionValuesReaders = worstFunctionValuesReaders; variableValuesReaders = worstVariableValuesReaders; topSolutionsReaders = worstTopSolutionsReaders }
-                Constants.TARGET_AVERAGE -> { functionValuesReaders = averageFunctionValuesReaders; variableValuesReaders = averageVariableValuesReaders }
+                Constants.TARGET_BEST -> {
+                    functionValuesReaders = bestFunctionValuesReaders; variableValuesReaders = bestVariableValuesReaders; topSolutionsReaders = bestTopSolutionsReaders
+                }
+
+                Constants.TARGET_WORST -> {
+                    functionValuesReaders = worstFunctionValuesReaders; variableValuesReaders = worstVariableValuesReaders; topSolutionsReaders = worstTopSolutionsReaders
+                }
+
+                Constants.TARGET_AVERAGE -> {
+                    functionValuesReaders = averageFunctionValuesReaders; variableValuesReaders = averageVariableValuesReaders
+                }
             }
             readCounter = 0
             while (readCounter < model.numberOfTopics) {
@@ -472,9 +509,17 @@ class DatasetController(
                 topSolutionsReaders.forEach(BufferedReader::close)
             }
             when (model.targetToAchieve) {
-                Constants.TARGET_BEST -> { bestFunctionValues = functionValues; bestVariableValues = variableValues; bestTopSolutions = topSolutions }
-                Constants.TARGET_WORST -> { worstFunctionValues = functionValues; worstVariableValues = variableValues; worstTopSolutions = topSolutions }
-                Constants.TARGET_AVERAGE -> { averageFunctionValues = functionValues; averageVariableValues = variableValues }
+                Constants.TARGET_BEST -> {
+                    bestFunctionValues = functionValues; bestVariableValues = variableValues; bestTopSolutions = topSolutions
+                }
+
+                Constants.TARGET_WORST -> {
+                    worstFunctionValues = functionValues; worstVariableValues = variableValues; worstTopSolutions = topSolutions
+                }
+
+                Constants.TARGET_AVERAGE -> {
+                    averageFunctionValues = functionValues; averageVariableValues = variableValues
+                }
             }
         }
 
@@ -497,8 +542,14 @@ class DatasetController(
 
         val topSolutionHeader: String
         when (targetToAchieve) {
-            Constants.TARGET_BEST -> { topSolutionHeader = bestTopSolutions.pop().pop(); mergedBestTopSolutions.add(topSolutionHeader) }
-            Constants.TARGET_WORST -> { topSolutionHeader = worstTopSolutions.pop().pop(); mergedWorstTopSolutions.add(topSolutionHeader) }
+            Constants.TARGET_BEST -> {
+                topSolutionHeader = bestTopSolutions.pop().pop(); mergedBestTopSolutions.add(topSolutionHeader)
+            }
+
+            Constants.TARGET_WORST -> {
+                topSolutionHeader = worstTopSolutions.pop().pop(); mergedWorstTopSolutions.add(topSolutionHeader)
+            }
+
             Constants.TARGET_ALL -> {
                 topSolutionHeader = bestTopSolutions.pop().pop()
                 mergedBestTopSolutions.add(topSolutionHeader); mergedWorstTopSolutions.add(topSolutionHeader)
@@ -546,9 +597,18 @@ class DatasetController(
             val lowerBound: Int
             val upperBound = currentAggregatedCardinality[0].size - 1
             when (targetToAchieve) {
-                Constants.TARGET_ALL -> { mergedDataAggregatedForCurrentAggregatedCardinality[1] = bestAggregatedCorrelation.toString(); mergedDataAggregatedForCurrentAggregatedCardinality[2] = worstAggregatedCorrelation.toString(); lowerBound = 3 }
-                Constants.TARGET_AVERAGE -> { lowerBound = 1 }
-                else -> { lowerBound = 2 }
+                Constants.TARGET_ALL -> {
+                    mergedDataAggregatedForCurrentAggregatedCardinality[1] = bestAggregatedCorrelation.toString(); mergedDataAggregatedForCurrentAggregatedCardinality[2] =
+                        worstAggregatedCorrelation.toString(); lowerBound = 3
+                }
+
+                Constants.TARGET_AVERAGE -> {
+                    lowerBound = 1
+                }
+
+                else -> {
+                    lowerBound = 2
+                }
             }
             (lowerBound..upperBound).forEach { anotherIndex ->
                 mergedDataAggregatedForCurrentAggregatedCardinality[anotherIndex] =
@@ -561,7 +621,10 @@ class DatasetController(
                 bestTopSolutions.forEach { aBestTopSolution ->
                     val bestTopSolution = aBestTopSolution[bestAggregatedCorrelationIndex]
                     var bestTopSolutionCardinality = ""
-                    try { bestTopSolutionCardinality = bestTopSolution.split(',')[0] } catch (_: Exception) {}
+                    try {
+                        bestTopSolutionCardinality = bestTopSolution.split(',')[0]
+                    } catch (_: Exception) {
+                    }
                     bestTopSolutionCardinality = bestTopSolutionCardinality.drop(1).dropLast(3)
                     if (bestTopSolutionCardinality == (index + 1).toString()) mergedBestTopSolutions.add(aBestTopSolution[bestAggregatedCorrelationIndex])
                 }
@@ -572,7 +635,10 @@ class DatasetController(
                 worstTopSolutions.forEach { aWorstTopSolution ->
                     val worstTopSolution = aWorstTopSolution[worstAggregatedCorrelationIndex]
                     var worstTopSolutionCardinality = ""
-                    try { worstTopSolutionCardinality = worstTopSolution.split(',')[0] } catch (_: Exception) {}
+                    try {
+                        worstTopSolutionCardinality = worstTopSolution.split(',')[0]
+                    } catch (_: Exception) {
+                    }
                     worstTopSolutionCardinality = worstTopSolutionCardinality.drop(1).dropLast(3)
                     if (worstTopSolutionCardinality == (index + 1).toString()) mergedWorstTopSolutions.add(aWorstTopSolution[worstAggregatedCorrelationIndex])
                 }
@@ -609,18 +675,21 @@ class DatasetController(
                 mergedAverageExecutionInfo[mergedAverageExecutionInfo.lastIndex] = averageComputingTime.toString()
                 mergedInfo.add(StringUtils.join(mergedAverageExecutionInfo, ","))
             }
+
             Constants.TARGET_BEST -> {
                 info[0].forEach { infoForABestExecution -> bestComputingTime += infoForABestExecution.split(",").last().replace("\"", "").toInt() }
                 mergedBestExecutionInfo = info[0][0].split(",").toMutableList()
                 mergedBestExecutionInfo[mergedBestExecutionInfo.lastIndex] = bestComputingTime.toString()
                 mergedInfo.add(StringUtils.join(mergedBestExecutionInfo, ","))
             }
+
             Constants.TARGET_WORST -> {
                 info[0].forEach { infoForAWorstExecution -> worstComputingTime += infoForAWorstExecution.split(",").last().replace("\"", "").toInt() }
                 mergedWorstExecutionInfo = info[0][0].split(",").toMutableList()
                 mergedWorstExecutionInfo[mergedWorstExecutionInfo.lastIndex] = worstComputingTime.toString()
                 mergedInfo.add(StringUtils.join(mergedWorstExecutionInfo, ","))
             }
+
             Constants.TARGET_AVERAGE -> {
                 info[0].forEach { infoForAnAverageExecution -> averageComputingTime += infoForAnAverageExecution.split(",").last().replace("\"", "").toInt() }
                 mergedAverageExecutionInfo = info[0][0].split(",").toMutableList()
