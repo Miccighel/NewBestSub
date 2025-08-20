@@ -83,6 +83,7 @@ class CSVView {
     private companion object {
         private const val FLUSH_EVERY = 128
     }
+
     private val flushCounters: MutableMap<TopKey, Int> = mutableMapOf()
 
     /** Convert incoming VAR line (bits or labels) to **pipe-delimited label list**. */
@@ -130,6 +131,7 @@ class CSVView {
                 Paths.get(path), Charsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE
             )
+
             fun openAppend(path: String) = Files.newBufferedWriter(
                 Paths.get(path), Charsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND
@@ -171,8 +173,14 @@ class CSVView {
         h.varWriter.write(varLine); h.varWriter.newLine()
         val cnt = (flushCounters[key] ?: 0) + 1
         if (cnt % FLUSH_EVERY == 0) {
-            try { h.funWriter.flush() } catch (_: Exception) {}
-            try { h.varWriter.flush() } catch (_: Exception) {}
+            try {
+                h.funWriter.flush()
+            } catch (_: Exception) {
+            }
+            try {
+                h.varWriter.flush()
+            } catch (_: Exception) {
+            }
         }
         flushCounters[key] = cnt
 
@@ -215,8 +223,14 @@ class CSVView {
     fun closeStreams(model: DatasetModel) {
         val keyOfOpen = model.targetToAchieve to model.datasetName
         openStreams.remove(keyOfOpen)?.let { h ->
-            try { h.funWriter.flush(); h.funWriter.close() } catch (_: Exception) {}
-            try { h.varWriter.flush(); h.varWriter.close() } catch (_: Exception) {}
+            try {
+                h.funWriter.flush(); h.funWriter.close()
+            } catch (_: Exception) {
+            }
+            try {
+                h.varWriter.flush(); h.varWriter.close()
+            } catch (_: Exception) {
+            }
         }
         flushCounters.remove(TopKey(model.datasetName, model.currentExecution, model.targetToAchieve))
 
@@ -267,17 +281,9 @@ class CSVView {
                     val flags = (s as BestSubsetSolution).retrieveTopicStatus()
                     val line = buildString {
                         var first = true
-                        if (flags is BooleanArray) {
-                            for (i in flags.indices) if (flags[i]) {
-                                if (!first) append('|') else first = false
-                                append(labels[i])
-                            }
-                        } else {
-                            val arr = flags as Array<Boolean>
-                            for (i in arr.indices) if (arr[i]) {
-                                if (!first) append('|') else first = false
-                                append(labels[i])
-                            }
+                        for (i in flags.indices) if (flags[i]) {
+                            if (!first) append('|') else first = false
+                            append(labels[i])
                         }
                     }
                     vw.appendLine(line)

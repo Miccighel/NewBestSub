@@ -40,6 +40,16 @@
             <timezone>Europe/Rome</timezone>
         </contributor>
         <contributor>
+            <name>Riccardo Lunardi</name>
+            <email>riccardo.lunardi@uniud.it</email>
+            <organization>Uniud</organization>
+            <organizationUrl>https://www.uniud.it/</organizationUrl>
+            <roles>
+                <role>Contributor</role>
+            </roles>
+            <timezone>Europe/Rome</timezone>
+        </contributor>
+        <contributor>
             <name>Stefano Mizzaro</name>
             <email>mizzaro@uniud.it</email>
             <url>http://users.dimi.uniud.it/~stefano.mizzaro/</url>

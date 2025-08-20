@@ -56,8 +56,6 @@ class DatasetController(
         logger.info("Dataset loading started.")
         logger.info("Path: \"$datasetPath\".")
 
-        /* View creates run folder; no legacy NEWBESTSUB_OUTPUT_PATH creation */
-
         try {
             models.plusAssign(DatasetModel())
             models[0].loadData(this.datasetPath)
@@ -126,7 +124,7 @@ class DatasetController(
             val averageParameters = parameters.copy(targetToAchieve = Constants.TARGET_AVERAGE)
 
             /* Capacity can be tuned; small buffer applies back-pressure to the solver if I/O is slow. */
-            val progress: kotlinx.coroutines.channels.Channel<ProgressEvent> = kotlinx.coroutines.channels.Channel(64)
+            val progress: Channel<ProgressEvent> = Channel(64)
 
             runBlocking {
                 supervisorScope {
@@ -138,7 +136,7 @@ class DatasetController(
                             when (ev) {
                                 is CardinalityResult -> view.appendCardinality(model, ev)
                                 is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
-                                is RunCompleted -> view.closeStreams(model)     // CSV finalize -> Parquet from CSV
+                                is RunCompleted -> view.closeStreams(model)
                             }
                         }
                     }
@@ -194,7 +192,7 @@ class DatasetController(
 
         } else {
             /* Streaming also for single target */
-            val progress: kotlinx.coroutines.channels.Channel<ProgressEvent> = kotlinx.coroutines.channels.Channel(64)
+            val progress: Channel<ProgressEvent> = Channel(64)
 
             runBlocking {
                 supervisorScope {
@@ -205,7 +203,7 @@ class DatasetController(
                             when (ev) {
                                 is CardinalityResult -> view.appendCardinality(model, ev)
                                 is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
-                                is RunCompleted -> view.closeStreams(model)     // CSV finalize -> Parquet from CSV
+                                is RunCompleted -> view.closeStreams(model)
                             }
                         }
                     }
@@ -227,8 +225,6 @@ class DatasetController(
             infoResultPaths.add(view.getInfoFilePath(models[0], isTargetAll = false))
 
             logger.info("Data aggregation started.")
-            view.writeCsv(aggregate(models), view.getAggregatedDataFilePath(models[0], isTargetAll = false))
-            logger.info("Aggregated data available at:")
             val aggregatedRows = aggregate(models)
             view.writeCsv(aggregatedRows, view.getAggregatedDataFilePath(models[0], isTargetAll = false))
             view.writeParquet(aggregatedRows, view.getAggregatedDataParquetPath(models[0], isTargetAll = false))
@@ -257,7 +253,6 @@ class DatasetController(
         logger.info("Data aggregation completed.")
         logger.info("Problem resolution completed.")
     }
-
 
     /* ------------------------ Aggregation and info (unchanged) ------------------------ */
 
@@ -323,7 +318,6 @@ class DatasetController(
                     when (model.targetToAchieve) {
                         Constants.TARGET_BEST -> if (present) flags.append('B')
                         Constants.TARGET_WORST -> if (present) flags.append('W')
-                        // AVERAGE does not contribute to presence flags
                     }
                 }
                 if (flags.isEmpty()) flags.append('N')
@@ -372,23 +366,160 @@ class DatasetController(
 
         logger.info("Starting to merge results of $numberOfExecutions executions.")
 
-        var bestFunctionValuesReaders = emptyArray<BufferedReader>()
-        var bestFunctionValues = LinkedList<LinkedList<String>>()
-        var bestVariableValuesReaders = emptyArray<BufferedReader>()
-        var bestVariableValues = LinkedList<LinkedList<String>>()
-        var bestTopSolutionsReaders = emptyArray<BufferedReader>()
-        var bestTopSolutions = LinkedList<LinkedList<String>>()
-        var worstFunctionValuesReaders = emptyArray<BufferedReader>()
-        var worstFunctionValues = LinkedList<LinkedList<String>>()
-        var worstVariableValuesReaders = emptyArray<BufferedReader>()
-        var worstVariableValues = LinkedList<LinkedList<String>>()
-        var worstTopSolutionsReaders = emptyArray<BufferedReader>()
-        var worstTopSolutions = LinkedList<LinkedList<String>>()
-        var averageFunctionValuesReaders = emptyArray<BufferedReader>()
-        var averageFunctionValues = LinkedList<LinkedList<String>>()
-        var averageVariableValuesReaders = emptyArray<BufferedReader>()
-        var averageVariableValues = LinkedList<LinkedList<String>>()
-        var readCounter = 0
+        /* ----------------- tiny helpers ----------------- */
+
+        fun readAllCsvRows(path: String): List<Array<String>> =
+            try {
+                CSVReader(FileReader(path)).use { it.readAll() ?: emptyList() }
+            } catch (e: Exception) {
+                logger.warn("Failed to read CSV at '$path': ${e.message}")
+                emptyList()
+            }
+
+        fun readAllLines(path: String): List<String> =
+            try {
+                Files.readAllLines(Paths.get(path)).filter { it.isNotBlank() }
+            } catch (e: Exception) {
+                logger.warn("Failed to read text at '$path': ${e.message}")
+                emptyList()
+            }
+
+        fun headerOrEmpty(rows: List<Array<String>>): Array<String> =
+            if (rows.isNotEmpty()) rows.first() else emptyArray()
+
+        fun dataRows(rows: List<Array<String>>): List<Array<String>> =
+            if (rows.size > 1) rows.drop(1) else emptyList()
+
+        fun minDataLen(tables: List<List<Array<String>>>): Int =
+            tables.minOfOrNull { (if (it.size > 0) it.size - 1 else 0) } ?: 0
+
+        fun safeDouble(s: String): Double? = runCatching { s.trim().toDouble() }.getOrNull()
+
+        /* ----------------- 1) aggregated tables ----------------- */
+
+        logger.info("Loading aggregated data for all executions.")
+        logger.info("Aggregated data paths:")
+        aggregatedDataResultPaths.take(numberOfExecutions).forEach { logger.info("\"$it\"") }
+
+        val aggregatedTables = aggregatedDataResultPaths
+            .take(numberOfExecutions)
+            .map { readAllCsvRows(it) }
+
+        if (aggregatedTables.any { it.isEmpty() }) {
+            logger.warn("One or more aggregated CSV files are empty; aborting merge to avoid partial output.")
+            return
+        }
+
+        val aggregatedHeader = headerOrEmpty(aggregatedTables.first())
+        val aggregatedDataRowsPerExec = aggregatedTables.map { dataRows(it) }
+
+        val alignedCardinalityCount = minDataLen(aggregatedTables)
+        val totalCardinalities = alignedCardinalityCount
+
+        val loggingFactor = maxOf(1, (totalCardinalities * Constants.LOGGING_FACTOR) / 100)
+        var progressCounter = 0
+
+        /* ----------------- 2) per-target per-exec (FUN/VAR/TOP) ----------------- */
+
+        var bestFunctionValues: LinkedList<LinkedList<String>>? = null
+        var bestVariableValues: LinkedList<LinkedList<String>>? = null
+        var bestTopSolutions: LinkedList<LinkedList<String>>? = null
+        var worstFunctionValues: LinkedList<LinkedList<String>>? = null
+        var worstVariableValues: LinkedList<LinkedList<String>>? = null
+        var worstTopSolutions: LinkedList<LinkedList<String>>? = null
+        var averageFunctionValues: LinkedList<LinkedList<String>>? = null
+        var averageVariableValues: LinkedList<LinkedList<String>>? = null
+
+        fun prepareExecListsFor(model: DatasetModel) {
+
+            fun execSlicePaths(all: MutableList<String>, expect: Int, label: String): List<String> {
+                if (all.size < expect) {
+                    logger.warn("Expected at least $expect $label paths, found ${all.size}. Some executions may be missing.")
+                }
+                return all.take(expect)
+            }
+
+            val funPaths = mutableListOf<String>()
+            val varPaths = mutableListOf<String>()
+            val topPaths = mutableListOf<String>()
+
+            when (model.targetToAchieve) {
+                Constants.TARGET_BEST -> {
+                    funPaths += functionValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_BEST) }
+                    varPaths += variableValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_BEST) }
+                    topPaths += topSolutionsResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_BEST) }
+                }
+
+                Constants.TARGET_WORST -> {
+                    funPaths += functionValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_WORST) }
+                    varPaths += variableValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_WORST) }
+                    topPaths += topSolutionsResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_WORST) }
+                }
+
+                Constants.TARGET_AVERAGE -> {
+                    funPaths += functionValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_AVERAGE) }
+                    varPaths += variableValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_AVERAGE) }
+                }
+            }
+
+            val funTables: List<List<String>> = execSlicePaths(funPaths, numberOfExecutions, "FUN")
+                .map { readAllLines(it) }
+                .map { it.take(alignedCardinalityCount) }
+
+            val varTables: List<List<String>> = execSlicePaths(varPaths, numberOfExecutions, "VAR")
+                .map { readAllLines(it) }
+                .map { it.take(alignedCardinalityCount) }
+
+            val topTables: List<List<String>> =
+                if (model.targetToAchieve != Constants.TARGET_AVERAGE)
+                    execSlicePaths(topPaths, numberOfExecutions, "TOP")
+                        .map { readAllLines(it).drop(1) } // drop header
+                else emptyList()
+
+            fun <T> transposeToLinked(rowsPerExec: List<List<T>>): LinkedList<LinkedList<T>> {
+                val h = LinkedList<LinkedList<T>>()
+                if (rowsPerExec.isEmpty()) return h
+                val minLen = rowsPerExec.minOf { it.size }
+                repeat(minLen) { idx ->
+                    val col = LinkedList<T>()
+                    rowsPerExec.forEach { execRows -> col += execRows[idx] }
+                    h += col
+                }
+                return h
+            }
+
+            when (model.targetToAchieve) {
+                Constants.TARGET_BEST -> {
+                    bestFunctionValues = transposeToLinked(funTables)
+                    bestVariableValues = transposeToLinked(varTables)
+                    bestTopSolutions = transposeToLinked(topTables)
+                }
+
+                Constants.TARGET_WORST -> {
+                    worstFunctionValues = transposeToLinked(funTables)
+                    worstVariableValues = transposeToLinked(varTables)
+                    worstTopSolutions = transposeToLinked(topTables)
+                }
+
+                Constants.TARGET_AVERAGE -> {
+                    averageFunctionValues = transposeToLinked(funTables)
+                    averageVariableValues = transposeToLinked(varTables)
+                }
+            }
+        }
+
+        if (targetToAchieve == Constants.TARGET_ALL) {
+            prepareExecListsFor(models[0]) // BEST
+            prepareExecListsFor(models[1]) // WORST
+            prepareExecListsFor(models[2]) // AVERAGE
+        } else {
+            prepareExecListsFor(models[0])
+        }
+
+        /* ----------------- 3) merge Aggregated + pick per-target rows ----------------- */
+
+        val mergedAggregatedData = LinkedList<Array<String>>().apply { add(aggregatedHeader) }
+
         val mergedBestFunctionValues = LinkedList<String>()
         val mergedBestVariableValues = LinkedList<String>()
         val mergedWorstFunctionValues = LinkedList<String>()
@@ -398,513 +529,468 @@ class DatasetController(
         val mergedBestTopSolutions = LinkedList<String>()
         val mergedWorstTopSolutions = LinkedList<String>()
 
-        logger.info("Loading aggregated data for all executions.")
-        logger.info("Aggregated data paths:")
-        val aggregatedDataReaders = Array(numberOfExecutions) { index ->
-            logger.info("\"${aggregatedDataResultPaths[index]}\"")
-            CSVReader(FileReader(aggregatedDataResultPaths[index]))
-        }
-        val aggregatedCardinality = LinkedList<LinkedList<Array<String>>>()
+        for (cardIdx in 0 until totalCardinalities) {
+            if ((cardIdx % loggingFactor) == 0 && totalCardinalities > 0) {
+                logger.info("Results merged for cardinality: ${cardIdx + 1}/$totalCardinalities ($progressCounter%) for $numberOfExecutions total executions.")
+                progressCounter += Constants.LOGGING_FACTOR
+            }
 
-        val dataSetup = { model: DatasetModel ->
-            var executionIndex = 0
-            val setIndex = { shouldBeIncremented: Boolean, isTopSolutionsScan: Boolean ->
-                if (shouldBeIncremented) {
-                    if (isTopSolutionsScan)
-                        if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 2 else executionIndex += 1
-                    else
-                        if (targetToAchieve == Constants.TARGET_ALL) executionIndex += 3 else executionIndex += 1
-                } else {
-                    if (isTopSolutionsScan) {
-                        when (model.targetToAchieve) {
-                            Constants.TARGET_BEST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
-                            Constants.TARGET_WORST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -1
+            val rowsAtI: List<Array<String>> =
+                aggregatedDataRowsPerExec.mapNotNull { execRows -> execRows.getOrNull(cardIdx) }
+            if (rowsAtI.isEmpty()) continue
+
+            val cardinalityToken = rowsAtI.first()[0]
+
+            var bestAggCorr = Double.NEGATIVE_INFINITY
+            var bestExecIdx = -1
+            var worstAggCorr = Double.POSITIVE_INFINITY
+            var worstExecIdx = -1
+
+            rowsAtI.forEachIndexed { execIdx, row ->
+                when (targetToAchieve) {
+                    Constants.TARGET_ALL -> {
+                        safeDouble(row.getOrNull(1) ?: "")?.let {
+                            if (it > bestAggCorr) {
+                                bestAggCorr = it; bestExecIdx = execIdx
+                            }
                         }
-                    } else {
-                        when (model.targetToAchieve) {
-                            Constants.TARGET_BEST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -3 else executionIndex = -1
-                            Constants.TARGET_WORST -> if (targetToAchieve == Constants.TARGET_ALL) executionIndex = -2 else executionIndex = -1
-                            Constants.TARGET_AVERAGE -> executionIndex = -1
+                        safeDouble(row.getOrNull(2) ?: "")?.let {
+                            if (it < worstAggCorr) {
+                                worstAggCorr = it; worstExecIdx = execIdx
+                            }
                         }
+                    }
+
+                    Constants.TARGET_BEST -> {
+                        safeDouble(row.getOrNull(1) ?: "")?.let {
+                            if (it > bestAggCorr) {
+                                bestAggCorr = it; bestExecIdx = execIdx
+                            }
+                        }
+                    }
+
+                    Constants.TARGET_WORST -> {
+                        safeDouble(row.getOrNull(1) ?: "")?.let {
+                            if (it < worstAggCorr) {
+                                worstAggCorr = it; worstExecIdx = execIdx
+                            }
+                        }
+                    }
+
+                    Constants.TARGET_AVERAGE -> { /* copy as is */
                     }
                 }
             }
-            setIndex(false, false)
-            logger.info("Loading function values for experiment \"${model.targetToAchieve}\" for all executions.")
-            logger.info("Function values paths:")
-            val functionValuesReaders = Array(numberOfExecutions) {
-                setIndex(true, false)
-                logger.info("\"${functionValuesResultPaths[executionIndex]}\"")
-                Files.newBufferedReader(Paths.get(functionValuesResultPaths[executionIndex]))
-            }
-            setIndex(false, false)
-            val functionValues: LinkedList<LinkedList<String>> = LinkedList()
-            logger.info("Loading variable values for experiment \"${model.targetToAchieve}\" for all executions.")
-            logger.info("Variable values paths:")
-            val variableValuesReaders = Array(numberOfExecutions) {
-                setIndex(true, false)
-                logger.info("\"${variableValuesResultPaths[executionIndex]}\"")
-                Files.newBufferedReader(Paths.get(variableValuesResultPaths[executionIndex]))
-            }
-            val variableValues: LinkedList<LinkedList<String>> = LinkedList()
-            var topSolutionsReaders = emptyArray<BufferedReader>()
-            var topSolutions = LinkedList<LinkedList<String>>()
-            if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
-                setIndex(false, true)
-                logger.info("Loading top solutions for experiment \"${model.targetToAchieve}\" for all executions.")
-                logger.info("Top solutions paths:")
-                topSolutionsReaders = Array(numberOfExecutions) {
-                    setIndex(true, true)
-                    logger.info("\"${topSolutionsResultPaths[executionIndex]}\"")
-                    Files.newBufferedReader(Paths.get(topSolutionsResultPaths[executionIndex]))
+
+            val template = rowsAtI.first()
+            val out = Array(template.size) { "" }
+            out[0] = cardinalityToken
+            when (targetToAchieve) {
+                Constants.TARGET_ALL -> {
+                    out[1] = if (bestExecIdx >= 0) bestAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
+                    out[2] = if (worstExecIdx >= 0) worstAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
+                    for (col in 3 until template.size) out[col] = template[col]
                 }
-                topSolutions = LinkedList()
-            }
-            when (model.targetToAchieve) {
+
                 Constants.TARGET_BEST -> {
-                    bestFunctionValuesReaders = functionValuesReaders
-                    bestFunctionValues = functionValues
-                    bestVariableValuesReaders = variableValuesReaders
-                    bestVariableValues = variableValues
-                    bestTopSolutionsReaders = topSolutionsReaders
-                    bestTopSolutions = topSolutions
+                    out[1] = if (bestExecIdx >= 0) bestAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
+                    for (col in 2 until template.size) out[col] = template[col]
                 }
 
                 Constants.TARGET_WORST -> {
-                    worstFunctionValuesReaders = functionValuesReaders
-                    worstFunctionValues = functionValues
-                    worstVariableValuesReaders = variableValuesReaders
-                    worstVariableValues = variableValues
-                    worstTopSolutionsReaders = topSolutionsReaders
-                    worstTopSolutions = topSolutions
+                    out[1] = if (worstExecIdx >= 0) worstAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
+                    for (col in 2 until template.size) out[col] = template[col]
                 }
 
                 Constants.TARGET_AVERAGE -> {
-                    averageFunctionValuesReaders = functionValuesReaders
-                    averageFunctionValues = functionValues
-                    averageVariableValuesReaders = variableValuesReaders
-                    averageVariableValues = variableValues
+                    val src = rowsAtI.first()
+                    for (col in src.indices) out[col] = src[col]
+                }
+            }
+            mergedAggregatedData += out
+
+            // Stash per-target selections (FUN/VAR/TOP) with null/size guards
+
+            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
+                bestFunctionValues?.let { m ->
+                    if (cardIdx < m.size) {
+                        val execCol = if (bestExecIdx >= 0) bestExecIdx.coerceAtMost(m[cardIdx].size - 1) else 0
+                        m[cardIdx].getOrNull(execCol)?.let { mergedBestFunctionValues += it }
+                    }
+                }
+                bestVariableValues?.let { m ->
+                    if (cardIdx < m.size) {
+                        val execCol = if (bestExecIdx >= 0) bestExecIdx.coerceAtMost(m[cardIdx].size - 1) else 0
+                        m[cardIdx].getOrNull(execCol)?.let { mergedBestVariableValues += it }
+                    }
+                }
+                bestTopSolutions?.forEach { perExecLineSet ->
+                    val line = perExecLineSet.getOrNull(bestExecIdx) ?: return@forEach
+                    val kToken = line.substringBefore(',').trim()
+                    if (kToken == (cardIdx + 1).toString()) mergedBestTopSolutions += line
+                }
+            }
+
+            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
+                worstFunctionValues?.let { m ->
+                    if (cardIdx < m.size) {
+                        val execCol = if (worstExecIdx >= 0) worstExecIdx.coerceAtMost(m[cardIdx].size - 1) else 0
+                        m[cardIdx].getOrNull(execCol)?.let { mergedWorstFunctionValues += it }
+                    }
+                }
+                worstVariableValues?.let { m ->
+                    if (cardIdx < m.size) {
+                        val execCol = if (worstExecIdx >= 0) worstExecIdx.coerceAtMost(m[cardIdx].size - 1) else 0
+                        m[cardIdx].getOrNull(execCol)?.let { mergedWorstVariableValues += it }
+                    }
+                }
+                worstTopSolutions?.forEach { perExecLineSet ->
+                    val line = perExecLineSet.getOrNull(worstExecIdx) ?: return@forEach
+                    val kToken = line.substringBefore(',').trim()
+                    if (kToken == (cardIdx + 1).toString()) mergedWorstTopSolutions += line
+                }
+            }
+
+            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
+                averageFunctionValues?.let { m ->
+                    if (cardIdx < m.size) m[cardIdx].firstOrNull()?.let { mergedAverageFunctionValues += it }
+                }
+                averageVariableValues?.let { m ->
+                    if (cardIdx < m.size) m[cardIdx].firstOrNull()?.let { mergedAverageVariableValues += it }
                 }
             }
         }
 
-        if (targetToAchieve == Constants.TARGET_ALL) {
-            dataSetup(models[0]); dataSetup(models[1]); dataSetup(models[2])
-        } else dataSetup(models[0])
+        logger.info("Results merged for cardinality: $totalCardinalities/$totalCardinalities (100%) for $numberOfExecutions total executions.")
+
+        /* ----------------- 4) merge Info ----------------- */
 
         logger.info("Loading info for all executions.")
         logger.info("Info paths:")
-        val infoReaders = Array(numberOfExecutions) { index ->
-            logger.info("\"${infoResultPaths[index]}\"")
-            Files.newBufferedReader(Paths.get(infoResultPaths[index]))
-        }
-        val info = LinkedList<LinkedList<String>>()
+        infoResultPaths.take(numberOfExecutions).forEach { logger.info("\"$it\"") }
+        val infoTables: List<List<String>> = infoResultPaths.take(numberOfExecutions).map { readAllLines(it) }
 
-        while (readCounter < models[0].numberOfTopics + 1) {
-            val currentAggregatedCardinality = LinkedList<Array<String>>()
-            aggregatedDataReaders.forEach { anAggregatedDataReader ->
-                currentAggregatedCardinality.plusAssign(anAggregatedDataReader.readNext())
-            }
-            aggregatedCardinality.add(currentAggregatedCardinality)
-            readCounter++
-        }
-        aggregatedDataReaders.forEach(CSVReader::close)
-
-        val dataReader = { model: DatasetModel ->
-            var functionValuesReaders = emptyArray<BufferedReader>()
-            var variableValuesReaders = emptyArray<BufferedReader>()
-            var topSolutionsReaders = emptyArray<BufferedReader>()
-            val functionValues = LinkedList<LinkedList<String>>()
-            val variableValues = LinkedList<LinkedList<String>>()
-            val topSolutions = LinkedList<LinkedList<String>>()
-            when (model.targetToAchieve) {
-                Constants.TARGET_BEST -> {
-                    functionValuesReaders = bestFunctionValuesReaders; variableValuesReaders = bestVariableValuesReaders; topSolutionsReaders = bestTopSolutionsReaders
-                }
-
-                Constants.TARGET_WORST -> {
-                    functionValuesReaders = worstFunctionValuesReaders; variableValuesReaders = worstVariableValuesReaders; topSolutionsReaders = worstTopSolutionsReaders
-                }
-
-                Constants.TARGET_AVERAGE -> {
-                    functionValuesReaders = averageFunctionValuesReaders; variableValuesReaders = averageVariableValuesReaders
-                }
-            }
-            readCounter = 0
-            while (readCounter < model.numberOfTopics) {
-                val currentFunctionValue = LinkedList<String>()
-                functionValuesReaders.forEach { aFunctionValuesReader -> currentFunctionValue.plusAssign(aFunctionValuesReader.readLine()) }
-                functionValues.add(currentFunctionValue)
-                readCounter++
-            }
-            functionValuesReaders.forEach(BufferedReader::close)
-            readCounter = 0
-            while (readCounter < model.numberOfTopics) {
-                val currentVariableValue = LinkedList<String>()
-                variableValuesReaders.forEach { aVariableValuesReader -> currentVariableValue.plusAssign(aVariableValuesReader.readLine()) }
-                variableValues.add(currentVariableValue)
-                readCounter++
-            }
-            variableValuesReaders.forEach(BufferedReader::close)
-            if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
-                readCounter = 0
-                while (readCounter < model.topSolutions.size) {
-                    val currentTopSolution = LinkedList<String>()
-                    topSolutionsReaders.forEach { aTopSolutionReader -> currentTopSolution.plusAssign(aTopSolutionReader.readLine()) }
-                    topSolutions.add(currentTopSolution)
-                    readCounter++
-                }
-                topSolutionsReaders.forEach(BufferedReader::close)
-            }
-            when (model.targetToAchieve) {
-                Constants.TARGET_BEST -> {
-                    bestFunctionValues = functionValues; bestVariableValues = variableValues; bestTopSolutions = topSolutions
-                }
-
-                Constants.TARGET_WORST -> {
-                    worstFunctionValues = functionValues; worstVariableValues = variableValues; worstTopSolutions = topSolutions
-                }
-
-                Constants.TARGET_AVERAGE -> {
-                    averageFunctionValues = functionValues; averageVariableValues = variableValues
-                }
-            }
-        }
-
-        if (targetToAchieve == Constants.TARGET_ALL) {
-            dataReader(models[0]); dataReader(models[1]); dataReader(models[2])
-        } else dataReader(models[0])
-
-        readCounter = 0
-        while (readCounter <= 3) {
-            val currentInfo = LinkedList<String>()
-            infoReaders.forEach { aInfoReader -> currentInfo.plusAssign(aInfoReader.readLine()) }
-            info.add(currentInfo)
-            readCounter++
-        }
-        infoReaders.forEach(BufferedReader::close)
-
-        val aggregatedDataHeader = aggregatedCardinality.pop().pop()
-        val mergedAggregatedData = LinkedList<Array<String>>()
-        mergedAggregatedData.add(aggregatedDataHeader)
-
-        val topSolutionHeader: String
-        when (targetToAchieve) {
-            Constants.TARGET_BEST -> {
-                topSolutionHeader = bestTopSolutions.pop().pop(); mergedBestTopSolutions.add(topSolutionHeader)
-            }
-
-            Constants.TARGET_WORST -> {
-                topSolutionHeader = worstTopSolutions.pop().pop(); mergedWorstTopSolutions.add(topSolutionHeader)
-            }
-
-            Constants.TARGET_ALL -> {
-                topSolutionHeader = bestTopSolutions.pop().pop()
-                mergedBestTopSolutions.add(topSolutionHeader); mergedWorstTopSolutions.add(topSolutionHeader)
-            }
-        }
-
-        val infoHeader = info.pop().pop()
         val mergedInfo = LinkedList<String>()
-        mergedInfo.add(infoHeader)
+        val infoHeader = infoTables.firstOrNull()?.firstOrNull()
+            ?: "Dataset Name,Number of Systems,Number of Topics,Correlation Method,Target to Achieve,Number of Iterations,Population Size,Number of Repetitions,Computing Time"
+        mergedInfo += infoHeader
 
-        val loggingFactor = ((aggregatedCardinality.size + 1) * Constants.LOGGING_FACTOR) / 100
-        var progressCounter = 0
-
-        aggregatedCardinality.forEachIndexed { index, currentAggregatedCardinality ->
-            if (((index) % loggingFactor) == 0 && (aggregatedCardinality.size + 1) > loggingFactor) {
-                logger.info("Results merged for cardinality: ${index + 1}/${aggregatedCardinality.size + 1} ($progressCounter%) for $numberOfExecutions total executions.")
-                progressCounter += Constants.LOGGING_FACTOR
+        fun sumTimes(lines: List<String>): Int =
+            lines.drop(1).sumOf { ln ->
+                ln.substringAfterLast(',').replace("\"", "").trim().toIntOrNull() ?: 0
             }
-            var bestAggregatedCorrelation = -10.0
-            var bestAggregatedCorrelationIndex = -10
-            var worstAggregatedCorrelation = 10.0
-            var worstAggregatedCorrelationIndex = 10
-            currentAggregatedCardinality.forEachIndexed { anotherIndex, aggregatedCardinalityForAnExecution ->
-                val maximumValue = Math.max(bestAggregatedCorrelation, aggregatedCardinalityForAnExecution[1].toDouble())
-                if (bestAggregatedCorrelation < maximumValue) {
-                    bestAggregatedCorrelation = maximumValue
-                    bestAggregatedCorrelationIndex = anotherIndex
-                }
-                val minimumValue: Double =
-                    if (targetToAchieve == Constants.TARGET_ALL)
-                        Math.min(worstAggregatedCorrelation, aggregatedCardinalityForAnExecution[2].toDouble())
-                    else
-                        Math.min(worstAggregatedCorrelation, aggregatedCardinalityForAnExecution[1].toDouble())
-                if (worstAggregatedCorrelation > minimumValue) {
-                    worstAggregatedCorrelation = minimumValue
-                    worstAggregatedCorrelationIndex = anotherIndex
-                }
-            }
-            val mergedDataAggregatedForCurrentAggregatedCardinality = Array(currentAggregatedCardinality[0].size) { "" }
-            mergedDataAggregatedForCurrentAggregatedCardinality[0] = currentAggregatedCardinality[0][0]
-            when (targetToAchieve) {
-                Constants.TARGET_BEST -> mergedDataAggregatedForCurrentAggregatedCardinality[1] = bestAggregatedCorrelation.toString()
-                Constants.TARGET_WORST -> mergedDataAggregatedForCurrentAggregatedCardinality[1] = worstAggregatedCorrelation.toString()
-            }
-            val lowerBound: Int
-            val upperBound = currentAggregatedCardinality[0].size - 1
-            when (targetToAchieve) {
-                Constants.TARGET_ALL -> {
-                    mergedDataAggregatedForCurrentAggregatedCardinality[1] = bestAggregatedCorrelation.toString(); mergedDataAggregatedForCurrentAggregatedCardinality[2] =
-                        worstAggregatedCorrelation.toString(); lowerBound = 3
-                }
-
-                Constants.TARGET_AVERAGE -> {
-                    lowerBound = 1
-                }
-
-                else -> {
-                    lowerBound = 2
-                }
-            }
-            (lowerBound..upperBound).forEach { anotherIndex ->
-                mergedDataAggregatedForCurrentAggregatedCardinality[anotherIndex] =
-                    currentAggregatedCardinality[0][anotherIndex]
-            }
-            mergedAggregatedData.add(mergedDataAggregatedForCurrentAggregatedCardinality)
-            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
-                mergedBestFunctionValues.add(bestFunctionValues[index][bestAggregatedCorrelationIndex])
-                mergedBestVariableValues.add(bestVariableValues[index][bestAggregatedCorrelationIndex])
-                bestTopSolutions.forEach { aBestTopSolution ->
-                    val bestTopSolution = aBestTopSolution[bestAggregatedCorrelationIndex]
-                    var bestTopSolutionCardinality = ""
-                    try {
-                        bestTopSolutionCardinality = bestTopSolution.split(',')[0]
-                    } catch (_: Exception) {
-                    }
-                    bestTopSolutionCardinality = bestTopSolutionCardinality.drop(1).dropLast(3)
-                    if (bestTopSolutionCardinality == (index + 1).toString()) mergedBestTopSolutions.add(aBestTopSolution[bestAggregatedCorrelationIndex])
-                }
-            }
-            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_WORST) {
-                mergedWorstFunctionValues.add(worstFunctionValues[index][worstAggregatedCorrelationIndex])
-                mergedWorstVariableValues.add(worstVariableValues[index][worstAggregatedCorrelationIndex])
-                worstTopSolutions.forEach { aWorstTopSolution ->
-                    val worstTopSolution = aWorstTopSolution[worstAggregatedCorrelationIndex]
-                    var worstTopSolutionCardinality = ""
-                    try {
-                        worstTopSolutionCardinality = worstTopSolution.split(',')[0]
-                    } catch (_: Exception) {
-                    }
-                    worstTopSolutionCardinality = worstTopSolutionCardinality.drop(1).dropLast(3)
-                    if (worstTopSolutionCardinality == (index + 1).toString()) mergedWorstTopSolutions.add(aWorstTopSolution[worstAggregatedCorrelationIndex])
-                }
-            }
-            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
-                mergedAverageFunctionValues.add(averageFunctionValues[index][0])
-                mergedAverageVariableValues.add(averageVariableValues[index][0])
-            }
-        }
-
-        logger.info("Results merged for cardinality: ${aggregatedCardinality.size + 1}/${aggregatedCardinality.size + 1} (100%) for $numberOfExecutions total executions.")
-
-        var bestComputingTime = 0
-        var worstComputingTime = 0
-        var averageComputingTime = 0
-        val mergedBestExecutionInfo: MutableList<String>
-        val mergedWorstExecutionInfo: MutableList<String>
-        val mergedAverageExecutionInfo: MutableList<String>
 
         when (targetToAchieve) {
             Constants.TARGET_ALL -> {
-                info[0].forEach { infoForABestExecution -> bestComputingTime += infoForABestExecution.split(",").last().replace("\"", "").toInt() }
-                mergedBestExecutionInfo = info[0][0].split(",").toMutableList()
-                mergedBestExecutionInfo[mergedBestExecutionInfo.lastIndex] = bestComputingTime.toString()
-                mergedInfo.add(StringUtils.join(mergedBestExecutionInfo, ","))
+                val bestLines = infoTables.getOrNull(0) ?: emptyList()
+                val worstLines = infoTables.getOrNull(1) ?: emptyList()
+                val avgLines = infoTables.getOrNull(2) ?: emptyList()
 
-                info[1].forEach { infoForAWorstExecution -> worstComputingTime += infoForAWorstExecution.split(",").last().replace("\"", "").toInt() }
-                mergedWorstExecutionInfo = info[1][0].split(",").toMutableList()
-                mergedWorstExecutionInfo[mergedWorstExecutionInfo.lastIndex] = worstComputingTime.toString()
-                mergedInfo.add(StringUtils.join(mergedWorstExecutionInfo, ","))
+                fun mergeInfoRow(src: String, total: Int): String {
+                    val parts = src.split(',').toMutableList()
+                    if (parts.isNotEmpty()) parts[parts.lastIndex] = total.toString()
+                    return parts.joinToString(",")
+                }
 
-                info[2].forEach { infoForAnAverageExecution -> averageComputingTime += infoForAnAverageExecution.split(",").last().replace("\"", "").toInt() }
-                mergedAverageExecutionInfo = info[2][0].split(",").toMutableList()
-                mergedAverageExecutionInfo[mergedAverageExecutionInfo.lastIndex] = averageComputingTime.toString()
-                mergedInfo.add(StringUtils.join(mergedAverageExecutionInfo, ","))
+                if (bestLines.size > 1) mergedInfo += mergeInfoRow(bestLines[1], sumTimes(bestLines))
+                if (worstLines.size > 1) mergedInfo += mergeInfoRow(worstLines[1], sumTimes(worstLines))
+                if (avgLines.size > 1) mergedInfo += mergeInfoRow(avgLines[1], sumTimes(avgLines))
             }
 
-            Constants.TARGET_BEST -> {
-                info[0].forEach { infoForABestExecution -> bestComputingTime += infoForABestExecution.split(",").last().replace("\"", "").toInt() }
-                mergedBestExecutionInfo = info[0][0].split(",").toMutableList()
-                mergedBestExecutionInfo[mergedBestExecutionInfo.lastIndex] = bestComputingTime.toString()
-                mergedInfo.add(StringUtils.join(mergedBestExecutionInfo, ","))
-            }
-
-            Constants.TARGET_WORST -> {
-                info[0].forEach { infoForAWorstExecution -> worstComputingTime += infoForAWorstExecution.split(",").last().replace("\"", "").toInt() }
-                mergedWorstExecutionInfo = info[0][0].split(",").toMutableList()
-                mergedWorstExecutionInfo[mergedWorstExecutionInfo.lastIndex] = worstComputingTime.toString()
-                mergedInfo.add(StringUtils.join(mergedWorstExecutionInfo, ","))
-            }
-
-            Constants.TARGET_AVERAGE -> {
-                info[0].forEach { infoForAnAverageExecution -> averageComputingTime += infoForAnAverageExecution.split(",").last().replace("\"", "").toInt() }
-                mergedAverageExecutionInfo = info[0][0].split(",").toMutableList()
-                mergedAverageExecutionInfo[mergedAverageExecutionInfo.lastIndex] = averageComputingTime.toString()
-                mergedInfo.add(StringUtils.join(mergedAverageExecutionInfo, ","))
+            else -> {
+                val lines = infoTables.firstOrNull() ?: emptyList()
+                if (lines.size > 1) {
+                    val total = sumTimes(lines)
+                    val mergedRow = lines[1].split(',').toMutableList().also {
+                        if (it.isNotEmpty()) it[it.lastIndex] = total.toString()
+                    }.joinToString(",")
+                    mergedInfo += mergedRow
+                }
             }
         }
-        info[0].forEachIndexed { index, _ -> logger.info("Info merged for execution: ${index + 1}/$numberOfExecutions.") }
 
-        /* Merged outputs now also use the View helpers so they end up in the same run folder */
+        /* ----------------- 5) write merged CSV + Parquet ----------------- */
+
         val isAll = (targetToAchieve == Constants.TARGET_ALL)
-        val mergedAggPath = view.getAggregatedDataMergedFilePath(models[0], isTargetAll = isAll)
-        logger.info("Merged aggregated data for all executions available at:")
-        logger.info("\"$mergedAggPath\"")
-        val mergedAggregatedDataWriter = CSVWriter(FileWriter(mergedAggPath))
-        mergedAggregatedDataWriter.writeAll(mergedAggregatedData)
-        mergedAggregatedDataWriter.close()
 
-        val dataWriter = { model: DatasetModel ->
-            val funMergedPath = view.getFunctionValuesMergedFilePath(model)
-            logger.info("Merged function values for experiment \"${model.targetToAchieve}\" for all executions available at:")
-            logger.info("\"$funMergedPath\"")
-            val mergedFunctionValues = when (model.targetToAchieve) {
-                Constants.TARGET_BEST -> mergedBestFunctionValues
-                Constants.TARGET_WORST -> mergedWorstFunctionValues
-                else -> mergedAverageFunctionValues
-            }
-            val functionValuesDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(funMergedPath))
-            mergedFunctionValues.forEach { aMergedFunctionValues ->
-                functionValuesDataWriter.write(aMergedFunctionValues)
-                functionValuesDataWriter.newLine()
-            }
-            functionValuesDataWriter.close()
+        // Aggregated
+        val mergedAggCsv = view.getAggregatedDataMergedFilePath(models[0], isTargetAll = isAll)
+        view.writeCsv(mergedAggregatedData, mergedAggCsv)
+        logger.info("Merged aggregated data available at:")
+        logger.info("\"$mergedAggCsv\"")
 
-            val varMergedPath = view.getVariableValuesMergedFilePath(model)
-            logger.info("Merged variable values for experiment \"${model.targetToAchieve}\" for all executions available at:")
-            logger.info("\"$varMergedPath\"")
-            val mergedVariableValues = when (model.targetToAchieve) {
-                Constants.TARGET_BEST -> mergedBestVariableValues
-                Constants.TARGET_WORST -> mergedWorstVariableValues
-                else -> mergedAverageVariableValues
-            }
-            val variableValuesDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(varMergedPath))
-            mergedVariableValues.forEach { aMergedVariableValues ->
-                variableValuesDataWriter.write(aMergedVariableValues)
-                variableValuesDataWriter.newLine()
-            }
-            variableValuesDataWriter.close()
+        val mergedAggParquet = view.getAggregatedDataMergedParquetPath(models[0], isTargetAll = isAll)
+        view.writeParquet(mergedAggregatedData, mergedAggParquet)
 
+        // Info
+        val mergedInfoCsv = view.getInfoMergedFilePath(models[0], isTargetAll = isAll)
+        Files.newBufferedWriter(Paths.get(mergedInfoCsv)).use { w ->
+            mergedInfo.forEach { ln -> w.appendLine(ln) }
+        }
+        logger.info("Merged info available at:")
+        logger.info("\"$mergedInfoCsv\"")
+
+        val mergedInfoParquet = view.getInfoMergedParquetPath(models[0], isTargetAll = isAll)
+        val infoRowsForParquet = mergedInfo.map { it.split(',').toTypedArray() }
+        view.writeParquet(infoRowsForParquet, mergedInfoParquet)
+
+        // Per target: FUN / VAR / TOP -> write CSV as before + Parquet siblings.
+
+        fun writeMergedPerTarget(model: DatasetModel) {
+            /* ---- CSV ---- */
+
+            // FUN CSV
+            val funMergedCsv = view.getFunctionValuesMergedFilePath(model)
+            Files.newBufferedWriter(Paths.get(funMergedCsv)).use { w ->
+                val lines = when (model.targetToAchieve) {
+                    Constants.TARGET_BEST -> mergedBestFunctionValues
+                    Constants.TARGET_WORST -> mergedWorstFunctionValues
+                    else -> mergedAverageFunctionValues
+                }
+                lines.forEach { ln -> w.appendLine(ln) }
+            }
+
+            // VAR CSV
+            val varMergedCsv = view.getVariableValuesMergedFilePath(model)
+            Files.newBufferedWriter(Paths.get(varMergedCsv)).use { w ->
+                val lines = when (model.targetToAchieve) {
+                    Constants.TARGET_BEST -> mergedBestVariableValues
+                    Constants.TARGET_WORST -> mergedWorstVariableValues
+                    else -> mergedAverageVariableValues
+                }
+                lines.forEach { ln -> w.appendLine(ln) }
+            }
+
+            // TOP CSV (no AVERAGE)
             if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
-                val topMergedPath = view.getTopSolutionsMergedFilePath(model)
-                logger.info("Merged top solutions for experiment \"${model.targetToAchieve}\" for all executions available at:")
-                logger.info("\"$topMergedPath\"")
-                val mergedTopSolutions = when (model.targetToAchieve) {
-                    Constants.TARGET_BEST -> mergedBestTopSolutions
-                    else -> mergedWorstTopSolutions
+                val topMergedCsv = view.getTopSolutionsMergedFilePath(model)
+                Files.newBufferedWriter(Paths.get(topMergedCsv)).use { w ->
+                    w.appendLine("Cardinality,Correlation,Topics")
+                    val lines = if (model.targetToAchieve == Constants.TARGET_BEST) mergedBestTopSolutions else mergedWorstTopSolutions
+                    lines.forEach { ln -> w.appendLine(ln) }
                 }
-                val topSolutionsDataWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(topMergedPath))
-                mergedTopSolutions.forEach { aMergedTopSolution ->
-                    topSolutionsDataWriter.write(aMergedTopSolution)
-                    topSolutionsDataWriter.newLine()
+            }
+
+            /* ---- Parquet ---- */
+
+            // FUN Parquet (header: K,Correlation)
+            run {
+                val funLines = when (model.targetToAchieve) {
+                    Constants.TARGET_BEST -> mergedBestFunctionValues
+                    Constants.TARGET_WORST -> mergedWorstFunctionValues
+                    else -> mergedAverageFunctionValues
                 }
-                topSolutionsDataWriter.close()
+                val rows = ArrayList<Array<String>>(funLines.size + 1)
+                rows += arrayOf("K", "Correlation")
+                funLines.forEach { ln ->
+                    val parts = ln.trim().split(Regex("\\s+"))
+                    val kTok = parts.getOrNull(0) ?: ""
+                    val corrTok = parts.getOrNull(1) ?: ""
+                    rows += arrayOf(kTok, corrTok)
+                }
+                val out = view.getFunctionValuesMergedParquetPath(model)
+                view.writeParquet(rows, out)
+            }
+
+            // VAR Parquet (header: K,Topics) – K inferred from row index (1..N)
+            run {
+                val varLines = when (model.targetToAchieve) {
+                    Constants.TARGET_BEST -> mergedBestVariableValues
+                    Constants.TARGET_WORST -> mergedWorstVariableValues
+                    else -> mergedAverageVariableValues
+                }
+                val rows = ArrayList<Array<String>>(varLines.size + 1)
+                rows += arrayOf("K", "Topics")
+                varLines.forEachIndexed { idx, ln ->
+                    val kTok = (idx + 1).toString()
+                    val topicsTok = ln.trim()
+                    rows += arrayOf(kTok, topicsTok)
+                }
+                val out = view.getVariableValuesMergedParquetPath(model)
+                view.writeParquet(rows, out)
+            }
+
+            // TOP Parquet (header: K,Correlation,Topics)
+            if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
+                val rows = ArrayList<Array<String>>()
+                rows += arrayOf("K", "Correlation", "Topics")
+                val src = if (model.targetToAchieve == Constants.TARGET_BEST) mergedBestTopSolutions else mergedWorstTopSolutions
+                src.forEach { ln ->
+                    val parts = ln.split(',', limit = 3)
+                    val kTok = parts.getOrNull(0)?.trim() ?: ""
+                    val corrTok = parts.getOrNull(1)?.trim() ?: ""
+                    val topicsTok = parts.getOrNull(2)?.trim() ?: ""
+                    rows += arrayOf(kTok, corrTok, topicsTok)
+                }
+                val out = view.getTopSolutionsMergedParquetPath(model)
+                view.writeParquet(rows, out)
             }
         }
 
         if (targetToAchieve == Constants.TARGET_ALL) {
-            dataWriter(models[0]); dataWriter(models[1]); dataWriter(models[2])
-        } else dataWriter(models[0])
-
-        logger.info("Merged info for all executions available at:")
-        val infoMergedPath = view.getInfoMergedFilePath(models[0], isTargetAll = isAll)
-        logger.info("\"$infoMergedPath\"")
-        val infoValuesWriter: BufferedWriter = Files.newBufferedWriter(Paths.get(infoMergedPath))
-        mergedInfo.forEach { aMergedInfo ->
-            infoValuesWriter.write(aMergedInfo)
-            infoValuesWriter.newLine()
+            writeMergedPerTarget(models[0]) // BEST
+            writeMergedPerTarget(models[1]) // WORST
+            writeMergedPerTarget(models[2]) // AVERAGE
+        } else {
+            writeMergedPerTarget(models[0])
         }
-        infoValuesWriter.close()
 
-        logger.info("Cleaning of not merged results for all executions started.")
-        clean(aggregatedDataResultPaths, "Cleaning aggregated data at paths:")
-        clean(functionValuesResultPaths, "Cleaning function values at paths:")
-        clean(variableValuesResultPaths, "Cleaning variable values at paths:")
-        clean(topSolutionsResultPaths, "Cleaning top solutions at paths:")
-        clean(infoResultPaths, "Cleaning info at paths:")
-        logger.info("Cleaning of not merged results for all executions completed.")
+        /* ----------------- 6) cleanup non-merged CSV + Parquet ----------------- */
+
+        // Snapshot the original CSV path lists BEFORE mutating them
+        val snapAggCsv = aggregatedDataResultPaths.toList()
+        val snapFunCsv = functionValuesResultPaths.toList()
+        val snapVarCsv = variableValuesResultPaths.toList()
+        val snapTopCsv = topSolutionsResultPaths.toList()
+        val snapInfoCsv = infoResultPaths.toList()
+
+        // CSV cleanup
+        logger.info("Cleaning of not merged CSV results started.")
+        clean(aggregatedDataResultPaths, "Cleaning aggregated CSV data at paths:")
+        clean(functionValuesResultPaths, "Cleaning function values CSV at paths:")
+        clean(variableValuesResultPaths, "Cleaning variable values CSV at paths:")
+        clean(topSolutionsResultPaths, "Cleaning top solutions CSV at paths:")
+        clean(infoResultPaths, "Cleaning info CSV at paths:")
+        logger.info("Cleaning of not merged CSV results completed.")
+
+        // Build Parquet lists from the SNAPSHOTS (so we still have ex1/ex2)
+        fun mapCsvToParquet(path: String): String =
+            path
+                .replace(
+                    "${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}",
+                    "${Constants.PATH_SEPARATOR}Parquet${Constants.PATH_SEPARATOR}"
+                )
+                .replace(".csv", ".parquet")
+
+        val aggParquetToClean = snapAggCsv.map(::mapCsvToParquet).toMutableList()
+        val funParquetToClean = snapFunCsv.map(::mapCsvToParquet).toMutableList()
+        val varParquetToClean = snapVarCsv.map(::mapCsvToParquet).toMutableList()
+        val topParquetToClean = snapTopCsv.map(::mapCsvToParquet).toMutableList()
+        val infoParquetToClean = snapInfoCsv.map(::mapCsvToParquet).toMutableList()
+
+        // Parquet cleanup
+        logger.info("Cleaning of not merged Parquet results started.")
+        clean(aggParquetToClean, "Cleaning aggregated Parquet data at paths:")
+        clean(funParquetToClean, "Cleaning function values Parquet at paths:")
+        clean(varParquetToClean, "Cleaning variable values Parquet at paths:")
+        clean(topParquetToClean, "Cleaning top solutions Parquet at paths:")
+        clean(infoParquetToClean, "Cleaning info Parquet at paths:")
+        logger.info("Cleaning of not merged Parquet results completed.")
+
         logger.info("Executions result merging completed.")
+
     }
+
 
     fun copy() {
 
         logger.info("Execution result copy to ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} started.")
 
-        val inputPath = Constants.NEWBESTSUB_EXPERIMENTS_INPUT_PATH
-        val inputDirectory = File(Constants.NEWBESTSUB_EXPERIMENTS_INPUT_PATH)
+        val inputRootPath = Constants.NEWBESTSUB_EXPERIMENTS_INPUT_PATH
+        val inputRootDir = File(inputRootPath)
 
         logger.info("Checking if ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} input dir. exists.")
-        if (!inputDirectory.exists()) {
+        if (!inputRootDir.exists()) {
             logger.info("Input dir. not exists.")
-            if (inputDirectory.mkdirs()) {
+            if (inputRootDir.mkdirs()) {
                 logger.info("Input dir. created.")
-                logger.info("Path: \"$inputPath\".")
+                logger.info("Path: \"$inputRootPath\".")
             }
         } else {
             logger.info("Input dir. already exists.")
             logger.info("Input dir. creation skipped.")
-            logger.info("Path: \"$inputPath\".")
+            logger.info("Path: \"$inputRootPath\".")
         }
 
-        val dataCopier = { dataList: MutableList<String>, logMessage: String ->
+        /* Destination subfolders mirroring our writers */
+        val csvDestDir = Paths.get("$inputRootPath${Constants.PATH_SEPARATOR}CSV")
+        val parquetDestDir = Paths.get("$inputRootPath${Constants.PATH_SEPARATOR}Parquet")
+        if (!Files.exists(csvDestDir)) Files.createDirectories(csvDestDir)
+        if (!Files.exists(parquetDestDir)) Files.createDirectories(parquetDestDir)
+
+        /* Small helper: copy if exists, preserve filename, overwrite */
+        val copyIfExists = { srcPathStr: String, destDir: java.nio.file.Path ->
+            val src = Paths.get(srcPathStr)
+            if (Files.exists(src)) {
+                val dst = destDir.resolve(src.fileName)
+                Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING)
+                logger.info("\"$src\" -> \"$dst\"")
+                true
+            } else {
+                false
+            }
+        }
+
+        /* ---------- Per-execution CSV artifacts (from collected path lists) ---------- */
+        val csvListCopier = { dataList: MutableList<String>, logMessage: String ->
             if (dataList.isNotEmpty()) logger.info(logMessage)
-            val outputPaths = mutableListOf<String>()
-            dataList.forEach { aResultPath ->
-                if (Files.exists(Paths.get(aResultPath))) {
-                    logger.info("\"$aResultPath\"")
-                    Files.copy(
-                        Paths.get(aResultPath),
-                        Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(aResultPath).fileName}"),
-                        StandardCopyOption.REPLACE_EXISTING
-                    )
-                    outputPaths.add(Paths.get(aResultPath).toString())
-                }
-            }
-            if (outputPaths.isNotEmpty()) logger.info("To paths: ")
-            outputPaths.forEach(logger::info)
+            dataList.forEach { src -> copyIfExists(src, csvDestDir) }
         }
 
-        dataCopier(aggregatedDataResultPaths, "Aggregated data copy started from paths:")
-        dataCopier(functionValuesResultPaths, "Function values copy started from paths:")
-        dataCopier(variableValuesResultPaths, "Variable values copy started from paths:")
-        dataCopier(topSolutionsResultPaths, "Top solutions copy started from paths:")
-        dataCopier(infoResultPaths, "Info copy started from paths:")
+        csvListCopier(aggregatedDataResultPaths, "Aggregated data (CSV) copy started from paths:")
+        csvListCopier(functionValuesResultPaths, "Function values (CSV) copy started from paths:")
+        csvListCopier(variableValuesResultPaths, "Variable values (CSV) copy started from paths:")
+        csvListCopier(topSolutionsResultPaths, "Top solutions (CSV) copy started from paths:")
+        csvListCopier(infoResultPaths, "Info (CSV) copy started from paths:")
 
-        val dataMergedCopier = { dataPath: String, logMessage: String ->
-            if (Files.exists(Paths.get(dataPath))) {
-                logger.info(logMessage)
-                logger.info("\"${Paths.get(dataPath)}\"")
-                Files.copy(
-                    Paths.get(dataPath),
-                    Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(dataPath).fileName}"),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
-                logger.info("To path: ")
-                logger.info(Paths.get("$inputPath${Constants.PATH_SEPARATOR}${Paths.get(dataPath).fileName}"))
+        /* ---------- Per-execution Parquet artifacts (computed from models) ---------- */
+        models.forEach { model ->
+            // Aggregated/Info: ALL vs single-target follow your solve() logic
+            copyIfExists(
+                view.getAggregatedDataParquetPath(model, isTargetAll = (targetToAchieve == Constants.TARGET_ALL)),
+                parquetDestDir
+            )
+            copyIfExists(view.getFunctionValuesParquetPath(model), parquetDestDir)
+            copyIfExists(view.getVariableValuesParquetPath(model), parquetDestDir)
+            if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
+                copyIfExists(view.getTopSolutionsParquetPath(model), parquetDestDir)
+            }
+            copyIfExists(
+                view.getInfoParquetPath(model, isTargetAll = (targetToAchieve == Constants.TARGET_ALL)),
+                parquetDestDir
+            )
+        }
+
+        /* ---------- Merged CSV artifacts ---------- */
+        val isAll = (targetToAchieve == Constants.TARGET_ALL)
+
+        val copyMergedCsv = { path: String, label: String ->
+            if (copyIfExists(path, csvDestDir)) {
+                logger.info("$label copied.")
             }
         }
+
+        copyMergedCsv(view.getAggregatedDataMergedFilePath(models[0], isTargetAll = true), "Merged aggregated data (CSV, ALL)")
+        copyMergedCsv(view.getAggregatedDataMergedFilePath(models[0], isTargetAll = false), "Merged aggregated data (CSV, single target)")
 
         models.forEach { model ->
-            val aggMergedAll = view.getAggregatedDataMergedFilePath(model, isTargetAll = true)
-            dataMergedCopier(aggMergedAll, "Merged aggregated data copy started from path:")
-            val aggMergedSingle = view.getAggregatedDataMergedFilePath(model, isTargetAll = false)
-            dataMergedCopier(aggMergedSingle, "Merged aggregated data copy started from path:")
+            copyMergedCsv(view.getFunctionValuesMergedFilePath(model), "Merged function values (CSV) for ${model.targetToAchieve}")
+            copyMergedCsv(view.getVariableValuesMergedFilePath(model), "Merged variable values (CSV) for ${model.targetToAchieve}")
+            if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
+                copyMergedCsv(view.getTopSolutionsMergedFilePath(model), "Merged top solutions (CSV) for ${model.targetToAchieve}")
+            }
+            copyMergedCsv(view.getInfoMergedFilePath(model, isTargetAll = true), "Merged info (CSV, ALL) for ${model.targetToAchieve}")
+            copyMergedCsv(view.getInfoMergedFilePath(model, isTargetAll = false), "Merged info (CSV, single target) for ${model.targetToAchieve}")
+        }
 
-            val funMerged = view.getFunctionValuesMergedFilePath(model)
-            dataMergedCopier(funMerged, "Merged function values copy started from path:")
+        /* ---------- Merged Parquet artifacts ---------- */
+        val copyMergedParquet = { path: String, label: String ->
+            if (copyIfExists(path, parquetDestDir)) {
+                logger.info("$label copied.")
+            }
+        }
 
-            val varMerged = view.getVariableValuesMergedFilePath(model)
-            dataMergedCopier(varMerged, "Merged variable values copy started from path:")
+        copyMergedParquet(view.getAggregatedDataMergedParquetPath(models[0], isTargetAll = true), "Merged aggregated data (Parquet, ALL)")
+        copyMergedParquet(view.getAggregatedDataMergedParquetPath(models[0], isTargetAll = false), "Merged aggregated data (Parquet, single target)")
 
-            val topMerged = view.getTopSolutionsMergedFilePath(model)
-            dataMergedCopier(topMerged, "Merged top solutions copy started from path:")
-
-            val infoMergedAll = view.getInfoMergedFilePath(model, isTargetAll = true)
-            dataMergedCopier(infoMergedAll, "Merged info copy started from path:")
-            val infoMergedSingle = view.getInfoMergedFilePath(model, isTargetAll = false)
-            dataMergedCopier(infoMergedSingle, "Merged info copy started from path:")
+        models.forEach { model ->
+            copyMergedParquet(view.getFunctionValuesMergedParquetPath(model), "Merged function values (Parquet) for ${model.targetToAchieve}")
+            copyMergedParquet(view.getVariableValuesMergedParquetPath(model), "Merged variable values (Parquet) for ${model.targetToAchieve}")
+            if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
+                copyMergedParquet(view.getTopSolutionsMergedParquetPath(model), "Merged top solutions (Parquet) for ${model.targetToAchieve}")
+            }
+            copyMergedParquet(view.getInfoMergedParquetPath(model, isTargetAll = true), "Merged info (Parquet, ALL) for ${model.targetToAchieve}")
+            copyMergedParquet(view.getInfoMergedParquetPath(model, isTargetAll = false), "Merged info (Parquet, single target) for ${model.targetToAchieve}")
         }
 
         logger.info("Execution result copy to ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} completed.")

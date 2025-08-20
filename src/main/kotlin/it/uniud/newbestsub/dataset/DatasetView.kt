@@ -24,6 +24,7 @@ import org.uma.jmetal.solution.binarysolution.BinarySolution
  * Path helpers:
  *  - CSV helpers delegated to CSVView (same names/behavior as before).
  *  - Parquet helpers provided here for logging/UX convenience.
+ *  - All *merged* artifacts now live under /CSV/ and /Parquet/ subfolders.
  */
 class DatasetView {
 
@@ -49,85 +50,126 @@ class DatasetView {
     fun getAggregatedDataFilePath(model: DatasetModel, isTargetAll: Boolean = false): String =
         csvView.getAggregatedDataFilePath(model, isTargetAll)
 
+    /* ---------------- Public CSV merged path helpers (now under /CSV/) ---------------- */
+
     fun getFunctionValuesMergedFilePath(model: DatasetModel): String =
-        ViewPaths.ensureRunDir(model) +
-                ViewPaths.csvNameNoTsMerged(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.FUNCTION_VALUES_FILE_SUFFIX
-                )
+        ViewPaths.ensureCsvDir(model) +
+            ViewPaths.csvNameNoTsMerged(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.FUNCTION_VALUES_FILE_SUFFIX
+            )
 
     fun getVariableValuesMergedFilePath(model: DatasetModel): String =
-        ViewPaths.ensureRunDir(model) +
-                ViewPaths.csvNameNoTsMerged(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.VARIABLE_VALUES_FILE_SUFFIX
-                )
+        ViewPaths.ensureCsvDir(model) +
+            ViewPaths.csvNameNoTsMerged(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.VARIABLE_VALUES_FILE_SUFFIX
+            )
 
     fun getTopSolutionsMergedFilePath(model: DatasetModel): String =
-        ViewPaths.ensureRunDir(model) +
-                ViewPaths.csvNameNoTsMerged(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.TOP_SOLUTIONS_FILE_SUFFIX
-                )
+        ViewPaths.ensureCsvDir(model) +
+            ViewPaths.csvNameNoTsMerged(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.TOP_SOLUTIONS_FILE_SUFFIX
+            )
 
     fun getAggregatedDataMergedFilePath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
-        return ViewPaths.ensureRunDir(model) +
-                ViewPaths.csvNameNoTsMerged(
-                    ViewPaths.fileBaseParts(model, targetToken),
-                    Constants.AGGREGATED_DATA_FILE_SUFFIX
-                )
+        return ViewPaths.ensureCsvDir(model) +
+            ViewPaths.csvNameNoTsMerged(
+                ViewPaths.fileBaseParts(model, targetToken),
+                Constants.AGGREGATED_DATA_FILE_SUFFIX
+            )
     }
 
     fun getInfoMergedFilePath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
-        return ViewPaths.ensureRunDir(model) +
-                ViewPaths.csvNameNoTsMerged(
-                    ViewPaths.fileBaseParts(model, targetToken),
-                    Constants.INFO_FILE_SUFFIX
-                )
+        return ViewPaths.ensureCsvDir(model) +
+            ViewPaths.csvNameNoTsMerged(
+                ViewPaths.fileBaseParts(model, targetToken),
+                Constants.INFO_FILE_SUFFIX
+            )
     }
 
-    /* ---------------- Public Parquet path helpers (for logging/UX) ---------------- */
+    /* ---------------- Public Parquet path helpers (per-run, under /Parquet/) ---------------- */
 
     fun getFunctionValuesParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.FUNCTION_VALUES_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.FUNCTION_VALUES_FILE_SUFFIX
+            )
 
     fun getVariableValuesParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.VARIABLE_VALUES_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.VARIABLE_VALUES_FILE_SUFFIX
+            )
 
     fun getTopSolutionsParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.TOP_SOLUTIONS_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.TOP_SOLUTIONS_FILE_SUFFIX
+            )
 
-    /** Final-table Parquet paths (mirror CSV Final tables). */
+    /** Final-table Parquet paths (mirror CSV Final tables; also under /Parquet/). */
     fun getAggregatedDataParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, targetToken),
-                    Constants.AGGREGATED_DATA_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, targetToken),
+                Constants.AGGREGATED_DATA_FILE_SUFFIX
+            )
     }
 
     fun getInfoParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, targetToken),
-                    Constants.INFO_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, targetToken),
+                Constants.INFO_FILE_SUFFIX
+            )
+    }
+
+    /* ---------------- Public Parquet merged path helpers (under /Parquet/) ---------------- */
+
+    fun getAggregatedDataMergedParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
+        val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
+        val base = ViewPaths.fileBaseParts(model, targetToken)
+        val suffixWithMerged = Constants.AGGREGATED_DATA_FILE_SUFFIX +
+            Constants.FILE_NAME_SEPARATOR + Constants.MERGED_RESULT_FILE_SUFFIX
+        return ViewPaths.ensureParquetDir(model) + ViewPaths.parquetNameNoTs(base, suffixWithMerged)
+    }
+
+    fun getInfoMergedParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
+        val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
+        val base = ViewPaths.fileBaseParts(model, targetToken)
+        val suffixWithMerged = Constants.INFO_FILE_SUFFIX +
+            Constants.FILE_NAME_SEPARATOR + Constants.MERGED_RESULT_FILE_SUFFIX
+        return ViewPaths.ensureParquetDir(model) + ViewPaths.parquetNameNoTs(base, suffixWithMerged)
+    }
+
+    fun getFunctionValuesMergedParquetPath(model: DatasetModel): String {
+        val base = ViewPaths.fileBaseParts(model, model.targetToAchieve)
+        val suffixWithMerged = Constants.FUNCTION_VALUES_FILE_SUFFIX +
+            Constants.FILE_NAME_SEPARATOR + Constants.MERGED_RESULT_FILE_SUFFIX
+        return ViewPaths.ensureParquetDir(model) + ViewPaths.parquetNameNoTs(base, suffixWithMerged)
+    }
+
+    fun getVariableValuesMergedParquetPath(model: DatasetModel): String {
+        val base = ViewPaths.fileBaseParts(model, model.targetToAchieve)
+        val suffixWithMerged = Constants.VARIABLE_VALUES_FILE_SUFFIX +
+            Constants.FILE_NAME_SEPARATOR + Constants.MERGED_RESULT_FILE_SUFFIX
+        return ViewPaths.ensureParquetDir(model) + ViewPaths.parquetNameNoTs(base, suffixWithMerged)
+    }
+
+    fun getTopSolutionsMergedParquetPath(model: DatasetModel): String {
+        val base = ViewPaths.fileBaseParts(model, model.targetToAchieve)
+        val suffixWithMerged = Constants.TOP_SOLUTIONS_FILE_SUFFIX +
+            Constants.FILE_NAME_SEPARATOR + Constants.MERGED_RESULT_FILE_SUFFIX
+        return ViewPaths.ensureParquetDir(model) + ViewPaths.parquetNameNoTs(base, suffixWithMerged)
     }
 
     /* ---------------- Snapshot print (final, non-streamed) ---------------- */
@@ -141,7 +183,7 @@ class DatasetView {
 
         logger.info(
             "Starting to print result for execution on \"$threadName\" with target " +
-                    "\"$actualTarget\" completed in ${computingTimeMs}ms."
+                "\"$actualTarget\" completed in ${computingTimeMs}ms."
         )
 
         // CSV snapshot
