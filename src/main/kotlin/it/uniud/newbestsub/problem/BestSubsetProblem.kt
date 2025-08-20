@@ -59,7 +59,6 @@ class BestSubsetProblem(
         }
     }
 
-
     override fun evaluate(solution: BinarySolution) {
 
         solution as BestSubsetSolution
@@ -118,13 +117,32 @@ class BestSubsetProblem(
         fun scoreForRanking(s: BinarySolution): Double =
             if (parameters.targetToAchieve == Constants.TARGET_BEST) -s.getCorrelation() else s.getCorrelation()
 
+        /* Determinism: add a stable tie-breaker on the genotype string so equal scores are reproducible. */
+        val tieBreak: (BinarySolution) -> String = { (it as BestSubsetSolution).getVariableValueString(0) }
+
         if (parameters.targetToAchieve == Constants.TARGET_BEST) {
-            entryList.sortByDescending { scoreForRanking(it) }
+            entryList.sortWith(
+                compareByDescending<BinarySolution> { scoreForRanking(it) }
+                    .thenBy { tieBreak(it) }
+            )
         } else {
-            entryList.sortBy { scoreForRanking(it) }
+            entryList.sortWith(
+                compareBy<BinarySolution> { scoreForRanking(it) }
+                    .thenBy { tieBreak(it) }
+            )
         }
 
-        topSolutions[kKey] = entryList.distinct().take(Constants.TOP_SOLUTIONS_NUMBER).toMutableList()
+        /* Determinism: remove duplicates by genotype (not by reference), preserving order. */
+        run {
+            val seen = LinkedHashSet<String>(entryList.size)
+            val dedup = mutableListOf<BinarySolution>()
+            for (s in entryList) {
+                val key = tieBreak(s)
+                if (seen.add(key)) dedup += s
+            }
+            topSolutions[kKey] = dedup.take(Constants.TOP_SOLUTIONS_NUMBER).toMutableList()
+        }
+
         iterationCounter++
     }
 
@@ -136,5 +154,4 @@ class BestSubsetProblem(
         require(index == 0) { "BestSubsetProblem has exactly 1 variable; requested index=$index" }
         return numberOfTopics
     }
-
 }

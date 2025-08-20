@@ -3,6 +3,7 @@ package it.uniud.newbestsub.dataset
 import com.opencsv.CSVReader
 import com.opencsv.CSVWriter
 import it.uniud.newbestsub.utils.Constants
+import it.uniud.newbestsub.utils.RngBridge
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import org.apache.commons.lang3.StringUtils
@@ -13,21 +14,28 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.util.*
+import java.util.SplittableRandom
 import kotlin.collections.LinkedHashMap
 
 typealias RunResult = Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>>
 
-/**
+/*
  * DatasetController
- *
+ * -----------------
  * Orchestrates:
  *  - DatasetModel lifecycle (load/expand/solve)
  *  - Streaming consumption (printer coroutine)
  *  - View writing for final snapshots and merged artifacts
  *
+ * Determinism:
+ *  - When Parameters.deterministic == true we execute **sequentially** and route all
+ *    randomness through jMetal's singleton using RngBridge.withSeed(...).
+ *  - Expansion helpers (expandTopics/expandSystems) also switch to a SplittableRandom
+ *    derived from RngBridge.childSeed(...) to make fake data reproducible.
+ *
  * Efficiency notes:
  *  - Printer uses a Channel with back-pressure.
- *  - We use the **batched** -Top event (TopKReplaceBatch) to avoid rewriting the file
+ *  - We use the **batched** Top-K replace event (TopKReplaceBatch) to avoid rewriting the file
  *    multiple times per generation.
  */
 class DatasetController(
@@ -44,6 +52,9 @@ class DatasetController(
     var topSolutionsResultPaths = mutableListOf<String>()
     var infoResultPaths = mutableListOf<String>()
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
+
+    /* Monotone counter to diversify expansion seeds in deterministic mode */
+    private var expansionNonce: Int = 0
 
     init {
         logger.info("Problem resolution started.")
@@ -74,30 +85,68 @@ class DatasetController(
         logger.info("Dataset loading for input file \"${models[0].datasetName}\" completed.")
     }
 
+    /*
+     * expandTopics
+     * ------------
+     * Adds `expansionCoefficient` fake topics. In deterministic mode we use a seed derived
+     * from RngBridge so that labels and random APs are identical across runs.
+     */
     fun expandTopics(expansionCoefficient: Int) {
-        val random = Random()
-        val systemLabels = models[0].systemLabels
-        val topicLabels = Array(expansionCoefficient) { "${random.nextInt(998 + 1 - 800) + 800} (F)" }
-        val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
-        systemLabels.forEach { systemLabel ->
-            randomizedAveragePrecisions[systemLabel] = DoubleArray(expansionCoefficient) { Math.random() }
-        }
-        models.forEach { model -> model.expandTopics(expansionCoefficient, randomizedAveragePrecisions, topicLabels) }
-    }
+        val rng: SplittableRandom? =
+            if (RngBridge.isInstalled()) SplittableRandom(RngBridge.childSeed("EXPAND_TOPICS", expansionNonce++))
+            else null
 
-    fun expandSystems(expansionCoefficient: Int, trueNumberOfSystems: Int) {
-        val random = Random()
-        val systemLabels = Array(expansionCoefficient) { index -> "Sys$index${random.nextInt(998 + 1 - 800) + 800} (F)" }
+        val systemLabels = models[0].systemLabels
+        val topicLabels = Array(expansionCoefficient) {
+            val suffix = (rng?.nextInt(800, 999) ?: (Random().nextInt(999 - 800) + 800))
+            "$suffix (F)"
+        }
+
         val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
         systemLabels.forEach { systemLabel ->
             randomizedAveragePrecisions[systemLabel] =
-                DoubleArray(models[0].numberOfTopics + expansionCoefficient) { Math.random() }
+                DoubleArray(expansionCoefficient) { rng?.nextDouble() ?: Math.random() }
         }
+
+        models.forEach { model -> model.expandTopics(expansionCoefficient, randomizedAveragePrecisions, topicLabels) }
+    }
+
+    /*
+     * expandSystems
+     * -------------
+     * Adds `expansionCoefficient` fake systems. Deterministic when RngBridge is installed.
+     */
+    fun expandSystems(expansionCoefficient: Int, trueNumberOfSystems: Int) {
+        val rng: SplittableRandom? =
+            if (RngBridge.isInstalled()) SplittableRandom(RngBridge.childSeed("EXPAND_SYSTEMS", expansionNonce++))
+            else null
+
+        val systemLabels = Array(expansionCoefficient) { index ->
+            val suffix = (rng?.nextInt(800, 999) ?: (Random().nextInt(999 - 800) + 800))
+            "Sys$index$suffix (F)"
+        }
+
+        val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
+        systemLabels.forEach { systemLabel ->
+            randomizedAveragePrecisions[systemLabel] =
+                DoubleArray(models[0].numberOfTopics + expansionCoefficient) { rng?.nextDouble() ?: Math.random() }
+        }
+
         models.forEach { model ->
             model.expandSystems(expansionCoefficient, trueNumberOfSystems, randomizedAveragePrecisions, systemLabels)
         }
     }
 
+    /*
+     * solve
+     * -----
+     * Drives the three targets when TARGET_ALL, or a single target otherwise.
+     * Deterministic mode:
+     *  - Sequential execution
+     *  - Seeded via RngBridge.childSeed("BEST"/"WORST"/"AVERAGE") (or the single target)
+     * Parallel mode:
+     *  - Retains existing coroutine-based parallel execution.
+     */
     fun solve(parameters: Parameters) {
 
         this.parameters = parameters
@@ -109,8 +158,10 @@ class DatasetController(
         logger.info("[Experiments: Best, Worst] Number of iterations: ${parameters.numberOfIterations}.")
         logger.info("[Experiments: Best, Worst] Population size: ${parameters.populationSize}. ")
         logger.info("[Experiment: Average] Number of repetitions: ${parameters.numberOfRepetitions}.")
-
         if (parameters.currentExecution > 0) logger.info("Current Execution: ${parameters.currentExecution}.")
+        if (parameters.deterministic) {
+            logger.info("Deterministic mode is ON. Master seed: ${parameters.seed ?: "(derived)"}")
+        }
 
         if (parameters.targetToAchieve == Constants.TARGET_ALL || parameters.targetToAchieve == Constants.TARGET_AVERAGE) {
             val pct = parameters.percentiles.joinToString(", ") { "$it%" }
@@ -123,36 +174,74 @@ class DatasetController(
             val worstParameters = parameters.copy(targetToAchieve = Constants.TARGET_WORST)
             val averageParameters = parameters.copy(targetToAchieve = Constants.TARGET_AVERAGE)
 
-            /* Capacity can be tuned; small buffer applies back-pressure to the solver if I/O is slow. */
-            val progress: Channel<ProgressEvent> = Channel(64)
+            val cap = when (parameters.targetToAchieve) {
+                Constants.TARGET_ALL -> (models[0].numberOfTopics * 3) + 64
+                else -> models[0].numberOfTopics + 32
+            }
+            val progress: Channel<ProgressEvent> = Channel(cap)
 
-            runBlocking {
-                supervisorScope {
-                    /* Printer: append/replace rows as they arrive (DatasetView = composite to CSV/Parquet). */
-                    val printer = launch(Dispatchers.IO) {
-                        for (ev in progress) {
-                            /* Lookup the right model by target; all 3 have unique targets */
-                            val model = models.first { it.targetToAchieve == ev.target }
-                            when (ev) {
-                                is CardinalityResult -> view.appendCardinality(model, ev)
-                                is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
-                                is RunCompleted -> view.closeStreams(model)
+            if (parameters.deterministic) {
+                /* ---------------- Deterministic: sequential solves with labeled seeds ---------------- */
+                runBlocking {
+                    supervisorScope {
+                        /* Single printer on IO dispatcher */
+                        val printer = launch(Dispatchers.IO) {
+                            for (ev in progress) {
+                                val model = models.first { it.targetToAchieve == ev.target }
+                                when (ev) {
+                                    is CardinalityResult -> view.appendCardinality(model, ev)
+                                    is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
+                                    is RunCompleted -> view.closeStreams(model)
+                                }
                             }
                         }
-                    }
 
-                    /* Launch solvers (Best/Worst/Average) */
-                    val jobs = listOf(
-                        launch(Dispatchers.Default) { models[0].solve(bestParameters, progress) },
-                        launch(Dispatchers.Default) { models[1].solve(worstParameters, progress) },
-                        launch(Dispatchers.Default) { models[2].solve(averageParameters, progress) }
-                    )
-                    jobs.joinAll()
-                    progress.close()
-                    printer.join()
+                        /* BEST */
+                        RngBridge.withSeed(RngBridge.childSeed("BEST")) {
+                            models[0].solve(bestParameters, progress)
+                        }
+                        /* WORST */
+                        RngBridge.withSeed(RngBridge.childSeed("WORST")) {
+                            models[1].solve(worstParameters, progress)
+                        }
+                        /* AVERAGE */
+                        RngBridge.withSeed(RngBridge.childSeed("AVERAGE")) {
+                            models[2].solve(averageParameters, progress)
+                        }
+
+                        progress.close()
+                        printer.join()
+                    }
+                }
+
+            } else {
+                /* ---------------- Non-deterministic: parallel solves as before ---------------- */
+                runBlocking {
+                    supervisorScope {
+                        val printer = launch(Dispatchers.IO) {
+                            for (ev in progress) {
+                                val model = models.first { it.targetToAchieve == ev.target }
+                                when (ev) {
+                                    is CardinalityResult -> view.appendCardinality(model, ev)
+                                    is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
+                                    is RunCompleted -> view.closeStreams(model)
+                                }
+                            }
+                        }
+
+                        val jobs = listOf(
+                            launch(Dispatchers.Default) { models[0].solve(bestParameters, progress) },
+                            launch(Dispatchers.Default) { models[1].solve(worstParameters, progress) },
+                            launch(Dispatchers.Default) { models[2].solve(averageParameters, progress) }
+                        )
+                        jobs.joinAll()
+                        progress.close()
+                        printer.join()
+                    }
                 }
             }
 
+            /* ---- Collect result paths and aggregate/info for TARGET_ALL ---- */
             aggregatedDataResultPaths.add(view.getAggregatedDataFilePath(models[0], isTargetAll = true))
             models.forEach { model ->
                 functionValuesResultPaths.add(view.getFunctionValuesFilePath(model))
@@ -191,28 +280,58 @@ class DatasetController(
             logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = true)}\" (Info CSV)")
 
         } else {
-            /* Streaming also for single target */
-            val progress: Channel<ProgressEvent> = Channel(64)
+            /* ---------------- Single target ---------------- */
+            val cap = when (parameters.targetToAchieve) {
+                Constants.TARGET_ALL -> (models[0].numberOfTopics * 3) + 64
+                else -> models[0].numberOfTopics + 32
+            }
+            val progress: Channel<ProgressEvent> = Channel(cap)
 
-            runBlocking {
-                supervisorScope {
-                    /* Printer -> composite DatasetView */
-                    val printer = launch(Dispatchers.IO) {
-                        for (ev in progress) {
-                            val model = models[0]
-                            when (ev) {
-                                is CardinalityResult -> view.appendCardinality(model, ev)
-                                is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
-                                is RunCompleted -> view.closeStreams(model)
+            if (parameters.deterministic) {
+                /* Sequential + seeded solve */
+                runBlocking {
+                    supervisorScope {
+                        val printer = launch(Dispatchers.IO) {
+                            for (ev in progress) {
+                                val model = models[0]
+                                when (ev) {
+                                    is CardinalityResult -> view.appendCardinality(model, ev)
+                                    is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
+                                    is RunCompleted -> view.closeStreams(model)
+                                }
                             }
                         }
-                    }
 
-                    /* Launch solver with channel */
-                    val job = launch(Dispatchers.Default) { models[0].solve(parameters, progress) }
-                    job.join()
-                    progress.close()
-                    printer.join()
+                        val label = parameters.targetToAchieve.uppercase(Locale.ROOT)
+                        RngBridge.withSeed(RngBridge.childSeed(label)) {
+                            models[0].solve(parameters, progress)
+                        }
+
+                        progress.close()
+                        printer.join()
+                    }
+                }
+
+            } else {
+                /* Parallel path is identical for a single job; keep coroutine structure */
+                runBlocking {
+                    supervisorScope {
+                        val printer = launch(Dispatchers.IO) {
+                            for (ev in progress) {
+                                val model = models[0]
+                                when (ev) {
+                                    is CardinalityResult -> view.appendCardinality(model, ev)
+                                    is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
+                                    is RunCompleted -> view.closeStreams(model)
+                                }
+                            }
+                        }
+
+                        val job = launch(Dispatchers.Default) { models[0].solve(parameters, progress) }
+                        job.join()
+                        progress.close()
+                        printer.join()
+                    }
                 }
             }
 
@@ -310,8 +429,8 @@ class DatasetController(
                 newDataEntry = newDataEntry.plus(percentileValues[currentCardinality.toInt() - 1].toString())
             }
             topicLabels.forEach { label ->
-                // Build a compact presence code for this topic at the current cardinality:
-                // "B" if present in BEST, "W" if present in WORST, "BW" if both, or "N" if in none.
+                /* Build a compact presence code for this topic at the current cardinality:
+                 * "B" if present in BEST, "W" if present in WORST, "BW" if both, or "N" if in none. */
                 val flags = StringBuilder()
                 models.forEach { model ->
                     val present = model.isTopicInASolutionOfCardinality(label, currentCardinality)
@@ -473,7 +592,7 @@ class DatasetController(
             val topTables: List<List<String>> =
                 if (model.targetToAchieve != Constants.TARGET_AVERAGE)
                     execSlicePaths(topPaths, numberOfExecutions, "TOP")
-                        .map { readAllLines(it).drop(1) } // drop header
+                        .map { readAllLines(it).drop(1) } /* drop header */
                 else emptyList()
 
             fun <T> transposeToLinked(rowsPerExec: List<List<T>>): LinkedList<LinkedList<T>> {
@@ -509,9 +628,9 @@ class DatasetController(
         }
 
         if (targetToAchieve == Constants.TARGET_ALL) {
-            prepareExecListsFor(models[0]) // BEST
-            prepareExecListsFor(models[1]) // WORST
-            prepareExecListsFor(models[2]) // AVERAGE
+            prepareExecListsFor(models[0]) /* BEST */
+            prepareExecListsFor(models[1]) /* WORST */
+            prepareExecListsFor(models[2]) /* AVERAGE */
         } else {
             prepareExecListsFor(models[0])
         }
@@ -609,8 +728,7 @@ class DatasetController(
             }
             mergedAggregatedData += out
 
-            // Stash per-target selections (FUN/VAR/TOP) with null/size guards
-
+            /* Stash per-target selections (FUN/VAR/TOP) with null/size guards */
             if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
                 bestFunctionValues?.let { m ->
                     if (cardIdx < m.size) {
@@ -713,7 +831,7 @@ class DatasetController(
 
         val isAll = (targetToAchieve == Constants.TARGET_ALL)
 
-        // Aggregated
+        /* Aggregated */
         val mergedAggCsv = view.getAggregatedDataMergedFilePath(models[0], isTargetAll = isAll)
         view.writeCsv(mergedAggregatedData, mergedAggCsv)
         logger.info("Merged aggregated data available at:")
@@ -722,7 +840,7 @@ class DatasetController(
         val mergedAggParquet = view.getAggregatedDataMergedParquetPath(models[0], isTargetAll = isAll)
         view.writeParquet(mergedAggregatedData, mergedAggParquet)
 
-        // Info
+        /* Info */
         val mergedInfoCsv = view.getInfoMergedFilePath(models[0], isTargetAll = isAll)
         Files.newBufferedWriter(Paths.get(mergedInfoCsv)).use { w ->
             mergedInfo.forEach { ln -> w.appendLine(ln) }
@@ -734,12 +852,12 @@ class DatasetController(
         val infoRowsForParquet = mergedInfo.map { it.split(',').toTypedArray() }
         view.writeParquet(infoRowsForParquet, mergedInfoParquet)
 
-        // Per target: FUN / VAR / TOP -> write CSV as before + Parquet siblings.
+        /* Per target: FUN / VAR / TOP -> write CSV as before + Parquet siblings. */
 
         fun writeMergedPerTarget(model: DatasetModel) {
             /* ---- CSV ---- */
 
-            // FUN CSV
+            /* FUN CSV */
             val funMergedCsv = view.getFunctionValuesMergedFilePath(model)
             Files.newBufferedWriter(Paths.get(funMergedCsv)).use { w ->
                 val lines = when (model.targetToAchieve) {
@@ -750,7 +868,7 @@ class DatasetController(
                 lines.forEach { ln -> w.appendLine(ln) }
             }
 
-            // VAR CSV
+            /* VAR CSV */
             val varMergedCsv = view.getVariableValuesMergedFilePath(model)
             Files.newBufferedWriter(Paths.get(varMergedCsv)).use { w ->
                 val lines = when (model.targetToAchieve) {
@@ -761,7 +879,7 @@ class DatasetController(
                 lines.forEach { ln -> w.appendLine(ln) }
             }
 
-            // TOP CSV (no AVERAGE)
+            /* TOP CSV (no AVERAGE) */
             if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
                 val topMergedCsv = view.getTopSolutionsMergedFilePath(model)
                 Files.newBufferedWriter(Paths.get(topMergedCsv)).use { w ->
@@ -773,7 +891,7 @@ class DatasetController(
 
             /* ---- Parquet ---- */
 
-            // FUN Parquet (header: K,Correlation)
+            /* FUN Parquet (header: K,Correlation) */
             run {
                 val funLines = when (model.targetToAchieve) {
                     Constants.TARGET_BEST -> mergedBestFunctionValues
@@ -792,7 +910,7 @@ class DatasetController(
                 view.writeParquet(rows, out)
             }
 
-            // VAR Parquet (header: K,Topics) – K inferred from row index (1..N)
+            /* VAR Parquet (header: K,Topics) – K inferred from row index (1..N) */
             run {
                 val varLines = when (model.targetToAchieve) {
                     Constants.TARGET_BEST -> mergedBestVariableValues
@@ -810,7 +928,7 @@ class DatasetController(
                 view.writeParquet(rows, out)
             }
 
-            // TOP Parquet (header: K,Correlation,Topics)
+            /* TOP Parquet (header: K,Correlation,Topics) */
             if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
                 val rows = ArrayList<Array<String>>()
                 rows += arrayOf("K", "Correlation", "Topics")
@@ -828,23 +946,23 @@ class DatasetController(
         }
 
         if (targetToAchieve == Constants.TARGET_ALL) {
-            writeMergedPerTarget(models[0]) // BEST
-            writeMergedPerTarget(models[1]) // WORST
-            writeMergedPerTarget(models[2]) // AVERAGE
+            writeMergedPerTarget(models[0]) /* BEST */
+            writeMergedPerTarget(models[1]) /* WORST */
+            writeMergedPerTarget(models[2]) /* AVERAGE */
         } else {
             writeMergedPerTarget(models[0])
         }
 
         /* ----------------- 6) cleanup non-merged CSV + Parquet ----------------- */
 
-        // Snapshot the original CSV path lists BEFORE mutating them
+        /* Snapshot the original CSV path lists BEFORE mutating them */
         val snapAggCsv = aggregatedDataResultPaths.toList()
         val snapFunCsv = functionValuesResultPaths.toList()
         val snapVarCsv = variableValuesResultPaths.toList()
         val snapTopCsv = topSolutionsResultPaths.toList()
         val snapInfoCsv = infoResultPaths.toList()
 
-        // CSV cleanup
+        /* CSV cleanup */
         logger.info("Cleaning of not merged CSV results started.")
         clean(aggregatedDataResultPaths, "Cleaning aggregated CSV data at paths:")
         clean(functionValuesResultPaths, "Cleaning function values CSV at paths:")
@@ -853,7 +971,7 @@ class DatasetController(
         clean(infoResultPaths, "Cleaning info CSV at paths:")
         logger.info("Cleaning of not merged CSV results completed.")
 
-        // Build Parquet lists from the SNAPSHOTS (so we still have ex1/ex2)
+        /* Build Parquet lists from the SNAPSHOTS (so we still have ex1/ex2) */
         fun mapCsvToParquet(path: String): String =
             path
                 .replace(
@@ -868,7 +986,7 @@ class DatasetController(
         val topParquetToClean = snapTopCsv.map(::mapCsvToParquet).toMutableList()
         val infoParquetToClean = snapInfoCsv.map(::mapCsvToParquet).toMutableList()
 
-        // Parquet cleanup
+        /* Parquet cleanup */
         logger.info("Cleaning of not merged Parquet results started.")
         clean(aggParquetToClean, "Cleaning aggregated Parquet data at paths:")
         clean(funParquetToClean, "Cleaning function values Parquet at paths:")
@@ -935,7 +1053,7 @@ class DatasetController(
 
         /* ---------- Per-execution Parquet artifacts (computed from models) ---------- */
         models.forEach { model ->
-            // Aggregated/Info: ALL vs single-target follow your solve() logic
+            /* Aggregated/Info: ALL vs single-target follow your solve() logic */
             copyIfExists(
                 view.getAggregatedDataParquetPath(model, isTargetAll = (targetToAchieve == Constants.TARGET_ALL)),
                 parquetDestDir

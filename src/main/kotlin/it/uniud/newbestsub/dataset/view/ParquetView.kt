@@ -10,6 +10,8 @@ import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.solution.binarysolution.BinarySolution
 import kotlin.math.round
 import java.util.Locale
+import java.nio.file.Files
+import java.nio.file.Paths
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.parquet.example.data.Group
@@ -25,6 +27,13 @@ import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.BINARY
 import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.DOUBLE
 import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT32
 import org.apache.parquet.schema.Types
+
+// NEW imports for NIO OutputFile fallback
+import org.apache.parquet.io.OutputFile
+import org.apache.parquet.io.PositionOutputStream
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
 
 /**
  * ParquetView
@@ -44,7 +53,11 @@ import org.apache.parquet.schema.Types
  *    with a dynamic UTF-8 schema inferred from the header row. Decimal-looking cells are
  *    normalized to **6 digits**; everything is stored as UTF-8 strings for schema stability.
  *
- * Files land under the per-run container folder, in the **Parquet** subdirectory.
+ * Cross-platform compression:
+ *  - Default **GZIP on Windows**, **SNAPPY altrove** (override con -Dnbs.parquet.codec=SNAPPY|GZIP|UNCOMPRESSED).
+ *  - Se si usa SNAPPY, proviamo a impostare una temp dir scrivibile per la DLL/native lib.
+ *
+ * Su Windows, se manca winutils.exe, usiamo un fallback NIO che non richiede Hadoop locale.
  */
 class ParquetView {
 
@@ -54,35 +67,35 @@ class ParquetView {
 
     private fun funParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(
-                ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                Constants.FUNCTION_VALUES_FILE_SUFFIX
-            )
+                ViewPaths.parquetNameNoTs(
+                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                    Constants.FUNCTION_VALUES_FILE_SUFFIX
+                )
 
     private fun varParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(
-                ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                Constants.VARIABLE_VALUES_FILE_SUFFIX
-            )
+                ViewPaths.parquetNameNoTs(
+                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                    Constants.VARIABLE_VALUES_FILE_SUFFIX
+                )
 
     private fun topParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(
-                ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                Constants.TOP_SOLUTIONS_FILE_SUFFIX
-            )
+                ViewPaths.parquetNameNoTs(
+                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                    Constants.TOP_SOLUTIONS_FILE_SUFFIX
+                )
 
     fun getAggregatedDataParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.AGGREGATED_DATA_FILE_SUFFIX)
+                ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.AGGREGATED_DATA_FILE_SUFFIX)
     }
 
     fun getInfoParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.INFO_FILE_SUFFIX)
+                ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.INFO_FILE_SUFFIX)
     }
 
     /* ---------------- Schemas ---------------- */
@@ -115,19 +128,114 @@ class ParquetView {
         return b.named(messageName)
     }
 
-    /* ---------------- Writer factory (RawLocalFileSystem, Snappy, OVERWRITE) ---------------- */
+    /* ---------------- Compression / platform helpers ---------------- */
+
+    private fun isWindows(): Boolean =
+        System.getProperty("os.name").lowercase(Locale.ROOT).contains("win")
+
+    private fun chooseCodec(): CompressionCodecName {
+        when (System.getProperty("nbs.parquet.codec")?.uppercase(Locale.ROOT)) {
+            "SNAPPY" -> return CompressionCodecName.SNAPPY
+            "GZIP" -> return CompressionCodecName.GZIP
+            "UNCOMPRESSED" -> return CompressionCodecName.UNCOMPRESSED
+        }
+        return if (isWindows()) CompressionCodecName.GZIP else CompressionCodecName.SNAPPY
+    }
+
+    /** Ensure a writable temp dir for snappy-java when using SNAPPY (helps on Windows). */
+    private fun ensureSnappyTemp(outPathStr: String) {
+        if (System.getProperty("org.xerial.snappy.tempdir") != null) return
+        val candidates = listOfNotNull(
+            runCatching { Paths.get(outPathStr).parent?.resolve("tmp-snappy") }.getOrNull(),
+            runCatching { Paths.get(System.getProperty("java.io.tmpdir", "")).resolve("tmp-snappy") }.getOrNull(),
+            runCatching { Paths.get(System.getProperty("user.home", "."))?.resolve(".snappy") }.getOrNull()
+        )
+        for (p in candidates) {
+            try {
+                Files.createDirectories(p)
+                System.setProperty("org.xerial.snappy.tempdir", p.toString())
+                return
+            } catch (_: Exception) {
+                // try next candidate
+            }
+        }
+    }
+
+    /** Check if winutils.exe is available (HADOOP_HOME or -Dhadoop.home.dir). */
+    private fun hasWinutils(): Boolean {
+        fun check(dir: String?): Boolean =
+            !dir.isNullOrBlank() && Files.exists(Paths.get(dir, "bin", "winutils.exe"))
+        return check(System.getenv("HADOOP_HOME")) || check(System.getProperty("hadoop.home.dir"))
+    }
+
+    /* --------- Minimal NIO OutputFile (fallback when winutils is missing) --------- */
+
+    private class NioOutputFile(private val path: java.nio.file.Path) : OutputFile {
+        override fun create(blockSizeHint: Long) = createOrOverwrite(blockSizeHint)
+
+        override fun createOrOverwrite(blockSizeHint: Long): PositionOutputStream {
+            Files.createDirectories(path.parent)
+            val ch = FileChannel.open(
+                path,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
+            )
+            return object : PositionOutputStream() {
+                private var pos = 0L
+                override fun getPos(): Long = pos
+                override fun write(b: Int) {
+                    val bb = ByteBuffer.allocate(1)
+                    bb.put(0, b.toByte())
+                    ch.write(bb)
+                    pos += 1
+                }
+
+                override fun write(b: ByteArray, off: Int, len: Int) {
+                    val bb = ByteBuffer.wrap(b, off, len)
+                    val n = ch.write(bb)
+                    pos += n.toLong()
+                }
+
+                override fun flush() { /* no-op */
+                }
+
+                override fun close() {
+                    ch.close()
+                }
+            }
+        }
+
+        override fun supportsBlockSize(): Boolean = false
+        override fun defaultBlockSize(): Long = 0L
+    }
+
+    /* ---------------- Writer factory (RawLocalFS or NIO fallback, OVERWRITE) ---------------- */
 
     private fun openWriter(pathStr: String, schema: MessageType): ParquetWriter<Group> {
-        val hadoopConf = Configuration().apply {
-            // Avoid .crc sidecars on local disks.
-            set("fs.file.impl", "org.apache.hadoop.fs.RawLocalFileSystem")
-            setBoolean("fs.file.impl.disable.cache", true)
+        val codec = chooseCodec()
+        if (codec == CompressionCodecName.SNAPPY) {
+            runCatching { ensureSnappyTemp(pathStr) }
         }
-        val output = HadoopOutputFile.fromPath(Path(pathStr), hadoopConf)
-        return ExampleParquetWriter.builder(output)
-            .withConf(hadoopConf)
+
+        // Decide the output target: use HadoopOutputFile unless we're on Windows without winutils
+        val useNioFallback = isWindows() && !hasWinutils()
+
+        val builder = if (useNioFallback) {
+            val outFile: OutputFile = NioOutputFile(Paths.get(pathStr))
+            ExampleParquetWriter.builder(outFile)
+        } else {
+            val hadoopConf = Configuration().apply {
+                set("fs.file.impl", "org.apache.hadoop.fs.RawLocalFileSystem")
+                setBoolean("fs.file.impl.disable.cache", true)
+            }
+            val outFile = HadoopOutputFile.fromPath(Path(pathStr), hadoopConf)
+            ExampleParquetWriter.builder(outFile).withConf(hadoopConf)
+        }
+
+        return builder
             .withWriteMode(ParquetFileWriter.Mode.OVERWRITE)
-            .withCompressionCodec(CompressionCodecName.SNAPPY)
+            .withCompressionCodec(codec)
             .withType(schema)
             .build()
     }
@@ -217,10 +325,6 @@ class ParquetView {
 
     /* ---------------- Snapshot (non-streamed) ---------------- */
 
-    /**
-     * Write Parquet siblings directly from final solution lists.
-     * Correlations are already in external view (model fixed them before returning).
-     */
     fun printSnapshot(
         model: DatasetModel,
         allSolutions: List<BinarySolution>,
@@ -251,17 +355,9 @@ class ParquetView {
                     val flags = (s as BestSubsetSolution).retrieveTopicStatus()
                     val ones = buildString {
                         var first = true
-                        if (flags is BooleanArray) {
-                            for (i in flags.indices) if (flags[i]) {
-                                if (!first) append('|') else first = false
-                                append(labels[i])
-                            }
-                        } else {
-                            val arr = flags as Array<Boolean>
-                            for (i in arr.indices) if (arr[i]) {
-                                if (!first) append('|') else first = false
-                                append(labels[i])
-                            }
+                        for (i in flags.indices) if (flags[i]) {
+                            if (!first) append('|') else first = false
+                            append(labels[i])
                         }
                     }
                     val g = factory.newGroup()
@@ -293,27 +389,19 @@ class ParquetView {
 
     /* ---------------- Streaming hooks ---------------- */
 
-    /**
-     * Append an improved K row (external-view correlation) to in-memory buffers.
-     * Note: the model streams internal corr for BEST as negative; we flip to external.
-     */
     fun onAppendCardinality(model: DatasetModel, ev: CardinalityResult) {
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
         val buf = funVarBuffers.getOrPut(viewKey) { mutableListOf() }
 
         val corrExternal = when (model.targetToAchieve) {
-            Constants.TARGET_BEST  -> -ev.correlation   // BEST is negated internally
-            else                   ->  ev.correlation
+            Constants.TARGET_BEST -> -ev.correlation
+            else -> ev.correlation
         }
         val labelsLine = toLabelsLine(ev.variableValuesCsvLine, model.topicLabels)
 
         buf += FunVarRow(k = ev.cardinality, corrExternal = corrExternal, labelsLine = labelsLine)
     }
 
-    /**
-     * Cache 10-row blocks for -Top with external-view correlation and pipe-delimited topics.
-     * We only store complete 10-row blocks per K.
-     */
     fun onReplaceTopBatch(model: DatasetModel, blocks: Map<Int, List<String>>) {
         if (blocks.isEmpty()) return
 
@@ -331,9 +419,6 @@ class ParquetView {
         }
     }
 
-    /**
-     * Close streaming: write FUN/VAR (globally sorted) and TOP from cached blocks.
-     */
     fun closeStreams(model: DatasetModel) {
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
 
@@ -400,12 +485,6 @@ class ParquetView {
 
     /* ---------------- Final-table writer (no CSV dependency) ---------------- */
 
-    /**
-     * Write a small table (e.g., AggregatedData/Info) to Parquet.
-     *  - rows[0] is the header
-     *  - every column is UTF-8 (stable schema)
-     *  - decimal-looking cells normalized to **6 digits** (dot-locale)
-     */
     fun writeTable(rows: List<Array<String>>, outPath: String) {
         if (rows.isEmpty()) return
 

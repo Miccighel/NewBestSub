@@ -35,13 +35,19 @@ class BestSubsetSolution(
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     init {
+        /* Determinism: all randomness goes through jMetal's singleton RNG, which
+         * is bridged by RngBridge when the user enables the deterministic option. */
         val rng = JMetalRandom.getInstance()
         require(numberOfTopics > 0) { "numberOfTopics must be > 0" }
+        require(forcedCardinality == null || (forcedCardinality in 1..numberOfTopics)) {
+            "forcedCardinality must be in 1..$numberOfTopics (was $forcedCardinality)"
+        }
 
         /* Initialize topicStatus according to forced cardinality or random sampling (ensuring at least one bit set) */
         if (forcedCardinality != null) {
             while (numberOfSelectedTopics < forcedCardinality) {
-                val idx = if (numberOfTopics <= 1) 0 else rng.nextInt(0, numberOfTopics - 1)  /* inclusive upper bound */
+                /* rng.nextInt(a,b) in jMetal is inclusive on 'b', hence (0..N-1) for indices */
+                val idx = if (numberOfTopics <= 1) 0 else rng.nextInt(0, numberOfTopics - 1)
                 if (!topicStatus[idx]) {
                     topicStatus[idx] = true
                     numberOfSelectedTopics++
@@ -58,7 +64,7 @@ class BestSubsetSolution(
             }
             /* ensure at least one bit set */
             if (numberOfSelectedTopics == 0) {
-                val flipIndex = if (numberOfTopics <= 1) 0 else rng.nextInt(0, numberOfTopics - 1)  /* inclusive upper bound */
+                val flipIndex = if (numberOfTopics <= 1) 0 else rng.nextInt(0, numberOfTopics - 1)
                 topicStatus[flipIndex] = true
                 numberOfSelectedTopics = 1
             }

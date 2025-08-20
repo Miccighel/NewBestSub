@@ -1,0 +1,26 @@
+Constants.kt
+/* Add any keys you want for flags/targets; optional but keeps literals centralized */
+
+DatasetController.kt
+/* Orchestrates runs. We’ll: (a) gate parallelism → sequential when deterministic; (b) wrap each sub-run in RngBridge.withSeed("BEST"/"WORST"/"AVERAGE") */
+
+DatasetModel.kt
+/* Core solve/IO flow. We’ll ensure all randomness comes from jMetal’s singleton, fix iteration order (sorted keys), and keep printers consistent */
+
+BestSubsetProblem.kt
+/* Objective evaluation + generator setup. We’ll remove nondeterministic maps/loops and make tie-breaks total */
+
+BestSubsetSolution.kt
+/* Attributes, equals/hashCode, compareTo. We’ll ensure stable compare logic for sorting/Top-K */
+
+DatasetView.kt (or whichever writes CSV/Parquet)
+/* Stable column order, Locale.ROOT number formatting, deterministic file naming (add seed tag when deterministic) */
+
+Any correlation/metrics helpers (if separate)
+/* Ensure stable ordering of series and no HashMap-iteration dependence */
+
+Export/merge utilities (if separate)
+/* Make merges stable: sort by cardinality then secondary keys */
+
+Tests (optional last)
+/* If you have them, we’ll pin seeds and assert byte-identical outputs */

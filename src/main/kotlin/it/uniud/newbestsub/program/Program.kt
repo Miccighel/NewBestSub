@@ -5,6 +5,7 @@ import it.uniud.newbestsub.dataset.Parameters
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools
 import it.uniud.newbestsub.utils.Tools.updateLogger
+import it.uniud.newbestsub.utils.RngBridge
 import org.apache.commons.cli.*
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.LogManager
@@ -13,7 +14,7 @@ import org.uma.jmetal.util.JMetalException
 import java.io.File
 import java.io.FileNotFoundException
 import java.nio.file.FileSystemException
-import org.apache.commons.cli.help.HelpFormatter as CliHelpFormatter
+import org.apache.commons.cli.HelpFormatter as CliHelpFormatter
 
 object Program {
 
@@ -73,7 +74,6 @@ object Program {
                 targetToAchieve = when (commandLine.getOptionValue("t")) {
                     Constants.TARGET_BEST, Constants.TARGET_WORST, Constants.TARGET_AVERAGE, Constants.TARGET_ALL ->
                         commandLine.getOptionValue("t")
-
                     else -> throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
                 }
 
@@ -169,6 +169,45 @@ object Program {
                     logger.info("Percentiles: ${percentiles.joinToString(", ")}. [Experiment: Average]")
                 }
 
+                /* --------------------------- Deterministic mode ---------------------------
+                 * We support:
+                 *  - --det / --deterministic      → enable reproducibility
+                 *  - --sd <long> / --seed <long> → explicit master seed (implies deterministic)
+                 *
+                 * If deterministic and no seed is provided, we derive a stable seed from the key
+                 * parameters (ignores currentExecution so that multi-run batches share one seed).
+                 * We also install our RNG bridge early so that jMetal’s singleton uses it.
+                 * ------------------------------------------------------------------------ */
+                val deterministicRequested = commandLine.hasOption("det") || commandLine.hasOption("sd")
+                val seedFromCli: Long? = if (commandLine.hasOption("sd")) {
+                    commandLine.getOptionValue("sd")?.toLongOrNull()
+                        ?: throw ParseException("Value for the option <<sd>> or <<seed>> is not a valid long. Check the usage section below.")
+                } else null
+                if (seedFromCli != null) System.setProperty("nbs.seed.cli", seedFromCli.toString())
+
+
+                val masterSeed: Long? = if (deterministicRequested) {
+                    val seedTemplate = Parameters(
+                        datasetName = datasetName,
+                        correlationMethod = correlationMethod,
+                        targetToAchieve = targetToAchieve,
+                        numberOfIterations = numberOfIterations,
+                        numberOfRepetitions = numberOfRepetitions,
+                        populationSize = populationSize,
+                        currentExecution = 0,              /* fixed to avoid changing seed across batch runs */
+                        percentiles = percentiles,
+                        deterministic = true,
+                        seed = null
+                    )
+                    val derived = seedFromCli ?: Tools.stableSeedFrom(seedTemplate)
+                    RngBridge.installDeterministic(derived)
+                    logger.info("Deterministic mode: ON (masterSeed=$derived)")
+                    derived
+                } else {
+                    logger.info("Deterministic mode: OFF")
+                    null
+                }
+
                 if (commandLine.hasOption("mr")) {
 
                     try {
@@ -189,7 +228,9 @@ object Program {
                                 numberOfRepetitions,
                                 populationSize,
                                 currentExecution,
-                                percentiles
+                                percentiles,
+                                deterministicRequested,
+                                masterSeed
                             )
                         )
                     }
@@ -238,7 +279,8 @@ object Program {
                     datasetController.solve(
                         Parameters(
                             datasetName, correlationMethod, targetToAchieve,
-                            numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles
+                            numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles,
+                            deterministicRequested, masterSeed
                         )
                     )
                     resultCleaner.invoke()
@@ -248,7 +290,8 @@ object Program {
                         datasetController.solve(
                             Parameters(
                                 datasetName, correlationMethod, targetToAchieve,
-                                numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles
+                                numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles,
+                                deterministicRequested, masterSeed
                             )
                         )
                         resultCleaner.invoke()
@@ -278,7 +321,8 @@ object Program {
                         datasetController.solve(
                             Parameters(
                                 datasetName, correlationMethod, targetToAchieve,
-                                numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles
+                                numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles,
+                                deterministicRequested, masterSeed
                             )
                         )
                         resultCleaner.invoke()
@@ -295,7 +339,9 @@ object Program {
                             numberOfRepetitions,
                             populationSize,
                             0,
-                            percentiles
+                            percentiles,
+                            deterministicRequested,
+                            masterSeed
                         )
                     )
                 }
@@ -307,7 +353,7 @@ object Program {
         } catch (exception: ParseException) {
 
             logger.error(exception.message)
-            val formatter = CliHelpFormatter.builder().get()
+            val formatter = CliHelpFormatter()
             formatter.printHelp(Constants.NEWBESTSUB_NAME, "", options, "", true)
             logger.error("End of the usage section.")
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
@@ -402,6 +448,17 @@ object Program {
         source = Option.builder("copy")
             .desc("NewBestSub should search the folder or NewBestSub-Experiments and copy the results of the current execution inside its data folders. The following structure into filesystem must be respected: \"baseFolder/NewBestSub/..\" and \"baseFolder/NewBestSub-Experiments/..\" otherwise, an exception will be raised. [OPTIONAL]")
             .get()
+        options.addOption(source)
+
+        /* --- Deterministic execution flags (new) --- */
+        source = Option.builder("det").longOpt("deterministic")
+            .desc("Enable deterministic, reproducible execution. If used without --seed, a stable seed is derived from key parameters. [OPTIONAL]")
+            .get()
+        options.addOption(source)
+
+        source = Option.builder("sd").longOpt("seed")
+            .desc("Explicit master seed for deterministic execution (long). Implies --deterministic. [OPTIONAL]")
+            .hasArg().argName("Seed").get()
         options.addOption(source)
 
         return options

@@ -12,11 +12,12 @@ import org.uma.jmetal.operator.crossover.CrossoverOperator
 import org.uma.jmetal.operator.mutation.MutationOperator
 import org.uma.jmetal.operator.selection.SelectionOperator
 import org.uma.jmetal.operator.selection.impl.BinaryTournamentSelection
+import org.uma.jmetal.problem.Problem
 import org.uma.jmetal.solution.binarysolution.BinarySolution
 import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
-import org.uma.jmetal.util.evaluator.impl.SequentialSolutionListEvaluator
-import org.uma.jmetal.problem.Problem
 import org.uma.jmetal.util.evaluator.SolutionListEvaluator
+import org.uma.jmetal.util.evaluator.impl.SequentialSolutionListEvaluator
+import org.uma.jmetal.util.pseudorandom.JMetalRandom
 import java.io.File
 import java.io.FileReader
 import java.util.*
@@ -47,6 +48,10 @@ import kotlinx.coroutines.channels.SendChannel
  * Notes:
  *  - -Fun/-Var contain **checkpoint** rows: multiple lines for the same K reflect improvements over time.
  *  - Final sorting is handled by `DatasetView.closeStreams`, ensuring definitive global order.
+ * Determinism note:
+ *  - All randomized choices in AVERAGE now use JMetalRandom.getInstance().randomGenerator,
+ *    which is redirected by RngBridge when deterministic mode is enabled.
+ *  - NSGA-II already uses the same singleton RNG; no extra changes needed for BEST/WORST here.
  */
 class DatasetModel {
 
@@ -96,7 +101,11 @@ class DatasetModel {
             this.averagePrecisions[nextLine[0]] = aps.toTypedArray()
         }
 
-        originalAveragePrecisions = averagePrecisions
+        /* Deep-ish copy to safely revert during system expansions */
+        originalAveragePrecisions = linkedMapOf<String, Array<Double>>().also { dst ->
+            averagePrecisions.forEach { (k, v) -> dst[k] = v.copyOf() }
+        }
+
         numberOfSystems = averagePrecisions.entries.size
 
         topicLabels = topicLabels.sliceArray(1..topicLabels.size - 1)
@@ -121,10 +130,12 @@ class DatasetModel {
         val newNumberOfSystems = numberOfSystems + expansionCoefficient
 
         if (newNumberOfSystems < trueNumberOfSystems) {
-            averagePrecisions = originalAveragePrecisions
-            val systemsToKeep = averagePrecisions.entries.take(newNumberOfSystems)
-            averagePrecisions = linkedMapOf()
-            systemsToKeep.forEach { s -> averagePrecisions[s.key] = s.value }
+            /* Revert to a prefix of the original APs (stable order) */
+            averagePrecisions = linkedMapOf<String, Array<Double>>().also { dst ->
+                originalAveragePrecisions.entries.take(newNumberOfSystems).forEach { (k, v) ->
+                    dst[k] = v.copyOf()
+                }
+            }
         } else {
             randomizedSystemLabels.forEach { sys ->
                 averagePrecisions[sys] = (randomizedAveragePrecisions[sys]?.toList() ?: emptyList()).toTypedArray()
@@ -158,7 +169,7 @@ class DatasetModel {
      * Solve once:
      *  - AVERAGE streams per-K during the loop (unchanged).
      *  - BEST/WORST streams:
-     *      * -Fun/-Var: only when a K’s representative improves (append).
+     *      * -Fun/-Var: only when the per-K representative improves (append).
      *      * -Top:       batch K-block replacements once per generation.
      */
     fun solve(
@@ -193,6 +204,10 @@ class DatasetModel {
              * We compute percentiles and stream exactly one row per cardinality K during the loop.
              */
 
+            /* Deterministic RNG source:
+             * Use jMetal's singleton RNG so RngBridge can pin the seed. */
+            val rng = JMetalRandom.getInstance().randomGenerator
+
             val variableValues = mutableListOf<Array<Boolean>>()
             val cardinalities = mutableListOf<Int>()
             val correlations = mutableListOf<Double>()
@@ -204,28 +219,53 @@ class DatasetModel {
 
             for ((iterationCounter, currentCardinalityIdx) in (0 until numberOfTopics).withIndex()) {
 
-                if ((iterationCounter % loggingFactor) == 0 && numberOfTopics - 1 > loggingFactor) {
-                    logger.info("Completed iterations: $currentCardinalityIdx/$numberOfTopics ($progressCounter%) on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
+                if (loggingFactor > 0 &&
+                    (iterationCounter % loggingFactor) == 0 &&
+                    numberOfTopics > loggingFactor
+                ) {
+                    logger.info(
+                        "Completed iterations: $currentCardinalityIdx/$numberOfTopics ($progressCounter%) on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
+                    )
                     progressCounter += Constants.LOGGING_FACTOR
                 }
 
                 var sumCorrelations = 0.0
                 var topicStatusString = ""
-                var topicStatus = BooleanArray(0)
-                val randomGenerator = java.util.Random()
+                var topicStatus = BooleanArray(numberOfTopics)
 
                 val correlationsToAggregate = Array(numberOfRepetitions) {
-                    val chosenTopicIndexes = java.util.HashSet<Int>()
-                    while (chosenTopicIndexes.size < currentCardinalityIdx + 1) chosenTopicIndexes.add(randomGenerator.nextInt(numberOfTopics) + 1)
+                    val desiredCardinality = currentCardinalityIdx + 1
 
+                    // Build 0..N-1 pool of topic indices
+                    val topicIndexPool = IntArray(numberOfTopics) { it }
+
+                    // Partial Fisher–Yates: fix the first `desiredCardinality` positions with unique picks
+                    for (leftmostFixedIndex in 0 until desiredCardinality) {
+                        val remainingSpan = numberOfTopics - leftmostFixedIndex
+                        val randomOffsetWithinSpan = (rng.nextDouble() * remainingSpan).toInt()
+                        val swapWithIndex = leftmostFixedIndex + randomOffsetWithinSpan
+
+                        val tempIndex = topicIndexPool[leftmostFixedIndex]
+                        topicIndexPool[leftmostFixedIndex] = topicIndexPool[swapWithIndex]
+                        topicIndexPool[swapWithIndex] = tempIndex
+                    }
+
+                    // Mark selected topics
                     topicStatus = BooleanArray(numberOfTopics)
-                    topicStatusString = ""
-                    chosenTopicIndexes.forEach { chosen -> topicStatus[chosen - 1] = true }
-                    topicStatus.forEach { bit -> topicStatusString += if (bit) '1' else '0' }
+                    for (selectedSlot in 0 until desiredCardinality) {
+                        val selectedTopicIndex = topicIndexPool[selectedSlot]
+                        topicStatus[selectedTopicIndex] = true
+                    }
 
-                    val entryIterator = this.averagePrecisions.entries.iterator()
+                    // String form of the bitset (for logs/streaming)
+                    topicStatusString = buildString(numberOfTopics) {
+                        topicStatus.forEach { append(if (it) '1' else '0') }
+                    }
+
+                    // Compute correlation on the reduced mean vector
+                    val apEntryIterator = this.averagePrecisions.entries.iterator()
                     val reducedMeanVector = Array(averagePrecisions.entries.size) {
-                        Tools.getMean(entryIterator.next().value.toDoubleArray(), topicStatus)
+                        Tools.getMean(apEntryIterator.next().value.toDoubleArray(), topicStatus)
                     }
 
                     correlationStrategy.invoke(reducedMeanVector, meanAveragePrecisions)
@@ -248,7 +288,7 @@ class DatasetModel {
                 correlations.add(meanCorrelation)
                 variableValues.add(topicStatus.toTypedArray())
 
-                /* STREAM NOW (AVERAGE): append to -Fun/-Var immediately */
+                // STREAM NOW (AVERAGE)
                 sendProgress(
                     out, CardinalityResult(
                         target = targetToAchieve,
@@ -342,7 +382,7 @@ class DatasetModel {
 
                     val improved = when (targetToAchieve) {
                         Constants.TARGET_WORST -> (prev == null) || corr < prev - 1e-12
-                        else                   -> (prev == null) || corr > prev + 1e-12
+                        else -> (prev == null) || corr > prev + 1e-12
                     }
 
                     if (improved) {
@@ -363,9 +403,7 @@ class DatasetModel {
                             target = targetToAchieve,
                             threadName = Thread.currentThread().name,
                             cardinality = k,
-                            correlation = (sol as BestSubsetSolution).getCorrelation().let { corr ->
-                                if (targetToAchieve == Constants.TARGET_BEST) corr else corr
-                            },
+                            correlation = (sol as BestSubsetSolution).getCorrelation(),
                             functionValuesCsvLine = sol.toFunLineFor(targetToAchieve),
                             variableValuesCsvLine = sol.toVarLine()
                         )
@@ -480,7 +518,8 @@ class DatasetModel {
 
         allSolutions = sortByCardinality(allSolutions)
 
-        computingTime = (System.nanoTime() - startNs) / 1_000_000
+        val computingTime = (System.nanoTime() - startNs) / 1_000_000
+        this.computingTime = computingTime
         sendProgress(out, RunCompleted(targetToAchieve, threadName, computingTime))
 
         logger.info("Not dominated solutions generated by execution with target \"$targetToAchieve\": ${notDominatedSolutions.size}/$numberOfTopics.")
@@ -559,6 +598,7 @@ class DatasetModel {
             Constants.TARGET_BEST -> solutionsToFix.forEach { s ->
                 s.setObjective(1, s.getCorrelation() * -1)  // restore reported correlation
             }
+
             Constants.TARGET_WORST -> solutionsToFix.forEach { s ->
                 s.setObjective(0, s.getCardinality() * -1)  // restore reported K
             }
@@ -584,16 +624,18 @@ class DatasetModel {
         val k = this.getCardinality()
         val corr = this.getCorrelation()
         return when (target) {
-            Constants.TARGET_BEST  -> "${k} ${-corr}"  // corr negated internally, flip back here
+            Constants.TARGET_BEST -> "${k} ${-corr}"  // corr negated internally, flip back here
             Constants.TARGET_WORST -> "${-k} ${corr}"  // K negated internally, flip back here
-            else                   -> "$k $corr"
+            else -> "$k $corr"
         }
     }
 
-    /** Format for -Var: space-separated bitstring for the current solution. */
+    /** Format for -Var: contiguous bitstring (no spaces) to match existing writer. */
     private fun BinarySolution.toVarLine(): String {
         val bits = (this as BestSubsetSolution).retrieveTopicStatus()
-        return bits.joinToString(" ") { if (it) "1" else "0" }
+        val sb = StringBuilder(bits.size)
+        bits.forEach { sb.append(if (it) '1' else '0') }
+        return sb.toString()
     }
 
     /** CSV row for -Top: "Cardinality,Correlation,Topics" */

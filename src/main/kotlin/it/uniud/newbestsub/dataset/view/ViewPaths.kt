@@ -16,12 +16,20 @@ import java.io.File
  *      • CSV     -> "<container>/CSV/"
  *      • Parquet -> "<container>/Parquet/"
  *  - Filenames have NO timestamps, but include the executed target token.
+ *  - If a CLI seed (--seed) is explicitly provided, filenames carry "sd<seed>".
  */
 object ViewPaths {
 
     /** Cached container directory path so all targets share the same folder. */
     @Volatile
     private var cachedOutDirPath: String? = null
+
+    /** If Program set a CLI seed, expose it as a token like "sd12345". */
+    private fun explicitSeedToken(): String? =
+        System.getProperty("nbs.seed.cli")  // set only when --seed is used
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { "sd$it" }
 
     /** Build the shared container folder and cache it. */
     fun ensureRunDir(model: DatasetModel): String {
@@ -41,8 +49,8 @@ object ViewPaths {
         )
 
         val out = Constants.NEWBESTSUB_PATH +
-                "res" + Constants.PATH_SEPARATOR +
-                containerFolder + Constants.PATH_SEPARATOR
+            "res" + Constants.PATH_SEPARATOR +
+            containerFolder + Constants.PATH_SEPARATOR
 
         File(out).mkdirs()
         cachedOutDirPath = out
@@ -84,6 +92,9 @@ object ViewPaths {
         if (model.currentExecution > 0) parts += "ex${model.currentExecution}"
         if (pctPart != null) parts += pctPart
 
+        // Append sd<seed> ONLY when --seed was explicitly provided
+        explicitSeedToken()?.let { parts += it }
+
         return parts.toTypedArray()
     }
 
@@ -94,7 +105,7 @@ object ViewPaths {
 
     fun csvNameNoTsMerged(baseParts: Array<String>, suffix: String): String =
         folderBaseName(*baseParts) + Constants.FILE_NAME_SEPARATOR + suffix +
-                Constants.FILE_NAME_SEPARATOR + Constants.MERGED_RESULT_FILE_SUFFIX + Constants.CSV_FILE_EXTENSION
+            Constants.FILE_NAME_SEPARATOR + Constants.MERGED_RESULT_FILE_SUFFIX + Constants.CSV_FILE_EXTENSION
 
     fun parquetNameNoTs(baseParts: Array<String>, suffix: String): String =
         folderBaseName(*baseParts) + Constants.FILE_NAME_SEPARATOR + suffix + ".parquet"
