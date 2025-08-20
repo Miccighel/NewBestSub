@@ -9,9 +9,8 @@
         <!-- Console Appender for Main Logs -->
         <Console name="Console-Main" target="SYSTEM_OUT">
             <PatternLayout disableAnsi="false"
-                           pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-9M] %style{%m%n}{FG_Cyan}"/>
+                           pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.17C{1} %-9.9M] %style{%m%n}{FG_Cyan}"/>
         </Console>
-
 
         <!-- Rolling File Appender -->
         <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log" append="false">
@@ -24,8 +23,12 @@
     </Appenders>
 
     <Loggers>
+        <!-- Quiet some noisy libs (optional) -->
+        <Logger name="org.apache.hadoop" level="WARN"/>
+        <Logger name="org.apache.parquet" level="INFO"/>
+
         <!-- Root Logger -->
-        <Root level="debug">
+        <Root level="debug" includeLocation="true">
             <AppenderRef ref="Console-Main"/>
             <AppenderRef ref="Rolling"/>
         </Root>

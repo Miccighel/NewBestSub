@@ -5,17 +5,18 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="12096839-9992-44ab-bdf6-5f0e2f82a36f" name="Default" comment="">
-      <change afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/ProgressEvent.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/test/kotlin/it/uniud/newbestsub/dataset/DatasetViewTest.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/view/CSVView.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/view/Formatting.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/view/ParquetView.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/view/ViewPaths.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/csv-editor.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/csv-editor.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__con_build_.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__con_build_.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__senza_build_.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__senza_build_.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetController.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetController.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/Constants.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/utils/Constants.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/resources/log4j2.xml" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/log4j2.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/kotlin/it/uniud/newbestsub/dataset/DatasetViewTest.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/kotlin/it/uniud/newbestsub/dataset/DatasetViewTest.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -388,10 +389,11 @@
       <recent name="it.uniud.newbestsub.problem" />
     </key>
     <key name="K2MoveDeclarationsDialog.RECENT_PACKAGE_KEY">
+      <recent name="it.uniud.newbestsub.dataset.view" />
       <recent name="it.uniud.newbestsub.problem" />
     </key>
   </component>
-  <component name="RunManager" selected="JUnit.NewBestSub (test)">
+  <component name="RunManager" selected="Application.NewBestSub (con build)">
     <configuration default="true" type="AndroidTestRunConfigurationType" factoryName="Android Tests">
       <module name="" />
       <option name="TESTING_TYPE" value="0" />
@@ -1022,7 +1024,8 @@
       <workItem from="1755593314751" duration="2396000" />
       <workItem from="1755595734231" duration="309000" />
       <workItem from="1755596053770" duration="16926000" />
-      <workItem from="1755680952531" duration="333000" />
+      <workItem from="1755680952531" duration="4779000" />
+      <workItem from="1755685764602" duration="7941000" />
     </task>
     <servers />
   </component>

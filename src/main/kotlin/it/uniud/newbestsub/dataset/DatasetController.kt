@@ -130,7 +130,7 @@ class DatasetController(
 
             runBlocking {
                 supervisorScope {
-                    /* Printer: append/replace rows as they arrive */
+                    /* Printer: append/replace rows as they arrive (DatasetView = composite to CSV/Parquet). */
                     val printer = launch(Dispatchers.IO) {
                         for (ev in progress) {
                             /* Lookup the right model by target; all 3 have unique targets */
@@ -138,7 +138,7 @@ class DatasetController(
                             when (ev) {
                                 is CardinalityResult -> view.appendCardinality(model, ev)
                                 is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
-                                is RunCompleted -> view.closeStreams(model)
+                                is RunCompleted -> view.closeStreams(model)     // CSV finalize -> Parquet from CSV
                             }
                         }
                     }
@@ -165,24 +165,32 @@ class DatasetController(
             infoResultPaths.add(view.getInfoFilePath(models[0], isTargetAll = true))
 
             logger.info("Data aggregation started.")
-            view.writeCsv(aggregate(models), view.getAggregatedDataFilePath(models[0], isTargetAll = true))
+            val aggregatedRows = aggregate(models)
+            view.writeCsv(aggregatedRows, view.getAggregatedDataFilePath(models[0], isTargetAll = true))
+            view.writeParquet(aggregatedRows, view.getAggregatedDataParquetPath(models[0], isTargetAll = true))
             logger.info("Aggregated data available at:")
             logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = true)}\"")
 
             logger.info("Execution information gathering started.")
-            view.writeCsv(info(models), view.getInfoFilePath(models[0], isTargetAll = true))
+            val infoRows = info(models)
+            view.writeCsv(infoRows, view.getInfoFilePath(models[0], isTargetAll = true))
+            view.writeParquet(infoRows, view.getInfoParquetPath(models[0], isTargetAll = true))
             logger.info("Execution information available at:")
             logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = true)}\"")
 
             logger.info("Execution result paths:")
             models.forEach { model ->
-                logger.info("\"${view.getFunctionValuesFilePath(model)}\" (Function values)")
-                logger.info("\"${view.getVariableValuesFilePath(model)}\" (Variable values)")
-                if (model.targetToAchieve != Constants.TARGET_AVERAGE)
-                    logger.info("\"${view.getTopSolutionsFilePath(model)}\" (Top Solutions)")
+                logger.info("\"${view.getFunctionValuesFilePath(model)}\" (Function values CSV)")
+                logger.info("\"${view.getVariableValuesFilePath(model)}\" (Variable values CSV)")
+                logger.info("\"${view.getFunctionValuesParquetPath(model)}\" (Function values Parquet)")
+                logger.info("\"${view.getVariableValuesParquetPath(model)}\" (Variable values Parquet)")
+                if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
+                    logger.info("\"${view.getTopSolutionsFilePath(model)}\" (Top Solutions CSV)")
+                    logger.info("\"${view.getTopSolutionsParquetPath(model)}\" (Top Solutions Parquet)")
+                }
             }
-            logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = true)}\" (Aggregated data)")
-            logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = true)}\" (Info)")
+            logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = true)}\" (Aggregated data CSV)")
+            logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = true)}\" (Info CSV)")
 
         } else {
             /* Streaming also for single target */
@@ -190,15 +198,14 @@ class DatasetController(
 
             runBlocking {
                 supervisorScope {
-                    /* Printer */
+                    /* Printer -> composite DatasetView */
                     val printer = launch(Dispatchers.IO) {
                         for (ev in progress) {
-                            /* Map event target to the only model we have in this branch */
                             val model = models[0]
                             when (ev) {
                                 is CardinalityResult -> view.appendCardinality(model, ev)
                                 is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
-                                is RunCompleted -> view.closeStreams(model)
+                                is RunCompleted -> view.closeStreams(model)     // CSV finalize -> Parquet from CSV
                             }
                         }
                     }
@@ -222,26 +229,35 @@ class DatasetController(
             logger.info("Data aggregation started.")
             view.writeCsv(aggregate(models), view.getAggregatedDataFilePath(models[0], isTargetAll = false))
             logger.info("Aggregated data available at:")
-            logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = false)}\"")
+            val aggregatedRows = aggregate(models)
+            view.writeCsv(aggregatedRows, view.getAggregatedDataFilePath(models[0], isTargetAll = false))
+            view.writeParquet(aggregatedRows, view.getAggregatedDataParquetPath(models[0], isTargetAll = false))
 
             logger.info("Execution information gathering started.")
-            view.writeCsv(info(models), view.getInfoFilePath(models[0], isTargetAll = false))
+            val infoRows = info(models)
+            view.writeCsv(infoRows, view.getInfoFilePath(models[0], isTargetAll = false))
+            view.writeParquet(infoRows, view.getInfoParquetPath(models[0], isTargetAll = false))
             logger.info("Execution information available at:")
             logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = false)}\"")
 
             logger.info("Execution result paths:")
-            logger.info("\"${view.getFunctionValuesFilePath(models[0])}\" (Function values)")
-            logger.info("\"${view.getVariableValuesFilePath(models[0])}\" (Variable values)")
-            if (models[0].targetToAchieve != Constants.TARGET_AVERAGE)
-                logger.info("\"${view.getTopSolutionsFilePath(models[0])}\" (Top Solutions)")
-            logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = false)}\" (Aggregated data)")
-            logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = false)}\" (Info)")
+            logger.info("\"${view.getFunctionValuesFilePath(models[0])}\" (Function values CSV)")
+            logger.info("\"${view.getVariableValuesFilePath(models[0])}\" (Variable values CSV)")
+            logger.info("\"${view.getFunctionValuesParquetPath(models[0])}\" (Function values Parquet)")
+            logger.info("\"${view.getVariableValuesParquetPath(models[0])}\" (Variable values Parquet)")
+            if (models[0].targetToAchieve != Constants.TARGET_AVERAGE) {
+                logger.info("\"${view.getTopSolutionsFilePath(models[0])}\" (Top Solutions CSV)")
+                logger.info("\"${view.getTopSolutionsParquetPath(models[0])}\" (Top Solutions Parquet)")
+            }
+            logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = false)}\" (Aggregated data CSV)")
+            logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = false)}\" (Info CSV)")
         }
 
         logger.info("Execution information gathering completed.")
         logger.info("Data aggregation completed.")
         logger.info("Problem resolution completed.")
     }
+
 
     /* ------------------------ Aggregation and info (unchanged) ------------------------ */
 

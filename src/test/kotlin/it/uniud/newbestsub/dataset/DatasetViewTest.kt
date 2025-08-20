@@ -25,6 +25,8 @@ class DatasetViewTest {
 
     /*
      * Build a minimal model that satisfies DatasetView path computation.
+     * We also provide topic labels so VAR’s final rewrite (labels set to 1)
+     * produces non-blank lines.
      */
     private fun stubModel(
         dataset: String = "TEST_DS",
@@ -43,6 +45,8 @@ class DatasetViewTest {
             currentExecution = exec
             expansionCoefficient = 0
             percentiles = linkedMapOf()
+            // Provide labels so "1 1 0 0" -> "401 402", etc.
+            topicLabels = Array(50) { (401 + it).toString() }
         }
 
     @Test
@@ -61,8 +65,7 @@ class DatasetViewTest {
         val topPath = Paths.get(view.getTopSolutionsFilePath(model))
         Files.createDirectories(funPath.parent)
 
-        /* Start streaming session (opens and truncates FUN/VAR, then append mode) */
-        view.openStreams(model)
+        // NOTE: do NOT call view.openStreams(model) — streaming opens lazily on first append.
 
         /*
          * Helper to emit a single improved K row (intentionally out-of-order).
@@ -117,7 +120,8 @@ class DatasetViewTest {
         println("[DatasetViewTest] - replaceTopBatch -> K=1 (new content)")
 
         /*
-         * Closing the streams triggers the global sort & rewrite for FUN/VAR.
+         * Closing the streams triggers the global sort & rewrite for FUN/VAR,
+         * and writes Parquet from the canonical snapshot (handled inside DatasetView).
          */
         view.closeStreams(model)
         println("[DatasetViewTest] - closeStreams -> FUN/VAR globally sorted & rewritten")

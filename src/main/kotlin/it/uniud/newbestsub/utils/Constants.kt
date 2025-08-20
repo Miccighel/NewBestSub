@@ -29,7 +29,7 @@ object Constants {
     /* Output base dir */
     val NEWBESTSUB_OUTPUT_PATH = "${NEWBESTSUB_PATH}res$PATH_SEPARATOR"
 
-    val LOGGING_FACTOR = 10
+    val LOGGING_FACTOR = 2
     val TARGET_BEST = "Best"
     val TARGET_WORST = "Worst"
     val TARGET_AVERAGE = "Average"

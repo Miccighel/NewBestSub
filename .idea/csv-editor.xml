@@ -24,28 +24,280 @@
             </Attribute>
           </value>
         </entry>
-        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-19-06-01-56/AH99-Pearson-All-top50-sys129-po1000-i100000-r2000-Final.csv">
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-i100000-r2000-time2025-08-20-12-34-50/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Fun.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-19-06-01-56/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Fun.csv">
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-i100000-r2000-time2025-08-20-12-34-50/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Top-10-Solutions.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-19-06-01-56/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Var.csv">
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-i100000-r2000-time2025-08-20-12-34-50/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Var.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
-        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-19-06-01-56/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Fun.csv">
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-i100000-r2000-time2025-08-20-12-34-50/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-02-47-48/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-02-47-48/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-02-47-48/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-11-05/AH99-Pearson-All-top50-sys129-po1000-i100000-r2000-Final.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-11-05/AH99-Pearson-All-top50-sys129-po1000-i100000-r2000-Info.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-11-05/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-11-05/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-11-05/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-11-05/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-11-05/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-11-05/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-25-09/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-25-09/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-25-09/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-36-42/CSV/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-36-42/CSV/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-36-42/CSV/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-36-42/CSV/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-03-36-42/CSV/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-04-00-35/CSV/AH99-Pearson-All-top50-sys129-po1000-i100000-r2000-Final.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-04-00-35/CSV/AH99-Pearson-All-top50-sys129-po1000-i100000-r2000-Info.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-04-00-35/CSV/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-28-36/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-28-36/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-40-38/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-49-10/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-49-10/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-54-10/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-54-10/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-54-10/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-54-10/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-54-10/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-54-10/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-54-10/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-57-59/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-20-12-57-59/AH99-Pearson-Average-top50-sys129-po1000-r2000-pe1_100-Var.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -74,6 +326,13 @@
           </value>
         </entry>
         <entry key="/res_sample/AH99-Pearson-50-10000000-2000-Best-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res_sample/AH99-Pearson-50-10000000-2000-Worst-Fun.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
