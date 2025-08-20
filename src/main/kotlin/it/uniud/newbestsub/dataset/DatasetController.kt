@@ -17,6 +17,19 @@ import kotlin.collections.LinkedHashMap
 
 typealias RunResult = Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>>
 
+/**
+ * DatasetController
+ *
+ * Orchestrates:
+ *  - DatasetModel lifecycle (load/expand/solve)
+ *  - Streaming consumption (printer coroutine)
+ *  - View writing for final snapshots and merged artifacts
+ *
+ * Efficiency notes:
+ *  - Printer uses a Channel with back-pressure.
+ *  - We use the **batched** -Top event (TopKReplaceBatch) to avoid rewriting the file
+ *    multiple times per generation.
+ */
 class DatasetController(
     private var targetToAchieve: String
 ) {
@@ -43,7 +56,7 @@ class DatasetController(
         logger.info("Dataset loading started.")
         logger.info("Path: \"$datasetPath\".")
 
-        /* Legacy NEWBESTSUB_OUTPUT_PATH creation removed – View creates run folder */
+        /* View creates run folder; no legacy NEWBESTSUB_OUTPUT_PATH creation */
 
         try {
             models.plusAssign(DatasetModel())
@@ -102,51 +115,43 @@ class DatasetController(
         if (parameters.currentExecution > 0) logger.info("Current Execution: ${parameters.currentExecution}.")
 
         if (parameters.targetToAchieve == Constants.TARGET_ALL || parameters.targetToAchieve == Constants.TARGET_AVERAGE) {
-            var percentilesToFind = ""
-            parameters.percentiles.forEach { percentile -> percentilesToFind += "$percentile%, " }
-            percentilesToFind = percentilesToFind.substring(0, percentilesToFind.length - 2)
-            logger.info("Percentiles: $percentilesToFind. [Experiment: Average]")
+            val pct = parameters.percentiles.joinToString(", ") { "$it%" }
+            logger.info("Percentiles: $pct. [Experiment: Average]")
         }
 
         if (parameters.targetToAchieve == Constants.TARGET_ALL) {
 
-            val bestParameters = Parameters(
-                parameters.datasetName, parameters.correlationMethod, Constants.TARGET_BEST,
-                parameters.numberOfIterations, parameters.numberOfRepetitions,
-                parameters.populationSize, parameters.currentExecution, parameters.percentiles
-            )
-            val worstParameters = bestParameters.copy(targetToAchieve = Constants.TARGET_WORST)
-            val averageParameters = bestParameters.copy(targetToAchieve = Constants.TARGET_AVERAGE)
+            val bestParameters = parameters.copy(targetToAchieve = Constants.TARGET_BEST)
+            val worstParameters = parameters.copy(targetToAchieve = Constants.TARGET_WORST)
+            val averageParameters = parameters.copy(targetToAchieve = Constants.TARGET_AVERAGE)
+
+            /* Capacity can be tuned; small buffer applies back-pressure to the solver if I/O is slow. */
+            val progress: kotlinx.coroutines.channels.Channel<ProgressEvent> = kotlinx.coroutines.channels.Channel(64)
 
             runBlocking {
-                /* Rendezvous channel (capacity = 0) applies back-pressure: no buffering of big results */
-                val done: Channel<Pair<Int, RunResult>> = Channel(0)
-
                 supervisorScope {
-                    /* Launch CPU-bound solves in parallel on Default */
-                    launch(Dispatchers.Default) {
-                        val r: RunResult = models[0].solve(bestParameters)
-                        done.send(0 to r)  /* blocks until printer receives */
-                    }
-                    launch(Dispatchers.Default) {
-                        val r: RunResult = models[1].solve(worstParameters)
-                        done.send(1 to r)
-                    }
-                    launch(Dispatchers.Default) {
-                        val r: RunResult = models[2].solve(averageParameters)
-                        done.send(2 to r)
+                    /* Printer: append/replace rows as they arrive */
+                    val printer = launch(Dispatchers.IO) {
+                        for (ev in progress) {
+                            /* Lookup the right model by target; all 3 have unique targets */
+                            val model = models.first { it.targetToAchieve == ev.target }
+                            when (ev) {
+                                is CardinalityResult -> view.appendCardinality(model, ev)
+                                is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
+                                is RunCompleted -> view.closeStreams(model)
+                            }
+                        }
                     }
 
-                    /* Single printer: prints immediately on completion, one at a time */
-                    repeat(3) {
-                        val (idx, result) = done.receive()
-                        withContext(Dispatchers.IO) {
-                            /* File I/O on IO dispatcher; avoids stealing CPU threads */
-                            view.print(result, models[idx])
-                        }
-                        /* After this returns, 'result' can be GC’d */
-                    }
-                    done.close()
+                    /* Launch solvers (Best/Worst/Average) */
+                    val jobs = listOf(
+                        launch(Dispatchers.Default) { models[0].solve(bestParameters, progress) },
+                        launch(Dispatchers.Default) { models[1].solve(worstParameters, progress) },
+                        launch(Dispatchers.Default) { models[2].solve(averageParameters, progress) }
+                    )
+                    jobs.joinAll()
+                    progress.close()
+                    printer.join()
                 }
             }
 
@@ -180,10 +185,33 @@ class DatasetController(
             logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = true)}\" (Info)")
 
         } else {
+            /* Streaming also for single target */
+            val progress: kotlinx.coroutines.channels.Channel<ProgressEvent> = kotlinx.coroutines.channels.Channel(64)
 
-            val result = models[0].solve(parameters)
-            view.print(result, models[0])
+            runBlocking {
+                supervisorScope {
+                    /* Printer */
+                    val printer = launch(Dispatchers.IO) {
+                        for (ev in progress) {
+                            /* Map event target to the only model we have in this branch */
+                            val model = models[0]
+                            when (ev) {
+                                is CardinalityResult -> view.appendCardinality(model, ev)
+                                is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
+                                is RunCompleted -> view.closeStreams(model)
+                            }
+                        }
+                    }
 
+                    /* Launch solver with channel */
+                    val job = launch(Dispatchers.Default) { models[0].solve(parameters, progress) }
+                    job.join()
+                    progress.close()
+                    printer.join()
+                }
+            }
+
+            /* Collect paths (files are already appended by the printer) */
             aggregatedDataResultPaths.add(view.getAggregatedDataFilePath(models[0], isTargetAll = false))
             functionValuesResultPaths.add(view.getFunctionValuesFilePath(models[0]))
             variableValuesResultPaths.add(view.getVariableValuesFilePath(models[0]))
@@ -214,6 +242,8 @@ class DatasetController(
         logger.info("Data aggregation completed.")
         logger.info("Problem resolution completed.")
     }
+
+    /* ------------------------ Aggregation and info (unchanged) ------------------------ */
 
     private fun aggregate(models: List<DatasetModel>): List<Array<String>> {
         val header = mutableListOf<String>()
@@ -268,18 +298,20 @@ class DatasetController(
             percentiles.entries.forEach { (_, percentileValues) ->
                 newDataEntry = newDataEntry.plus(percentileValues[currentCardinality.toInt() - 1].toString())
             }
-            topicLabels.forEach { currentLabel ->
-                var topicPresence = ""
+            topicLabels.forEach { label ->
+                // Build a compact presence code for this topic at the current cardinality:
+                // "B" if present in BEST, "W" if present in WORST, "BW" if both, or "N" if in none.
+                val flags = StringBuilder()
                 models.forEach { model ->
-                    val isTopicInASolutionOfCurrentCard =
-                        model.isTopicInASolutionOfCardinality(currentLabel, currentCardinality)
+                    val present = model.isTopicInASolutionOfCardinality(label, currentCardinality)
                     when (model.targetToAchieve) {
-                        Constants.TARGET_BEST -> if (isTopicInASolutionOfCurrentCard) topicPresence += "B"
-                        Constants.TARGET_WORST -> if (isTopicInASolutionOfCurrentCard) topicPresence += "W"
+                        Constants.TARGET_BEST -> if (present) flags.append('B')
+                        Constants.TARGET_WORST -> if (present) flags.append('W')
+                        // AVERAGE does not contribute to presence flags
                     }
                 }
-                if (topicPresence == "") topicPresence += "N"
-                newDataEntry = newDataEntry.plus(topicPresence)
+                if (flags.isEmpty()) flags.append('N')
+                newDataEntry = newDataEntry.plus(flags.toString())
             }
             aggregatedData.add(newDataEntry)
         }

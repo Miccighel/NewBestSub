@@ -5,9 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="12096839-9992-44ab-bdf6-5f0e2f82a36f" name="Default" comment="">
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/ProgressEvent.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/test/kotlin/it/uniud/newbestsub/dataset/DatasetViewTest.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/csv-editor.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/csv-editor.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__con_build_.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__con_build_.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__senza_build_.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/runConfigurations/NewBestSub__senza_build_.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetController.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetController.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetModel.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/it/uniud/newbestsub/dataset/DatasetView.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -35,8 +43,8 @@
         <option value="Interface" />
         <option value="Class" />
         <option value="Kotlin Interface" />
-        <option value="Kotlin Class" />
         <option value="Kotlin File" />
+        <option value="Kotlin Class" />
       </list>
     </option>
   </component>
@@ -327,36 +335,40 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Application.NewBestSub (con build).executor": "Run",
-    "JAR Application.NewBestSub (senza build).executor": "Run",
-    "JUnit.NewBestSub (test).executor": "Run",
-    "Maven.NewBestSub [clean].executor": "Run",
-    "Maven.NewBestSub [compile].executor": "Run",
-    "Maven.NewBestSub [package].executor": "Run",
-    "Maven.NewBestSub.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "feature-jmetal-6-migration",
-    "ignore.virus.scanning.warn.message": "true",
-    "junie.onboarding.icon.badge.shown": "true",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "E:/Dropbox/Lavoro/Progetti/NewBestSub/Sorgenti/NewBestSub/res_sample",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "project.structure.last.edited": "SDKs",
-    "project.structure.proportion": "0.15",
-    "project.structure.side.proportion": "0.2",
-    "settings.editor.selected.configurable": "configurable.group.build",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Application.NewBestSub (con build).executor&quot;: &quot;Run&quot;,
+    &quot;Downloaded.Files.Path.Enabled&quot;: &quot;false&quot;,
+    &quot;JAR Application.NewBestSub (senza build).executor&quot;: &quot;Run&quot;,
+    &quot;JUnit.NewBestSub (test).executor&quot;: &quot;Run&quot;,
+    &quot;Maven.NewBestSub [clean].executor&quot;: &quot;Run&quot;,
+    &quot;Maven.NewBestSub [compile].executor&quot;: &quot;Run&quot;,
+    &quot;Maven.NewBestSub [package].executor&quot;: &quot;Run&quot;,
+    &quot;Maven.NewBestSub.executor&quot;: &quot;Run&quot;,
+    &quot;Repository.Attach.Annotations&quot;: &quot;false&quot;,
+    &quot;Repository.Attach.JavaDocs&quot;: &quot;false&quot;,
+    &quot;Repository.Attach.Sources&quot;: &quot;false&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feature-jmetal-6-migration&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;E:/Dropbox/Lavoro/Progetti/NewBestSub/Sorgenti/NewBestSub/res_sample&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;project.structure.last.edited&quot;: &quot;Modules&quot;,
+    &quot;project.structure.proportion&quot;: &quot;0.15013056&quot;,
+    &quot;project.structure.side.proportion&quot;: &quot;0.2&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="E:\Dropbox\Lavoro\Progetti\NewBestSub\Sorgenti\NewBestSub\res_sample" />
@@ -379,7 +391,7 @@
       <recent name="it.uniud.newbestsub.problem" />
     </key>
   </component>
-  <component name="RunManager" selected="Application.NewBestSub (con build)">
+  <component name="RunManager" selected="JUnit.NewBestSub (test)">
     <configuration default="true" type="AndroidTestRunConfigurationType" factoryName="Android Tests">
       <module name="" />
       <option name="TESTING_TYPE" value="0" />
@@ -516,30 +528,13 @@
         <option name="Make" enabled="true" />
       </method>
     </configuration>
-    <configuration name="DatasetModelTest.testSolve" type="JUnit" factoryName="JUnit" temporary="true" nameIsGenerated="true">
-      <module name="NewBestSub" />
-      <extension name="coverage">
-        <pattern>
-          <option name="PATTERN" value="it.uniud.newbestsub.dataset.*" />
-          <option name="ENABLED" value="true" />
-        </pattern>
-      </extension>
-      <option name="PACKAGE_NAME" value="it.uniud.newbestsub.dataset" />
-      <option name="MAIN_CLASS_NAME" value="it.uniud.newbestsub.dataset.DatasetModelTest" />
-      <option name="METHOD_NAME" value="testSolve" />
-      <option name="TEST_OBJECT" value="method" />
-      <option name="WORKING_DIRECTORY" value="$MODULE_DIR$" />
-      <method v="2">
-        <option name="Make" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="NewBestSub (test)" type="JUnit" factoryName="JUnit">
       <module name="NewBestSub" />
       <option name="MAIN_CLASS_NAME" value="" />
       <option name="METHOD_NAME" value="" />
       <option name="TEST_OBJECT" value="directory" />
       <option name="PARAMETERS" value="" />
-      <option name="WORKING_DIRECTORY" value="file://$MODULE_DIR$" />
+      <option name="WORKING_DIRECTORY" value="$MODULE_DIR$" />
       <dir value="$PROJECT_DIR$/src/test/kotlin" />
       <method v="2" />
     </configuration>
@@ -562,66 +557,6 @@
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
-    </configuration>
-    <configuration name="NewBestSub [compile]" type="MavenRunConfiguration" factoryName="Maven" temporary="true">
-      <MavenSettings>
-        <option name="myGeneralSettings" />
-        <option name="myRunnerSettings" />
-        <option name="myRunnerParameters">
-          <MavenRunnerParameters>
-            <option name="cmdOptions" />
-            <option name="profiles">
-              <set />
-            </option>
-            <option name="goals">
-              <list>
-                <option value="compile" />
-              </list>
-            </option>
-            <option name="multimoduleDir" />
-            <option name="pomFileName" value="pom.xml" />
-            <option name="profilesMap">
-              <map />
-            </option>
-            <option name="projectsCmdOptionValues">
-              <list />
-            </option>
-            <option name="resolveToWorkspace" value="false" />
-            <option name="workingDirPath" value="$PROJECT_DIR$" />
-          </MavenRunnerParameters>
-        </option>
-      </MavenSettings>
-      <method v="2" />
-    </configuration>
-    <configuration name="NewBestSub [package]" type="MavenRunConfiguration" factoryName="Maven" temporary="true">
-      <MavenSettings>
-        <option name="myGeneralSettings" />
-        <option name="myRunnerSettings" />
-        <option name="myRunnerParameters">
-          <MavenRunnerParameters>
-            <option name="cmdOptions" />
-            <option name="profiles">
-              <set />
-            </option>
-            <option name="goals">
-              <list>
-                <option value="package" />
-              </list>
-            </option>
-            <option name="multimoduleDir" />
-            <option name="pomFileName" value="pom.xml" />
-            <option name="profilesMap">
-              <map />
-            </option>
-            <option name="projectsCmdOptionValues">
-              <list />
-            </option>
-            <option name="resolveToWorkspace" value="false" />
-            <option name="workingDirPath" value="$PROJECT_DIR$" />
-          </MavenRunnerParameters>
-        </option>
-      </MavenSettings>
-      <method v="2" />
     </configuration>
     <configuration default="true" type="MavenRunConfiguration" factoryName="Maven">
       <MavenSettings>
@@ -680,18 +615,8 @@
       <item itemvalue="Application.NewBestSub (con build)" />
       <item itemvalue="JAR Application.NewBestSub (senza build)" />
       <item itemvalue="JUnit.NewBestSub (test)" />
-      <item itemvalue="JUnit.DatasetModelTest.testSolve" />
       <item itemvalue="Maven.NewBestSub" />
-      <item itemvalue="Maven.NewBestSub [compile]" />
-      <item itemvalue="Maven.NewBestSub [package]" />
     </list>
-    <recent_temporary>
-      <list>
-        <item itemvalue="Maven.NewBestSub [package]" />
-        <item itemvalue="Maven.NewBestSub [compile]" />
-        <item itemvalue="JUnit.DatasetModelTest.testSolve" />
-      </list>
-    </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
@@ -1087,6 +1012,17 @@
       <workItem from="1755511355923" duration="1731000" />
       <workItem from="1755513112546" duration="5980000" />
       <workItem from="1755522387466" duration="4276000" />
+      <workItem from="1755591358739" duration="32000" />
+      <workItem from="1755591413817" duration="305000" />
+      <workItem from="1755591778904" duration="326000" />
+      <workItem from="1755592115350" duration="264000" />
+      <workItem from="1755592390468" duration="401000" />
+      <workItem from="1755592866509" duration="214000" />
+      <workItem from="1755593175141" duration="129000" />
+      <workItem from="1755593314751" duration="2396000" />
+      <workItem from="1755595734231" duration="309000" />
+      <workItem from="1755596053770" duration="16926000" />
+      <workItem from="1755680952531" duration="333000" />
     </task>
     <servers />
   </component>
@@ -1174,6 +1110,9 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="UnknownFeatures">
+    <option featureType="com.intellij.fileTypeFactory" implementationName="*.kt" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

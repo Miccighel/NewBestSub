@@ -24,7 +24,70 @@
             </Attribute>
           </value>
         </entry>
-        <entry key="\README.md">
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-19-06-01-56/AH99-Pearson-All-top50-sys129-po1000-i100000-r2000-Final.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-19-06-01-56/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-19-06-01-56/AH99-Pearson-Best-top50-sys129-po1000-i100000-r2000-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res/AH99-Pearson-top50-sys129-po1000-r2000-pe1_100-time2025-08-19-06-01-56/AH99-Pearson-Worst-top50-sys129-po1000-i100000-r2000-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res_sample/AH99-Pearson-50-10000000-2000-5000-All-Final.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res_sample/AH99-Pearson-50-10000000-2000-Best-Fun.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res_sample/AH99-Pearson-50-10000000-2000-Best-Top-10-Solutions.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res_sample/AH99-Pearson-50-10000000-2000-Best-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res_sample/AH99-Pearson-50-10000000-2000-Worst-Var.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="/res_sample/AH99-Pearson-50-5000-Average-Var.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -35,55 +98,6 @@
           <value>
             <Attribute>
               <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\AH99-Pearson-top50-sys129-po1000-i1000-r2000-time2025-08-18-03-56-24\AH99-Pearson-Worst-top50-sys129-po1000-i1000-r2000-ex3-Fun-Merged.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="&#9;" />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\AH99-Pearson-top50-sys129-po1000-i1000-r2000-time2025-08-18-03-56-24\AH99-Pearson-Worst-top50-sys129-po1000-i1000-r2000-ex3-Var-Merged.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\AH99-Pearson-top50-sys129-po1000-i1000-r2000-time2025-08-18-04-13-52\AH99-Pearson-All-top50-sys129-po1000-i1000-r2000-ex3-Final-Merged.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\AH99-Pearson-top50-sys129-po1000-i1000-r2000-time2025-08-18-04-13-52\AH99-Pearson-All-top50-sys129-po1000-i1000-r2000-ex3-Info-Merged.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\AH99-Pearson-top50-sys129-po10000-i1000-r2000-2025-08-18-03-31-11\AH99-Pearson-All-top50-sys129-po10000-i1000-r2000-Info.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\AH99-Pearson-top50-sys129-po10000-i1000-r2000-time2025-08-18-03-37-20\AH99-Pearson-Best-top50-sys129-po10000-i1000-r2000-Var.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="," />
-            </Attribute>
-          </value>
-        </entry>
-        <entry key="\res\AH99-Pearson-top50-sys129-po10000-i1000-r2000-time2025-08-18-03-37-20\AH99-Pearson-Worst-top50-sys129-po10000-i1000-r2000-Fun.csv">
-          <value>
-            <Attribute>
-              <option name="separator" value="&#9;" />
             </Attribute>
           </value>
         </entry>

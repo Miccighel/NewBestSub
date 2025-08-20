@@ -1056,6 +1056,7 @@
     <inspection_tool class="DuplicatedBeanNamesInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="DuplicatedCode" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="DuplicatedDataProviderNames" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="DuplicatedJobUsage" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="Duplicates" enabled="true" level="WEAK WARNING" enabled_by_default="true" />
     <inspection_tool class="DynamicRegexReplaceableByCompiledPattern" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="DynamicallyGeneratedCodeJS" enabled="false" level="WARNING" enabled_by_default="false" />
@@ -2262,7 +2263,6 @@
     <inspection_tool class="LossyConversionCompoundAssignment" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="LossyEncoding" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="MISSORTED_IMPORTS" enabled="false" level="INFORMATION" enabled_by_default="false" />
-    <inspection_tool class="MVCPathVariableInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="MagicCharacter" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="MagicConstant" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="MagicNumber" enabled="false" level="WARNING" enabled_by_default="false" />
@@ -3169,6 +3169,7 @@
       <option name="processComments" value="true" />
     </inspection_tool>
     <inspection_tool class="SpringAopErrorsInspection" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="SpringAopPointcutExpressionInspection" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="SpringAopWarningsInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringAutowiredFieldsWarningInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringBatchModel" enabled="true" level="ERROR" enabled_by_default="true" />
@@ -3179,18 +3180,15 @@
     <inspection_tool class="SpringBeanInstantiationInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringBeanLookupMethodInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringBeanNameConventionInspection" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="SpringBootAdditionalConfig" enabled="true" level="ERROR" enabled_by_default="true" />
-    <inspection_tool class="SpringBootApplicationProperties" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="SpringBootApplicationYaml" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringCacheAnnotationsOnInterfaceInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringCacheNamesInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringCacheableAndCachePutInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringCacheableComponentsInspection" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="SpringCacheableMethodCallsInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="SpringComponentScan" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="SpringConfigurationProxyMethods" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="SpringContextConfigurationInspection" enabled="true" level="ERROR" enabled_by_default="true" />
-    <inspection_tool class="SpringDataMethodInconsistencyInspection" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="SpringDataRepositoryMethodParametersInspection" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="SpringDataRepositoryMethodReturnTypeInspection" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="SpringDependsOnUnresolvedBeanInspection" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="SpringElInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringElStaticFieldInjectionInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringEventListenerInspection" enabled="false" level="WARNING" enabled_by_default="false" />
@@ -3201,43 +3199,49 @@
     <inspection_tool class="SpringFacetProgrammaticInspection" enabled="true" level="WEAK WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringFactoryMethodInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringHandlersSchemasHighlighting" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="SpringImportResource" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="SpringInactiveProfileHighlightingInspection" enabled="true" level="INFORMATION" enabled_by_default="true" />
     <inspection_tool class="SpringIncorrectResourceTypeInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringInjectionValueConsistencyInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringInjectionValueStyleInspection" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="SpringIntegrationDeprecations21" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="SpringIntegrationModel" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="SpringJavaAutowiredFieldsWarningInspection" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="SpringJavaAutowiredMembersInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringJavaAutowiringInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringJavaConfigExternalBeansErrorInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringJavaConfigInconsistencyInspection" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="SpringJavaInjectionPointsAutowiringInspection" enabled="false" level="ERROR" enabled_by_default="false" />
+    <inspection_tool class="SpringJavaStaticMembersAutowiringInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="SpringKotlinAutowiredMembers" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringKotlinAutowiring" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringLookupInjectionInspection" enabled="false" level="ERROR" enabled_by_default="false" />
-    <inspection_tool class="SpringMVCInitBinder" enabled="true" level="ERROR" enabled_by_default="true" />
-    <inspection_tool class="SpringMVCViewInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringMessageDispatcherWebXmlInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringModelInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringOsgiElementsInconsistencyInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringOsgiListenerInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringOsgiServiceCommonInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringPlaceholdersInspection" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="SpringProfileExpression" enabled="false" level="ERROR" enabled_by_default="false" />
+    <inspection_tool class="SpringPropertySource" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="SpringPublicFactoryMethodInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringQualifierCopyableLombok" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="SpringRequiredAnnotationInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringRequiredPropertyInspection" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="SpringScheduledMethodsInspection" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="SpringScopesInspection" enabled="true" level="ERROR" enabled_by_default="true" />
-    <inspection_tool class="SpringSecurityAnnotationBeanPointersResolveInspection" enabled="true" level="ERROR" enabled_by_default="true" />
-    <inspection_tool class="SpringSecurityDebugActivatedInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringSecurityFiltersConfiguredInspection" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="SpringSecurityModelInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringStaticMembersAutowiringInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringTestingDirtiesContextInspection" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="SpringTestingOverridenBeanResolveInspection" enabled="false" level="ERROR" enabled_by_default="false" />
+    <inspection_tool class="SpringTestingSqlInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="SpringTestingTransactionalInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringTransactionalComponentInspection" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="SpringTransactionalMethodCallsInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="SpringWebServiceAnnotationsInconsistencyInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SpringWebServicesConfigurationsInspection" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="SpringWebSocketConfigurationInspection" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="SpringXmlAutowireExplicitlyInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="SpringXmlAutowiringInspection" enabled="false" level="ERROR" enabled_by_default="false" />
+    <inspection_tool class="SpringXmlModelInspection" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="SqlAddNotNullColumnInspection" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="SqlAggregatesInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="SqlAmbiguousColumnInspection" enabled="true" level="WARNING" enabled_by_default="true" />
@@ -3592,7 +3596,9 @@
     <inspection_tool class="UnconditionalWait" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="UnconstructableTestCase" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="UndeclaredTests" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="UndefinedJob" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="UndefinedNestedVariableInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="UndefinedStage" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="UndesirableClassUsage" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="UnfinishedStepVerifier" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="UnhandledExceptionInJSP" enabled="true" level="WARNING" enabled_by_default="true" />
@@ -3693,7 +3699,6 @@
     <inspection_tool class="UnreachableCode" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="UnreachableCodeJS" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="UnregisteredActivator" enabled="true" level="ERROR" enabled_by_default="true" />
-    <inspection_tool class="UnresolvedMessageChannel" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="UnresolvedPropertyKey" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="UnresolvedReference" enabled="true" level="ERROR" enabled_by_default="true" />
     <inspection_tool class="UnresolvedRestParam" enabled="false" level="ERROR" enabled_by_default="false" />
