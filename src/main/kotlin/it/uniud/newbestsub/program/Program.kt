@@ -10,7 +10,7 @@ import org.apache.commons.cli.*
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
-import org.uma.jmetal.util.JMetalException
+import org.uma.jmetal.util.errorchecking.JMetalException
 import java.io.File
 import java.io.FileNotFoundException
 import java.nio.file.FileSystemException

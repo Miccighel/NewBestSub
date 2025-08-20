@@ -20,6 +20,7 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
         val bitset = s.getVariableValue(0)
         val totalNumberOfTopics = s.getNumberOfBits(0)
 
+        /* Determinism: use jMetal's singleton RNG (seeded via your RngBridge when enabled). */
         if (JMetalRandom.getInstance().nextDouble() < probability) {
 
             var flipIndex = if (totalNumberOfTopics <= 1) 0
@@ -44,6 +45,6 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
         return s
     }
 
-
-    override fun getMutationProbability(): Double = probability
+    /* jMetal 6.x: property-style accessor (replaces getMutationProbability()) */
+    override fun mutationProbability(): Double = probability
 }

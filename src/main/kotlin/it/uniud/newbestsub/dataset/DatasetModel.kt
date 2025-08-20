@@ -315,9 +315,11 @@ class DatasetModel {
                     forcedCardinality = null
                 )
                 val genes = variableValues[index]
-                solution.setVariable(0, solution.createNewBitSet(numberOfTopics, genes))
-                solution.setObjective(0, cardinalities[index].toDouble())
-                solution.setObjective(1, correlations[index])
+                /* jMetal 6.x: no setVariable on BinarySolution; use the helper on our solution type */
+                solution.setVariableValue(0, solution.createNewBitSet(numberOfTopics, genes))
+                /* jMetal 6.x: objectives() property array */
+                solution.objectives()[0] = cardinalities[index].toDouble()
+                solution.objectives()[1] = correlations[index]
 
                 notDominatedSolutions.add(solution)
                 allSolutions.add(solution)
@@ -566,15 +568,18 @@ class DatasetModel {
     private fun loadTargetToAchieve(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
 
         val bestStrategy: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
-            solution.setObjective(0, (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble())
-            solution.setObjective(1, correlation * -1)   // NOTE: negate corr for BEST for internal Pareto sense
+            /* objective[0] = +K, objective[1] = -corr (maximize corr) */
+            solution.objectives()[0] = (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble()
+            solution.objectives()[1] = -correlation
             solution
         }
         val worstStrategy: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
-            solution.setObjective(0, ((solution as BestSubsetSolution).numberOfSelectedTopics * -1).toDouble())
-            solution.setObjective(1, correlation)         // NOTE: keep corr as-is for WORST internally
+            /* objective[0] = -K (maximize -K ≡ minimize K), objective[1] = +corr (minimize corr later when ranking worst) */
+            solution.objectives()[0] = -(solution as BestSubsetSolution).numberOfSelectedTopics.toDouble()
+            solution.objectives()[1] = correlation
             solution
         }
+
 
         this.targetToAchieve = targetToAchieve
 
@@ -596,11 +601,13 @@ class DatasetModel {
     private fun fixObjectiveFunctionValues(solutionsToFix: MutableList<BinarySolution>): MutableList<BinarySolution> {
         when (targetToAchieve) {
             Constants.TARGET_BEST -> solutionsToFix.forEach { s ->
-                s.setObjective(1, s.getCorrelation() * -1)  // restore reported correlation
+                /* correlation was stored as negative internally → flip back */
+                s.objectives()[1] = -s.getCorrelation()
             }
 
             Constants.TARGET_WORST -> solutionsToFix.forEach { s ->
-                s.setObjective(0, s.getCardinality() * -1)  // restore reported K
+                /* K was stored as negative internally → flip back */
+                s.objectives()[0] = -s.getCardinality()
             }
         }
         return solutionsToFix

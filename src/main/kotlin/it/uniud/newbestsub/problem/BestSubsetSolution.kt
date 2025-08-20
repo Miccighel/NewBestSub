@@ -8,7 +8,7 @@ import java.util.Objects
 
 class BestSubsetSolution(
 
-    /* Core sizes required by Solution API */
+    /* Core sizes required by Solution API (kept as constructor params for your callers) */
     private val numberOfVariables: Int,
     private val numberOfObjectives: Int,
 
@@ -21,7 +21,10 @@ class BestSubsetSolution(
 
 ) : BinarySolution, Comparable<BestSubsetSolution> {
 
-    /* Variables, objectives, constraints, attributes storage */
+    /* -------- jMetal 6.x storage backing fields --------
+     * jMetal 6 switches to property-style accessors:
+     *   variables(), objectives(), constraints(), attributes()
+     * We keep your internal fields and expose them via the new methods below. */
     private val variables: MutableList<BinarySet> = MutableList(numberOfVariables) { BinarySet(numberOfTopics) }
     private val objectives: DoubleArray = DoubleArray(numberOfObjectives) { 0.0 }
     private val constraints: DoubleArray = DoubleArray(0) /* no constraints in this problem */
@@ -76,49 +79,16 @@ class BestSubsetSolution(
         logger.debug("<Num. Sel. Topics: $numberOfSelectedTopics, Sel. Topics: ${getTopicLabelsFromTopicStatus()}, Gene: ${getVariableValueString(0)}>")
     }
 
+    // BinarySolution / Solution API implementation (jMetal 6.x)
+    // NOTE: The old get*/set* methods are gone from the interface.
+    // We now expose property-style accessors as required by 6.x.
 
-    /* -------- BinarySolution / Solution API implementation (jMetal 5.10) -------- */
+    override fun variables(): MutableList<BinarySet> = variables
+    override fun objectives(): DoubleArray = objectives
+    override fun constraints(): DoubleArray = constraints
+    override fun attributes(): MutableMap<Any, Any> = attributes
 
-    override fun getNumberOfVariables(): Int = numberOfVariables
-    override fun getNumberOfObjectives(): Int = numberOfObjectives
-    override fun getNumberOfConstraints(): Int = constraints.size
-
-    override fun getVariables(): MutableList<BinarySet> = variables
-    override fun getVariable(index: Int): BinarySet = variables[index]
-    override fun setVariable(index: Int, value: BinarySet) {
-        variables[index] = value
-    }
-
-    override fun getObjectives(): DoubleArray = objectives
-    override fun getObjective(index: Int): Double = objectives[index]
-    override fun setObjective(index: Int, value: Double) {
-        objectives[index] = value
-    }
-
-    override fun getConstraints(): DoubleArray = constraints
-    override fun getConstraint(index: Int): Double = constraints[index]
-    override fun setConstraint(index: Int, value: Double) {
-        /* No constraints: keep for API completeness; guard if ever called. */
-        throw IndexOutOfBoundsException("No constraints defined (size=${constraints.size}), requested index=$index")
-    }
-
-    override fun getNumberOfBits(index: Int): Int {
-        require(index == 0) { "BestSubsetSolution exposes 1 BinarySet variable; requested index=$index" }
-        return variables[0].binarySetLength
-    }
-
-    override fun getTotalNumberOfBits(): Int = variables[0].binarySetLength
-
-    override fun getAttributes(): MutableMap<Any, Any> = attributes
-    override fun setAttribute(id: Any, value: Any) {
-        attributes[id] = value
-    }
-
-    override fun getAttribute(id: Any): Any? = attributes[id]
-    override fun hasAttribute(id: Any): Boolean = attributes.containsKey(id)
-
-    /* -------- Convenience & domain helpers -------- */
-
+    /* jMetal requires a copy; we keep your deep copy semantics and return the same type. */
     override fun copy(): BestSubsetSolution {
         val clone = BestSubsetSolution(
             numberOfVariables = numberOfVariables,
@@ -129,14 +99,15 @@ class BestSubsetSolution(
         )
         /* Variables */
         for (i in 0 until numberOfVariables) {
-            clone.setVariable(i, (this.getVariable(i).clone() as BinarySet))
+            // BinarySet supports clone(); if that ever changes, fall back to manual bit copy.
+            clone.variables()[i] = (this.variables()[i].clone() as BinarySet)
         }
         /* Objectives */
         for (i in 0 until numberOfObjectives) {
-            clone.setObjective(i, this.getObjective(i))
+            clone.objectives()[i] = this.objectives()[i]
         }
         /* Attributes */
-        clone.getAttributes().putAll(this.getAttributes())
+        clone.attributes().putAll(this.attributes())
 
         /* Cached fields */
         clone.topicStatus = this.topicStatus.copyOf()
@@ -144,6 +115,8 @@ class BestSubsetSolution(
 
         return clone
     }
+
+    /* -------- Convenience & domain helpers -------- */
 
     fun createNewBitSet(numberOfBits: Int, values: Array<Boolean>): BinarySet {
         val bitSet = BinarySet(numberOfBits)
@@ -154,7 +127,7 @@ class BestSubsetSolution(
     fun setBitValue(index: Int, value: Boolean) {
         val bs = variables[0]
         if (bs.get(index) != value) {
-            bs.set(index, value)
+            if (value) bs.set(index) else bs.clear(index)
             if (value) numberOfSelectedTopics++ else numberOfSelectedTopics--
             topicStatus[index] = value
         }
@@ -163,7 +136,7 @@ class BestSubsetSolution(
 
     fun retrieveTopicStatus(): BooleanArray {
         val bs = variables[0]
-        val out = BooleanArray(bs.binarySetLength)
+        val out = BooleanArray(bs.length())  /* jMetal 6.x: use length() instead of binarySetLength */
         for (i in out.indices) out[i] = bs.get(i)
         return out
     }
@@ -180,14 +153,26 @@ class BestSubsetSolution(
 
     fun getVariableValueString(index: Int): String {
         val bs = variables[index]
-        val sb = StringBuilder(bs.binarySetLength)
-        for (i in 0 until bs.binarySetLength) sb.append(if (bs.get(i)) '1' else '0')
+        val sb = StringBuilder(bs.length())  /* jMetal 6.x: use length() */
+        for (i in 0 until bs.length()) sb.append(if (bs.get(i)) '1' else '0')
         return sb.toString()
     }
 
-    /* Convenience wrappers for legacy code */
-    fun getVariableValue(index: Int) = getVariable(index)
-    fun setVariableValue(index: Int, value: BinarySet) = setVariable(index, value)
+    /* Convenience wrappers for legacy code (keep callers stable where possible) */
+    fun getVariableValue(index: Int) = variables()[index]
+    fun setVariableValue(index: Int, value: BinarySet) {
+        variables()[index] = value
+    }
+
+    /* -------- BinarySolution bit interface (kept for 6.0.0 compatibility) -------- */
+    override fun getNumberOfBits(index: Int): Int {
+        /* BestSubsetSolution exposes exactly 1 BinarySet variable */
+        require(index == 0) { "BestSubsetSolution exposes 1 BinarySet variable; requested index=$index" }
+        return variables[0].length()   /* jMetal 6.x: BinarySet.length() */
+    }
+
+    override fun getTotalNumberOfBits(): Int = variables[0].length()
+
 
     override fun compareTo(other: BestSubsetSolution): Int {
         return this.getCardinality().compareTo(other.getCardinality())
@@ -202,6 +187,8 @@ class BestSubsetSolution(
     override fun hashCode(): Int = Objects.hash(getCorrelation(), getCardinality())
 }
 
-/* Convenience accessors for objective semantics. */
-fun BinarySolution.getCardinality(): Double = getObjective(0)
-fun BinarySolution.getCorrelation(): Double = getObjective(1)
+/* -------- Convenience accessors for objective semantics (jMetal 6.x) --------
+ * Old calls like solution.getObjective(i) must migrate to solution.objectives()[i].
+ * These helpers keep your meaning explicit across the codebase. */
+fun BinarySolution.getCardinality(): Double = this.objectives()[0]
+fun BinarySolution.getCorrelation(): Double = this.objectives()[1]

@@ -26,14 +26,18 @@ class BestSubsetProblem(
     private var progressCounter = 0
     private var cardinalityToGenerate = 1
 
-    override fun getName(): String = "BestSubsetProblem"
-    override fun getNumberOfVariables(): Int = 1
-    override fun getNumberOfObjectives(): Int = 2
-    override fun getNumberOfConstraints(): Int = 0
-    override fun getTotalNumberOfBits(): Int = numberOfTopics
+    /* -------- BinaryProblem / Problem API (jMetal 6.x) --------
+     * jMetal 6 uses property-style names: name(), numberOfVariables(), … */
+    override fun name(): String = "BestSubsetProblem"
+    override fun numberOfVariables(): Int = 1
+    override fun numberOfObjectives(): Int = 2
+    override fun numberOfConstraints(): Int = 0
+    override fun totalNumberOfBits(): Int = numberOfTopics
 
+    /* Generate solutions:
+     *  - First pass: increasing K = 1..(n-1)
+     *  - Then: random subsets (with at least one bit set) */
     override fun createSolution(): BinarySolution {
-        /* Generate increasing K = 1..(n-1), then random */
         return if (cardinalityToGenerate < numberOfTopics) {
             val s = BestSubsetSolution(
                 /* Core sizes required by Solution API */
@@ -59,7 +63,8 @@ class BestSubsetProblem(
         }
     }
 
-    override fun evaluate(solution: BinarySolution) {
+    /* jMetal 6.x: evaluate(...) MUST return the solution */
+    override fun evaluate(solution: BinarySolution): BinarySolution {
 
         solution as BestSubsetSolution
 
@@ -70,7 +75,10 @@ class BestSubsetProblem(
             parameters.numberOfIterations >= loggingFactor &&
             iterationCounter <= parameters.numberOfIterations
         ) {
-            logger.info("Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}.")
+            logger.info(
+                "Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) " +
+                "for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
+            )
             progressCounter += Constants.LOGGING_FACTOR
         }
 
@@ -84,11 +92,12 @@ class BestSubsetProblem(
 
         val oldSolution = dominatedSolutions[solution.numberOfSelectedTopics.toDouble()]
         logger.debug(
-            "<Correlation: $correlation, Num. Sel. Topics: ${solution.numberOfSelectedTopics}, Sel. Topics: ${solution.getTopicLabelsFromTopicStatus()}, Ev. Gene: ${solution.getVariableValueString(0)}>"
+            "<Correlation: $correlation, Num. Sel. Topics: ${solution.numberOfSelectedTopics}, " +
+            "Sel. Topics: ${solution.getTopicLabelsFromTopicStatus()}, Ev. Gene: ${solution.getVariableValueString(0)}>"
         )
 
         /* objective[0] = cardinality (or -cardinality), objective[1] = correlation (possibly negated) */
-        targetStrategy(solution, correlation)
+        targetStrategy(solution, correlation)  /* side-effect: writes objectives() */
 
         /* SECOND EVALUATION PART: A copy of the selected solution is evaluated to verify if it's a better dominated solution */
         val candidateCopy = solution.copy()
@@ -101,8 +110,12 @@ class BestSubsetProblem(
             }
             val oldCorrelation = correlationStrategy.invoke(oldMeanAPReduced, meanAveragePrecisions)
             when (parameters.targetToAchieve) {
-                Constants.TARGET_BEST -> if (correlation > oldCorrelation) dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = candidateCopy
-                Constants.TARGET_WORST -> if (correlation < oldCorrelation) dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = candidateCopy
+                Constants.TARGET_BEST ->
+                    if (correlation > oldCorrelation)
+                        dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = candidateCopy
+                Constants.TARGET_WORST ->
+                    if (correlation < oldCorrelation)
+                        dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = candidateCopy
             }
         } else {
             dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = candidateCopy
@@ -144,12 +157,13 @@ class BestSubsetProblem(
         }
 
         iterationCounter++
+        return solution
     }
 
-    /* Add these overrides to satisfy BinaryProblem in jMetal 5.10 */
-    override fun getListOfBitsPerVariable(): List<Int> = listOf(numberOfTopics)
+    /* -------- BinaryProblem bit layout (jMetal 6.x) -------- */
+    override fun listOfBitsPerVariable(): MutableList<Int> = mutableListOf(numberOfTopics)
 
-    override fun getBitsFromVariable(index: Int): Int {
+    override fun bitsFromVariable(index: Int): Int {
         /* We have a single binary variable whose length equals numberOfTopics */
         require(index == 0) { "BestSubsetProblem has exactly 1 variable; requested index=$index" }
         return numberOfTopics

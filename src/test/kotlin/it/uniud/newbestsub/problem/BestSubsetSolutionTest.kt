@@ -102,8 +102,9 @@ class BestSubsetSolutionTest {
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test begins.")
 
         var sum = 0
-        (0 until testSol.numberOfVariables).forEach { index ->
-            sum += testSol.getVariable(index).binarySetLength
+        /* jMetal 6.x: use property-style accessors */
+        (0 until testSol.variables().size).forEach { index ->
+            sum += testSol.variables()[index].length()
         }
         println("[BestSubsetSolutionTest setBitValue] - Testing: <Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits}>.")
         assertEquals(true, sum == testSol.totalNumberOfBits, "<Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits}>.")
