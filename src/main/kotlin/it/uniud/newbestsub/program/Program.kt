@@ -14,7 +14,7 @@ import org.uma.jmetal.util.JMetalException
 import java.io.File
 import java.io.FileNotFoundException
 import java.nio.file.FileSystemException
-import org.apache.commons.cli.HelpFormatter as CliHelpFormatter
+import org.apache.commons.cli.help.HelpFormatter
 
 object Program {
 
@@ -74,6 +74,7 @@ object Program {
                 targetToAchieve = when (commandLine.getOptionValue("t")) {
                     Constants.TARGET_BEST, Constants.TARGET_WORST, Constants.TARGET_AVERAGE, Constants.TARGET_ALL ->
                         commandLine.getOptionValue("t")
+
                     else -> throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
                 }
 
@@ -353,7 +354,7 @@ object Program {
         } catch (exception: ParseException) {
 
             logger.error(exception.message)
-            val formatter = CliHelpFormatter()
+            val formatter = HelpFormatter.builder().get()
             formatter.printHelp(Constants.NEWBESTSUB_NAME, "", options, "", true)
             logger.error("End of the usage section.")
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
