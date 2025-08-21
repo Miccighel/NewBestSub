@@ -28,7 +28,7 @@ import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.DOUBLE
 import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT32
 import org.apache.parquet.schema.Types
 
-// NEW imports for NIO OutputFile fallback
+// NIO OutputFile fallback (Windows without winutils)
 import org.apache.parquet.io.OutputFile
 import org.apache.parquet.io.PositionOutputStream
 import java.nio.ByteBuffer
@@ -40,10 +40,11 @@ import java.nio.file.StandardOpenOption
  * ===========
  *
  * Streaming-first Parquet writer:
- *  - **-Fun/-Var**: buffer rows during streaming; on close, sort globally by (K asc, corr asc)
+ *  - **-Fun/-Var**: buffer rows during streaming; on close, sort globally by (K asc, corr asc|desc)
  *    and write Parquet siblings. Correlations stored with **6 digits** of precision.
- *    - **-Var** stores **pipe-delimited topic labels** for bits set to 1 (e.g., "401|423|446").
+ *    - **-Var** stores a compact **Base64 bitmask** (field: BitsB64), **no "B64:" prefix**.
  *  - **-Top**: replace-batch semantics; we keep a per-K 10-row block cache and write it at close.
+ *    - **-Top** stores **TopicsB64** (Base64 bitmask), **no "B64:" prefix**.
  *
  * Non-streamed path:
  *  - `printSnapshot(...)` writes final Parquet directly from the provided solution lists.
@@ -54,10 +55,10 @@ import java.nio.file.StandardOpenOption
  *    normalized to **6 digits**; everything is stored as UTF-8 strings for schema stability.
  *
  * Cross-platform compression:
- *  - Default **GZIP on Windows**, **SNAPPY altrove** (override con -Dnbs.parquet.codec=SNAPPY|GZIP|UNCOMPRESSED).
- *  - Se si usa SNAPPY, proviamo a impostare una temp dir scrivibile per la DLL/native lib.
+ *  - Default **GZIP on Windows**, **SNAPPY elsewhere** (override via -Dnbs.parquet.codec=SNAPPY|GZIP|UNCOMPRESSED).
+ *  - If SNAPPY is used, we try to set a writable temp dir for the native lib.
  *
- * Su Windows, se manca winutils.exe, usiamo un fallback NIO che non richiede Hadoop locale.
+ * On Windows without winutils.exe, we use a fallback NIO OutputFile that doesn't require Hadoop local FS.
  */
 class ParquetView {
 
@@ -67,35 +68,35 @@ class ParquetView {
 
     private fun funParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.FUNCTION_VALUES_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.FUNCTION_VALUES_FILE_SUFFIX
+            )
 
     private fun varParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.VARIABLE_VALUES_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.VARIABLE_VALUES_FILE_SUFFIX
+            )
 
     private fun topParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.TOP_SOLUTIONS_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.TOP_SOLUTIONS_FILE_SUFFIX
+            )
 
     fun getAggregatedDataParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.AGGREGATED_DATA_FILE_SUFFIX)
+            ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.AGGREGATED_DATA_FILE_SUFFIX)
     }
 
     fun getInfoParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.INFO_FILE_SUFFIX)
+            ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.INFO_FILE_SUFFIX)
     }
 
     /* ---------------- Schemas ---------------- */
@@ -106,17 +107,26 @@ class ParquetView {
         .required(DOUBLE).named("Correlation")
         .named("Fun")
 
-    /** Parquet schema for VAR: K:int32, Labels:utf8 (pipe-delimited labels for ones) */
+    /**
+     * Parquet schema for VAR (compact):
+     *  - K:int32
+     *  - BitsB64:utf8   (Base64 bitmask WITHOUT "B64:" prefix)
+     */
     private fun schemaVar(): MessageType = Types.buildMessage()
         .required(INT32).named("K")
-        .required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named("Labels")
+        .required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named("BitsB64")
         .named("Var")
 
-    /** Parquet schema for TOP: K:int32, Correlation:double, Topics:utf8 (pipe-delimited) */
+    /**
+     * Parquet schema for TOP (compact):
+     *  - K:int32
+     *  - Correlation:double
+     *  - TopicsB64:utf8 (Base64 bitmask WITHOUT "B64:" prefix)
+     */
     private fun schemaTop(): MessageType = Types.buildMessage()
         .required(INT32).named("K")
         .required(DOUBLE).named("Correlation")
-        .required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named("Topics")
+        .required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named("TopicsB64")
         .named("Top")
 
     /** Generic UTF-8 schema builder for Final tables (columns derived from header). */
@@ -172,7 +182,6 @@ class ParquetView {
 
     private class NioOutputFile(private val path: java.nio.file.Path) : OutputFile {
         override fun create(blockSizeHint: Long) = createOrOverwrite(blockSizeHint)
-
         override fun createOrOverwrite(blockSizeHint: Long): PositionOutputStream {
             Files.createDirectories(path.parent)
             val ch = FileChannel.open(
@@ -190,22 +199,15 @@ class ParquetView {
                     ch.write(bb)
                     pos += 1
                 }
-
                 override fun write(b: ByteArray, off: Int, len: Int) {
                     val bb = ByteBuffer.wrap(b, off, len)
                     val n = ch.write(bb)
                     pos += n.toLong()
                 }
-
-                override fun flush() { /* no-op */
-                }
-
-                override fun close() {
-                    ch.close()
-                }
+                override fun flush() { /* no-op */ }
+                override fun close() { ch.close() }
             }
         }
-
         override fun supportsBlockSize(): Boolean = false
         override fun defaultBlockSize(): Long = 0L
     }
@@ -218,7 +220,6 @@ class ParquetView {
             runCatching { ensureSnappyTemp(pathStr) }
         }
 
-        // Decide the output target: use HadoopOutputFile unless we're on Windows without winutils
         val useNioFallback = isWindows() && !hasWinutils()
 
         val builder = if (useNioFallback) {
@@ -240,7 +241,7 @@ class ParquetView {
             .build()
     }
 
-    /* ---------------- Local formatting helpers ---------------- */
+    /* ---------------- Local formatting + compact bitmask helpers ---------------- */
 
     /** Round a double to 6 digits for storage (CSV & Parquet policy). */
     private fun round6(x: Double): Double = round(x * 1_000_000.0) / 1_000_000.0
@@ -272,36 +273,7 @@ class ParquetView {
         }
     }
 
-    /** Convert incoming VAR bitstring to **pipe-delimited labels**. */
-    private fun toLabelsLine(rawLine: String, labels: Array<String>): String {
-        val t = rawLine.trim()
-        if (t.isEmpty()) return ""
-        if (t.indexOf('|') >= 0) return t
-
-        val sb = StringBuilder()
-        var first = true
-
-        // Space-separated bits (e.g., "1 0 1 0")
-        if (t.indexOf(' ') >= 0 || t.indexOf('\t') >= 0) {
-            val parts = t.split(Regex("\\s+"))
-            val n = minOf(parts.size, labels.size)
-            for (i in 0 until n) if (parts[i] == "1") {
-                if (!first) sb.append('|') else first = false
-                sb.append(labels[i])
-            }
-            return sb.toString()
-        }
-
-        // Compact bits (e.g., "101001")
-        val n = minOf(t.length, labels.size)
-        for (i in 0 until n) if (t[i] == '1') {
-            if (!first) sb.append('|') else first = false
-            sb.append(labels[i])
-        }
-        return sb.toString()
-    }
-
-    /** Normalize topic strings like "[401 423]" → "401|423". */
+    /** Normalize topics text like "[401 423]" → "401|423". */
     private fun normalizeTopics(rawTopics: String): String =
         rawTopics.trim()
             .removePrefix("[").removeSuffix("]")
@@ -309,17 +281,139 @@ class ParquetView {
             .filter { it.isNotEmpty() }
             .joinToString("|")
 
+    /* ---- Base64 packing (little-endian 64-bit words, LSB-first bits) ---- */
+
+    /** BooleanArray → Base64 payload (WITHOUT "B64:" prefix). */
+    private fun booleanMaskToBase64(mask: BooleanArray): String {
+        val words = ((mask.size + 63) ushr 6)
+        val packed = LongArray(words)
+        var w = 0
+        var bit = 0
+        var acc = 0L
+        for (i in 0 until mask.size) {
+            if (mask[i]) acc = acc or (1L shl bit)
+            bit++
+            if (bit == 64) {
+                packed[w++] = acc
+                acc = 0L
+                bit = 0
+            }
+        }
+        if (bit != 0) packed[w] = acc
+        val bytes = ByteArray(words * java.lang.Long.BYTES)
+        var off = 0
+        for (word in packed) {
+            var x = word
+            repeat(java.lang.Long.BYTES) {
+                bytes[off + it] = (x and 0xFF).toByte()
+                x = x ushr 8
+            }
+            off += java.lang.Long.BYTES
+        }
+        return java.util.Base64.getEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    /** Convert labels (pipe-delimited) → Base64 payload (WITHOUT "B64:" prefix). */
+    private fun labelsPipeToBase64(labelsPipe: String, topicLabels: Array<String>): String {
+        val idxByLabel = hashMapOf<String, Int>().also { map ->
+            for (i in topicLabels.indices) map[topicLabels[i]] = i
+        }
+        val mask = BooleanArray(topicLabels.size)
+        if (labelsPipe.isNotBlank()) {
+            labelsPipe.split('|').forEach { lab ->
+                val i = idxByLabel[lab]
+                if (i != null && i in mask.indices) mask[i] = true
+            }
+        }
+        return booleanMaskToBase64(mask)
+    }
+
+    /** Robust converter: B64 / bitstrings / labels / indices → bare Base64 payload. */
+    private fun topicsFieldToBase64(raw: String, topicLabels: Array<String>): String {
+        val t = raw.trim()
+        if (t.startsWith("B64:")) return t.substring(4)
+
+        // raw 0/1 bitstring (spaces allowed)
+        val bitsOnly = t.replace(" ", "")
+        if (bitsOnly.isNotEmpty() && bitsOnly.all { it == '0' || it == '1' }) {
+            val n = topicLabels.size
+            val mask = BooleanArray(n)
+            val m = kotlin.math.min(bitsOnly.length, n)
+            for (i in 0 until m) if (bitsOnly[i] == '1') mask[i] = true
+            return booleanMaskToBase64(mask)
+        }
+
+        // Bracketed or delimited labels/indices
+        val inner = t.removePrefix("[").removeSuffix("]")
+        val parts = when {
+            inner.contains(',') -> inner.split(',').map { it.trim() }
+            inner.contains('|') -> inner.split('|').map { it.trim() }
+            else -> listOf(inner.trim()).filter { it.isNotEmpty() }
+        }
+
+        val mask = BooleanArray(topicLabels.size)
+        if (parts.isNotEmpty()) {
+            // Try numeric indices first
+            var matchedAny = false
+            for (p in parts) {
+                val idx = p.toIntOrNull()
+                if (idx != null && idx in mask.indices) {
+                    mask[idx] = true
+                    matchedAny = true
+                }
+            }
+            if (!matchedAny) {
+                // Map by exact label
+                val idxByLabel = hashMapOf<String, Int>().also { map ->
+                    for (i in topicLabels.indices) map[topicLabels[i]] = i
+                }
+                for (p in parts) {
+                    val i = idxByLabel[p]
+                    if (i != null && i in mask.indices) {
+                        mask[i] = true
+                        matchedAny = true
+                    }
+                }
+            }
+            if (!matchedAny) {
+                logger.warn("TOP topics field did not match labels or indices; emitting empty mask. raw='{}'", raw)
+            }
+        }
+        return booleanMaskToBase64(mask)
+    }
+
+    /** Accepts either "B64:..." or labels/bitstrings; returns bare Base64 for VAR rows. */
+    private fun anyVarToBase64(raw: String, topicLabels: Array<String>): String {
+        val t = raw.trim()
+        return when {
+            t.startsWith("B64:") -> t.substring(4)
+            t.contains('|') || t.contains(',') || t.contains(' ') || t.contains('[') -> {
+                val pipe = if (t.contains('|')) t else normalizeTopics(t)
+                labelsPipeToBase64(pipe, topicLabels)
+            }
+            // raw bitstring without spaces?
+            t.all { it == '0' || it == '1' } -> {
+                val n = topicLabels.size
+                val mask = BooleanArray(n)
+                val m = kotlin.math.min(t.length, n)
+                for (i in 0 until m) if (t[i] == '1') mask[i] = true
+                booleanMaskToBase64(mask)
+            }
+            else -> t // assume already bare Base64
+        }
+    }
+
     /* ---------------- Streaming state ---------------- */
 
     private data class ViewKey(val dataset: String, val execution: Int, val target: String)
 
     /** Buffered rows for -Fun/-Var streaming (we write Parquet at close). */
-    private data class FunVarRow(val k: Int, val corrExternal: Double, val labelsLine: String)
+    private data class FunVarRow(val k: Int, val corrExternal: Double, val base64Bits: String)
 
     private val funVarBuffers: MutableMap<ViewKey, MutableList<FunVarRow>> = mutableMapOf()
 
     /** Cached 10-row blocks for -Top streaming (we write Parquet at close). */
-    private data class TopRow(val k: Int, val corrExternal: Double, val topicsPipe: String)
+    private data class TopRow(val k: Int, val corrExternal: Double, val topicsB64: String)
 
     private val topBlocks: MutableMap<ViewKey, MutableMap<Int, List<TopRow>>> = mutableMapOf()
 
@@ -345,30 +439,23 @@ class ParquetView {
             }
         }.onFailure { logger.warn("FUN Parquet write failed", it) }
 
-        /* VAR */
+        /* VAR (compact Base64) */
         runCatching {
-            val labels = model.topicLabels
             val schema = schemaVar()
             val factory = SimpleGroupFactory(schema)
             openWriter(varParquetPath(model), schema).use { w ->
                 for (s in allSolutions) {
                     val flags = (s as BestSubsetSolution).retrieveTopicStatus()
-                    val ones = buildString {
-                        var first = true
-                        for (i in flags.indices) if (flags[i]) {
-                            if (!first) append('|') else first = false
-                            append(labels[i])
-                        }
-                    }
+                    val b64 = booleanMaskToBase64(flags)                  // no "B64:" prefix
                     val g = factory.newGroup()
                         .append("K", s.getCardinality().toInt())
-                        .append("Labels", ones)
+                        .append("BitsB64", b64)
                     w.write(g)
                 }
             }
         }.onFailure { logger.warn("VAR Parquet write failed", it) }
 
-        /* TOP (Best/Worst only) */
+        /* TOP (Best/Worst only, compact TopicsB64) */
         if (actualTarget != Constants.TARGET_AVERAGE) {
             runCatching {
                 val schema = schemaTop()
@@ -376,10 +463,12 @@ class ParquetView {
                 openWriter(topParquetPath(model), schema).use { w ->
                     for (s in topSolutions) {
                         val bss = s as BestSubsetSolution
+                        val flags = bss.retrieveTopicStatus()
+                        val topicsB64 = booleanMaskToBase64(flags)        // no "B64:" prefix
                         val g = factory.newGroup()
                             .append("K", bss.getCardinality().toInt())
                             .append("Correlation", round6(bss.getCorrelation()))
-                            .append("Topics", normalizeTopics(bss.getTopicLabelsFromTopicStatus()))
+                            .append("TopicsB64", topicsB64)
                         w.write(g)
                     }
                 }
@@ -397,9 +486,11 @@ class ParquetView {
             Constants.TARGET_BEST -> -ev.correlation
             else -> ev.correlation
         }
-        val labelsLine = toLabelsLine(ev.variableValuesCsvLine, model.topicLabels)
 
-        buf += FunVarRow(k = ev.cardinality, corrExternal = corrExternal, labelsLine = labelsLine)
+        // Source may already be "B64:..." (new CSVView/model), or legacy labels/bitstrings.
+        val base64Bits = anyVarToBase64(ev.variableValuesCsvLine, model.topicLabels)
+
+        buf += FunVarRow(k = ev.cardinality, corrExternal = corrExternal, base64Bits = base64Bits)
     }
 
     fun onReplaceTopBatch(model: DatasetModel, blocks: Map<Int, List<String>>) {
@@ -410,10 +501,12 @@ class ParquetView {
 
         for ((kFixed, lines) in blocks) {
             val parsed: List<TopRow> = lines.mapNotNull { line ->
+                // incoming lines are "K,Correlation,Topics" where Topics may be B64, labels, indices, or bitstrings
                 val p = line.split(',', limit = 3)
                 if (p.size < 3) return@mapNotNull null
                 val corr = p[1].trim().toDoubleOrNull() ?: return@mapNotNull null
-                TopRow(k = kFixed, corrExternal = corr, topicsPipe = normalizeTopics(p[2]))
+                val topicsB64 = topicsFieldToBase64(p[2], model.topicLabels)
+                TopRow(k = kFixed, corrExternal = corr, topicsB64 = topicsB64)
             }
             if (parsed.size == 10) cache[kFixed] = parsed
         }
@@ -443,7 +536,7 @@ class ParquetView {
             }
         }.onFailure { logger.warn("FUN Parquet write (streamed) failed", it) }
 
-        /* VAR */
+        /* VAR (compact Base64) */
         runCatching {
             val rows = funVarBuffers[viewKey]?.sortedWith(
                 if (model.targetToAchieve == Constants.TARGET_WORST)
@@ -458,13 +551,13 @@ class ParquetView {
                 for (r in rows) {
                     val g = factory.newGroup()
                         .append("K", r.k)
-                        .append("Labels", r.labelsLine)
+                        .append("BitsB64", r.base64Bits) // bare Base64, no "B64:" prefix
                     w.write(g)
                 }
             }
         }.onFailure { logger.warn("VAR Parquet write (streamed) failed", it) }
 
-        /* TOP */
+        /* TOP (compact TopicsB64) */
         if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
             runCatching {
                 val cache = topBlocks[viewKey].orEmpty().toSortedMap() // K asc
@@ -476,7 +569,7 @@ class ParquetView {
                             val g = factory.newGroup()
                                 .append("K", row.k)
                                 .append("Correlation", round6(row.corrExternal))
-                                .append("Topics", row.topicsPipe)
+                                .append("TopicsB64", row.topicsB64) // bare Base64, no prefix
                             w.write(g)
                         }
                     }
