@@ -18,7 +18,7 @@ class BitFlipMutation(var probability: Double) : MutationOperator<BinarySolution
         logger.debug("<(Pre) Num. Sel. Topics: ${s.numberOfSelectedTopics}, (Pre) Gene: $oldGene>")
 
         val bitset = s.getVariableValue(0)
-        val totalNumberOfTopics = s.getNumberOfBits(0)
+        val totalNumberOfTopics = s.numberOfBitsPerVariable()[0]
 
         /* Determinism: use jMetal's singleton RNG (seeded via your RngBridge when enabled). */
         if (JMetalRandom.getInstance().nextDouble() < probability) {

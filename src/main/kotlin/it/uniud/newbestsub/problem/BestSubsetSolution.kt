@@ -22,9 +22,9 @@ class BestSubsetSolution(
 ) : BinarySolution, Comparable<BestSubsetSolution> {
 
     /* -------- jMetal 6.x storage backing fields --------
-     * jMetal 6 switches to property-style accessors:
+     * jMetal 6 uses property-style accessors:
      *   variables(), objectives(), constraints(), attributes()
-     * We keep your internal fields and expose them via the new methods below. */
+     * We keep your internal fields and expose them via those methods. */
     private val variables: MutableList<BinarySet> = MutableList(numberOfVariables) { BinarySet(numberOfTopics) }
     private val objectives: DoubleArray = DoubleArray(numberOfObjectives) { 0.0 }
     private val constraints: DoubleArray = DoubleArray(0) /* no constraints in this problem */
@@ -79,14 +79,20 @@ class BestSubsetSolution(
         logger.debug("<Num. Sel. Topics: $numberOfSelectedTopics, Sel. Topics: ${getTopicLabelsFromTopicStatus()}, Gene: ${getVariableValueString(0)}>")
     }
 
-    // BinarySolution / Solution API implementation (jMetal 6.x)
-    // NOTE: The old get*/set* methods are gone from the interface.
+    // -------- BinarySolution / Solution API (jMetal 6.x) --------
+    // NOTE: The old get*/set* methods disappeared from the interface.
     // We now expose property-style accessors as required by 6.x.
 
     override fun variables(): MutableList<BinarySet> = variables
     override fun objectives(): DoubleArray = objectives
     override fun constraints(): DoubleArray = constraints
     override fun attributes(): MutableMap<Any, Any> = attributes
+
+    /* jMetal 6.1 bit-size reporting:
+     * - numberOfBitsPerVariable(): per-variable lengths
+     * - totalNumberOfBits(): sum of lengths (we only have 1 BinarySet) */
+    override fun numberOfBitsPerVariable(): List<Int> = listOf(variables[0].length())
+    override fun totalNumberOfBits(): Int = variables[0].length()
 
     /* jMetal requires a copy; we keep your deep copy semantics and return the same type. */
     override fun copy(): BestSubsetSolution {
@@ -164,19 +170,8 @@ class BestSubsetSolution(
         variables()[index] = value
     }
 
-    /* -------- BinarySolution bit interface (kept for 6.0.0 compatibility) -------- */
-    override fun getNumberOfBits(index: Int): Int {
-        /* BestSubsetSolution exposes exactly 1 BinarySet variable */
-        require(index == 0) { "BestSubsetSolution exposes 1 BinarySet variable; requested index=$index" }
-        return variables[0].length()   /* jMetal 6.x: BinarySet.length() */
-    }
-
-    override fun getTotalNumberOfBits(): Int = variables[0].length()
-
-
-    override fun compareTo(other: BestSubsetSolution): Int {
-        return this.getCardinality().compareTo(other.getCardinality())
-    }
+    override fun compareTo(other: BestSubsetSolution): Int =
+        this.getCardinality().compareTo(other.getCardinality())
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

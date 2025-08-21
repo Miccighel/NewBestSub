@@ -38,7 +38,7 @@ class BinaryPruningCrossover(var probability: Double) : CrossoverOperator<Binary
 
             /* Ensure child1 has at least one topic selected */
             if (child1.numberOfSelectedTopics == 0) {
-                val nBits = child1.getNumberOfBits(0)
+                val nBits = child1.numberOfBitsPerVariable()[0]
                 val flipIndex = if (nBits <= 1) 0
                 else JMetalRandom.getInstance().nextInt(0, nBits - 1)  /* inclusive upper */
                 child1.setBitValue(flipIndex, true)

@@ -26,17 +26,17 @@ class BestSubsetProblem(
     private var progressCounter = 0
     private var cardinalityToGenerate = 1
 
-    /* -------- BinaryProblem / Problem API (jMetal 6.x) --------
-     * jMetal 6 uses property-style names: name(), numberOfVariables(), … */
+    /* -------- BinaryProblem / Problem API (jMetal 6.x+) --------
+     * jMetal 6 uses property-style method names: name(), numberOfVariables(), etc. */
     override fun name(): String = "BestSubsetProblem"
     override fun numberOfVariables(): Int = 1
     override fun numberOfObjectives(): Int = 2
     override fun numberOfConstraints(): Int = 0
     override fun totalNumberOfBits(): Int = numberOfTopics
 
-    /* Generate solutions:
-     *  - First pass: increasing K = 1..(n-1)
-     *  - Then: random subsets (with at least one bit set) */
+    /* Generate solutions in two phases:
+     *  1) Deterministic sweep of exact cardinalities K = 1..(n-1).
+     *  2) Random subsets (ensuring at least one bit set). */
     override fun createSolution(): BinarySolution {
         return if (cardinalityToGenerate < numberOfTopics) {
             val s = BestSubsetSolution(
@@ -63,12 +63,11 @@ class BestSubsetProblem(
         }
     }
 
-    /* jMetal 6.x: evaluate(...) MUST return the solution */
+    /* jMetal 6.x+: evaluate(...) returns the same instance after side-effects on objectives(). */
     override fun evaluate(solution: BinarySolution): BinarySolution {
-
         solution as BestSubsetSolution
 
-        /* FIRST EVALUATION PART: The selected solution is evaluated to compute correlation with MAP values. */
+        /* FIRST PART: compute correlation against MAP values and write objectives through the target strategy. */
         val loggingFactor = (parameters.numberOfIterations * Constants.LOGGING_FACTOR) / 100
         if (loggingFactor > 0 &&
             (iterationCounter % loggingFactor) == 0 &&
@@ -77,7 +76,7 @@ class BestSubsetProblem(
         ) {
             logger.info(
                 "Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) " +
-                "for evaluations being computed on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
+                    "for evaluations on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
             )
             progressCounter += Constants.LOGGING_FACTOR
         }
@@ -93,13 +92,13 @@ class BestSubsetProblem(
         val oldSolution = dominatedSolutions[solution.numberOfSelectedTopics.toDouble()]
         logger.debug(
             "<Correlation: $correlation, Num. Sel. Topics: ${solution.numberOfSelectedTopics}, " +
-            "Sel. Topics: ${solution.getTopicLabelsFromTopicStatus()}, Ev. Gene: ${solution.getVariableValueString(0)}>"
+                "Sel. Topics: ${solution.getTopicLabelsFromTopicStatus()}, Ev. Gene: ${solution.getVariableValueString(0)}>"
         )
 
         /* objective[0] = cardinality (or -cardinality), objective[1] = correlation (possibly negated) */
         targetStrategy(solution, correlation)  /* side-effect: writes objectives() */
 
-        /* SECOND EVALUATION PART: A copy of the selected solution is evaluated to verify if it's a better dominated solution */
+        /* SECOND PART: evaluate a copy to maintain per-K dominated representative if it improves. */
         val candidateCopy = solution.copy()
         if (oldSolution != null) {
             oldSolution as BestSubsetSolution
@@ -121,16 +120,15 @@ class BestSubsetProblem(
             dominatedSolutions[solution.numberOfSelectedTopics.toDouble()] = candidateCopy
         }
 
-        /* THIRD EVALUATION PART: Push a copy into the top solutions list. Keep only the first CONSTANTS.TOP_SOLUTIONS_NUMBER. */
+        /* THIRD PART: push a copy into the top list for this K, keep only the first TOP_SOLUTIONS_NUMBER entries.
+         * Sorting uses the real correlation scale (undoing the sign if BEST negates correlation). */
         val kKey = solution.numberOfSelectedTopics.toDouble()
         val entryList = topSolutions.getOrPut(kKey) { mutableListOf() }
         entryList += solution.copy()
 
-        /* Sort consistently on the REAL correlation scale (undo sign if BEST uses -corr). */
         fun scoreForRanking(s: BinarySolution): Double =
             if (parameters.targetToAchieve == Constants.TARGET_BEST) -s.getCorrelation() else s.getCorrelation()
 
-        /* Determinism: add a stable tie-breaker on the genotype string so equal scores are reproducible. */
         val tieBreak: (BinarySolution) -> String = { (it as BestSubsetSolution).getVariableValueString(0) }
 
         if (parameters.targetToAchieve == Constants.TARGET_BEST) {
@@ -145,7 +143,7 @@ class BestSubsetProblem(
             )
         }
 
-        /* Determinism: remove duplicates by genotype (not by reference), preserving order. */
+        /* Remove duplicates by genotype, preserving order. */
         run {
             val seen = LinkedHashSet<String>(entryList.size)
             val dedup = mutableListOf<BinarySolution>()
@@ -160,12 +158,7 @@ class BestSubsetProblem(
         return solution
     }
 
-    /* -------- BinaryProblem bit layout (jMetal 6.x) -------- */
-    override fun listOfBitsPerVariable(): MutableList<Int> = mutableListOf(numberOfTopics)
-
-    override fun bitsFromVariable(index: Int): Int {
-        /* We have a single binary variable whose length equals numberOfTopics */
-        require(index == 0) { "BestSubsetProblem has exactly 1 variable; requested index=$index" }
-        return numberOfTopics
-    }
+    /* -------- BinaryProblem bit layout (jMetal 6.1) --------
+     * Report per-variable bit lengths using the new API. */
+    override fun numberOfBitsPerVariable(): List<Int> = listOf(numberOfTopics)
 }

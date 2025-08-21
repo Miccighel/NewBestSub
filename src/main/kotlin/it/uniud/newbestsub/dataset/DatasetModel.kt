@@ -8,6 +8,7 @@ import org.apache.commons.cli.ParseException
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation
 import org.apache.logging.log4j.LogManager
+
 import org.uma.jmetal.operator.crossover.CrossoverOperator
 import org.uma.jmetal.operator.mutation.MutationOperator
 import org.uma.jmetal.operator.selection.SelectionOperator
@@ -18,10 +19,12 @@ import org.uma.jmetal.util.comparator.RankingAndCrowdingDistanceComparator
 import org.uma.jmetal.util.evaluator.SolutionListEvaluator
 import org.uma.jmetal.util.evaluator.impl.SequentialSolutionListEvaluator
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
+import org.uma.jmetal.util.ranking.Ranking
+import org.uma.jmetal.util.ranking.impl.MergeNonDominatedSortRanking
+
 import java.io.File
 import java.io.FileReader
 import java.util.*
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.channels.SendChannel
 
 /**
@@ -34,24 +37,19 @@ import kotlinx.coroutines.channels.SendChannel
  *  - **-Top**: final top-10 solutions per cardinality K (exactly 10 lines per K, CSV)
  *
  * Targets:
- *  - **AVERAGE**: single-pass, one row per cardinality K (unchanged from before).
+ *  - **AVERAGE**: single-pass, one row per cardinality K.
  *  - **BEST/WORST**:
- *      • -Fun/-Var: after each generation we **append** rows for any K whose representative
- *        solution **improved** vs the best-so-far we have streamed. (Multiple rows per K are expected.)
- *        Before streaming a batch, we sort those rows by **(K asc, corr asc|desc)** to
- *        keep the growing file ordered. At the end of the run, the view **globally** sorts
- *        the whole file by **(K asc, corr asc)** and rewrites both -Fun and -Var.
- *      • -Top: we **replace** (not append) the 10-row block for each K whenever its content changes.
- *        Lines are sorted by **correlation ASC**, and we always send **exactly 10 rows** per K.
- *        We send these as a **TopKReplaceBatch** once per generation.
+ *      • -Fun/-Var: after each generation, append rows only for K values whose representative
+ *        solution improves vs the best-so-far (multiple rows per K are expected). Each appended
+ *        batch is sorted by **(K asc, corr asc|desc)** to keep files ordered while growing.
+ *        Final global sort is applied by the view.
+ *      • -Top: replace (not append) the 10-row block for each K whenever contents change.
+ *        Lines are sorted by **correlation ASC**; always exactly 10 lines per K. Blocks are sent
+ *        via a single **TopKReplaceBatch** per generation.
  *
- * Notes:
- *  - -Fun/-Var contain **checkpoint** rows: multiple lines for the same K reflect improvements over time.
- *  - Final sorting is handled by `DatasetView.closeStreams`, ensuring definitive global order.
- * Determinism note:
- *  - All randomized choices in AVERAGE now use JMetalRandom.getInstance().randomGenerator,
- *    which is redirected by RngBridge when deterministic mode is enabled.
- *  - NSGA-II already uses the same singleton RNG; no extra changes needed for BEST/WORST here.
+ * Determinism:
+ *  - All randomized choices in AVERAGE use JMetalRandom.getInstance().randomGenerator,
+ *    which can be redirected by an external seed bridge. NSGA-II also uses the same singleton RNG.
  */
 class DatasetModel {
 
@@ -80,7 +78,6 @@ class DatasetModel {
     private lateinit var problem: BestSubsetProblem
     private lateinit var crossover: CrossoverOperator<BinarySolution>
     private lateinit var mutation: MutationOperator<BinarySolution>
-    private lateinit var selection: SelectionOperator<List<BinarySolution>, BinarySolution>
 
     var notDominatedSolutions = mutableListOf<BinarySolution>()
     var dominatedSolutions = mutableListOf<BinarySolution>()
@@ -90,87 +87,95 @@ class DatasetModel {
     /* ------------------------------ Data loading/expansion ------------------------------ */
 
     fun loadData(datasetPath: String) {
-        val reader = CSVReader(FileReader(datasetPath))
-        topicLabels = reader.readNext()
+        val csvReader = CSVReader(FileReader(datasetPath))
+        topicLabels = csvReader.readNext()
         numberOfTopics = topicLabels.size - 1
         datasetName = File(datasetPath).nameWithoutExtension
 
-        reader.readAll().forEach { nextLine ->
-            val aps = DoubleArray(nextLine.size - 1)
-            (1..nextLine.size - 1).forEach { i -> aps[i - 1] = nextLine[i].toDouble() }
-            this.averagePrecisions[nextLine[0]] = aps.toTypedArray()
+        csvReader.readAll().forEach { row ->
+            val apValues = DoubleArray(row.size - 1)
+            for (colIndex in 1 until row.size) {
+                apValues[colIndex - 1] = row[colIndex].toDouble()
+            }
+            this.averagePrecisions[row[0]] = apValues.toTypedArray()
         }
 
-        /* Deep-ish copy to safely revert during system expansions */
+        /* Deep copy to safely revert during system expansions. */
         originalAveragePrecisions = linkedMapOf<String, Array<Double>>().also { dst ->
-            averagePrecisions.forEach { (k, v) -> dst[k] = v.copyOf() }
+            averagePrecisions.forEach { (system, values) -> dst[system] = values.copyOf() }
         }
 
-        numberOfSystems = averagePrecisions.entries.size
+        numberOfSystems = averagePrecisions.size
 
-        topicLabels = topicLabels.sliceArray(1..topicLabels.size - 1)
-        updateData()
+        topicLabels = topicLabels.sliceArray(1 until topicLabels.size)
+        refreshDerivedData()
     }
 
-    fun expandTopics(expansionCoefficient: Int, randomizedAveragePrecisions: Map<String, DoubleArray>, randomizedTopicLabels: Array<String>) {
+    fun expandTopics(
+        expansionCoefficient: Int,
+        randomizedAveragePrecisions: Map<String, DoubleArray>,
+        randomizedTopicLabels: Array<String>
+    ) {
         this.expansionCoefficient = expansionCoefficient
         numberOfTopics += randomizedTopicLabels.size
 
         averagePrecisions.entries.forEach { (systemLabel, apValues) ->
-            averagePrecisions[systemLabel] = (apValues.toList() + (randomizedAveragePrecisions[systemLabel]?.toList()
-                ?: emptyList())).toTypedArray()
+            val extraValues = randomizedAveragePrecisions[systemLabel]?.toList() ?: emptyList()
+            averagePrecisions[systemLabel] = (apValues.toList() + extraValues).toTypedArray()
         }
 
         topicLabels = (topicLabels.toList() + randomizedTopicLabels.toList()).toTypedArray()
-        updateData()
+        refreshDerivedData()
     }
 
-    fun expandSystems(expansionCoefficient: Int, trueNumberOfSystems: Int, randomizedAveragePrecisions: Map<String, DoubleArray>, randomizedSystemLabels: Array<String>) {
+    fun expandSystems(
+        expansionCoefficient: Int,
+        trueNumberOfSystems: Int,
+        randomizedAveragePrecisions: Map<String, DoubleArray>,
+        randomizedSystemLabels: Array<String>
+    ) {
         this.expansionCoefficient = expansionCoefficient
         val newNumberOfSystems = numberOfSystems + expansionCoefficient
 
         if (newNumberOfSystems < trueNumberOfSystems) {
-            /* Revert to a prefix of the original APs (stable order) */
+            /* Revert to a prefix of the original APs (stable order). */
             averagePrecisions = linkedMapOf<String, Array<Double>>().also { dst ->
-                originalAveragePrecisions.entries.take(newNumberOfSystems).forEach { (k, v) ->
-                    dst[k] = v.copyOf()
+                originalAveragePrecisions.entries.take(newNumberOfSystems).forEach { (system, values) ->
+                    dst[system] = values.copyOf()
                 }
             }
         } else {
-            randomizedSystemLabels.forEach { sys ->
-                averagePrecisions[sys] = (randomizedAveragePrecisions[sys]?.toList() ?: emptyList()).toTypedArray()
+            randomizedSystemLabels.forEach { system ->
+                averagePrecisions[system] = (randomizedAveragePrecisions[system]?.toList() ?: emptyList()).toTypedArray()
             }
             systemLabels = (systemLabels.toList() + randomizedSystemLabels.toList()).toTypedArray()
         }
 
-        updateData()
+        refreshDerivedData()
     }
 
-    private fun updateData() {
-        topicLabels.forEach { t -> topicDistribution[t] = TreeMap() }
+    private fun refreshDerivedData() {
+        topicLabels.forEach { label -> topicDistribution[label] = TreeMap() }
 
-        numberOfSystems = averagePrecisions.entries.size
+        numberOfSystems = averagePrecisions.size
 
-        var iterator = averagePrecisions.entries.iterator()
-        systemLabels = Array(numberOfSystems) { iterator.next().key }
+        val apEntryIterator = averagePrecisions.entries.iterator()
+        systemLabels = Array(numberOfSystems) { apEntryIterator.next().key }
 
-        val useColumns = BooleanArray(numberOfTopics)
-        Arrays.fill(useColumns, true)
+        val useAllTopicsMask = BooleanArray(numberOfTopics).apply { Arrays.fill(this, true) }
 
-        iterator = averagePrecisions.entries.iterator()
-        meanAveragePrecisions = Array(averagePrecisions.entries.size) {
-            Tools.getMean(iterator.next().value.toDoubleArray(), useColumns)
+        val apIteratorForMean = averagePrecisions.entries.iterator()
+        meanAveragePrecisions = Array(averagePrecisions.size) {
+            Tools.getMean(apIteratorForMean.next().value.toDoubleArray(), useAllTopicsMask)
         }
     }
 
     /* ------------------------------ Solve + streaming ------------------------------ */
 
     /**
-     * Solve once:
-     *  - AVERAGE streams per-K during the loop (unchanged).
-     *  - BEST/WORST streams:
-     *      * -Fun/-Var: only when the per-K representative improves (append).
-     *      * -Top:       batch K-block replacements once per generation.
+     * Single run with streaming:
+     *  - AVERAGE: per-K aggregation; exactly one streamed row per K.
+     *  - BEST/WORST: stream improvements for -Fun/-Var; replace changed K blocks for -Top.
      */
     fun solve(
         parameters: Parameters,
@@ -182,59 +187,57 @@ class DatasetModel {
         populationSize = parameters.populationSize
         numberOfRepetitions = parameters.numberOfRepetitions
 
-        val correlationStrategy = this.loadCorrelationMethod(parameters.correlationMethod)
-        val targetStrategy = this.loadTargetToAchieve(parameters.targetToAchieve)
+        val correlationStrategy = loadCorrelationMethod(parameters.correlationMethod)
+        val objectiveEncodingStrategy = loadTargetToAchieve(parameters.targetToAchieve)
 
-        logger.info("Execution started on \"${Thread.currentThread().name}\" with target \"${parameters.targetToAchieve}\".")
+        logger.info(
+            "Execution started on \"${Thread.currentThread().name}\" with target \"${parameters.targetToAchieve}\"."
+        )
 
-        /* Reset state for a clean run */
+        /* Reset state for a clean run. */
         notDominatedSolutions = mutableListOf()
         dominatedSolutions = mutableListOf()
         topSolutions = mutableListOf()
         allSolutions = mutableListOf()
 
-        val threadName = Thread.currentThread().name
-        val startNs = System.nanoTime()
+        val workerThreadName = Thread.currentThread().name
+        val runStartNs = System.nanoTime()
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
 
             /* -----------------------------
              * AVERAGE experiment (unchanged)
-             * -----------------------------
-             * We compute percentiles and stream exactly one row per cardinality K during the loop.
-             */
+             * ----------------------------- */
 
-            /* Deterministic RNG source:
-             * Use jMetal's singleton RNG so RngBridge can pin the seed. */
-            val rng = JMetalRandom.getInstance().randomGenerator
+            val randomGenerator = JMetalRandom.getInstance().randomGenerator
 
-            val variableValues = mutableListOf<Array<Boolean>>()
-            val cardinalities = mutableListOf<Int>()
-            val correlations = mutableListOf<Double>()
+            val streamedBitsetsByK = mutableListOf<Array<Boolean>>()
+            val streamedCardinalities = mutableListOf<Int>()
+            val streamedCorrelations = mutableListOf<Double>()
 
-            val loggingFactor = (numberOfTopics * Constants.LOGGING_FACTOR) / 100
-            var progressCounter = 0
+            val loggingStep = (numberOfTopics * Constants.LOGGING_FACTOR) / 100
+            var progressPercentage = 0
 
             parameters.percentiles.forEach { p -> percentiles[p] = LinkedList() }
 
-            for ((iterationCounter, currentCardinalityIdx) in (0 until numberOfTopics).withIndex()) {
+            for ((iterationIndex, cardinalityIndex) in (0 until numberOfTopics).withIndex()) {
 
-                if (loggingFactor > 0 &&
-                    (iterationCounter % loggingFactor) == 0 &&
-                    numberOfTopics > loggingFactor
+                if (loggingStep > 0 &&
+                    (iterationIndex % loggingStep) == 0 &&
+                    numberOfTopics > loggingStep
                 ) {
                     logger.info(
-                        "Completed iterations: $currentCardinalityIdx/$numberOfTopics ($progressCounter%) on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
+                        "Completed iterations: $cardinalityIndex/$numberOfTopics ($progressPercentage%) on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
                     )
-                    progressCounter += Constants.LOGGING_FACTOR
+                    progressPercentage += Constants.LOGGING_FACTOR
                 }
 
-                var sumCorrelations = 0.0
-                var topicStatusString = ""
-                var topicStatus = BooleanArray(numberOfTopics)
+                var correlationsSum = 0.0
+                var lastBitString = ""
+                var selectedTopicMask = BooleanArray(numberOfTopics)
 
-                val correlationsToAggregate = Array(numberOfRepetitions) {
-                    val desiredCardinality = currentCardinalityIdx + 1
+                val repetitionCorrelations = Array(numberOfRepetitions) {
+                    val desiredCardinality = cardinalityIndex + 1
 
                     // Build 0..N-1 pool of topic indices
                     val topicIndexPool = IntArray(numberOfTopics) { it }
@@ -242,70 +245,73 @@ class DatasetModel {
                     // Partial Fisher–Yates: fix the first `desiredCardinality` positions with unique picks
                     for (leftmostFixedIndex in 0 until desiredCardinality) {
                         val remainingSpan = numberOfTopics - leftmostFixedIndex
-                        val randomOffsetWithinSpan = (rng.nextDouble() * remainingSpan).toInt()
+                        val randomOffsetWithinSpan = (randomGenerator.nextDouble() * remainingSpan).toInt()
                         val swapWithIndex = leftmostFixedIndex + randomOffsetWithinSpan
 
-                        val tempIndex = topicIndexPool[leftmostFixedIndex]
+                        val tmp = topicIndexPool[leftmostFixedIndex]
                         topicIndexPool[leftmostFixedIndex] = topicIndexPool[swapWithIndex]
-                        topicIndexPool[swapWithIndex] = tempIndex
+                        topicIndexPool[swapWithIndex] = tmp
                     }
 
                     // Mark selected topics
-                    topicStatus = BooleanArray(numberOfTopics)
+                    selectedTopicMask = BooleanArray(numberOfTopics)
                     for (selectedSlot in 0 until desiredCardinality) {
                         val selectedTopicIndex = topicIndexPool[selectedSlot]
-                        topicStatus[selectedTopicIndex] = true
+                        selectedTopicMask[selectedTopicIndex] = true
                     }
 
                     // String form of the bitset (for logs/streaming)
-                    topicStatusString = buildString(numberOfTopics) {
-                        topicStatus.forEach { append(if (it) '1' else '0') }
+                    lastBitString = buildString(numberOfTopics) {
+                        selectedTopicMask.forEach { append(if (it) '1' else '0') }
                     }
 
                     // Compute correlation on the reduced mean vector
-                    val apEntryIterator = this.averagePrecisions.entries.iterator()
-                    val reducedMeanVector = Array(averagePrecisions.entries.size) {
-                        Tools.getMean(apEntryIterator.next().value.toDoubleArray(), topicStatus)
+                    val apIterator = this@DatasetModel.averagePrecisions.entries.iterator()
+                    val reducedMeanVector = Array(averagePrecisions.size) {
+                        Tools.getMean(apIterator.next().value.toDoubleArray(), selectedTopicMask)
                     }
 
                     correlationStrategy.invoke(reducedMeanVector, meanAveragePrecisions)
                 }
 
-                correlationsToAggregate.forEach { c -> sumCorrelations += c }
-                correlationsToAggregate.sort()
-                val meanCorrelation = sumCorrelations / numberOfRepetitions
+                repetitionCorrelations.forEach { c -> correlationsSum += c }
+                repetitionCorrelations.sort()
+                val meanCorrelation = correlationsSum / numberOfRepetitions
 
                 percentiles.entries.forEach { (percentile, collected) ->
-                    val position = kotlin.math.ceil((percentile / 100.0) * correlationsToAggregate.size).toInt()
-                    val percentileValue = correlationsToAggregate[position - 1]
+                    val position = kotlin.math.ceil((percentile / 100.0) * repetitionCorrelations.size).toInt()
+                    val percentileValue = repetitionCorrelations[position - 1]
                     percentiles[percentile] = collected.plus(percentileValue)
-                    logger.debug("<Cardinality: $currentCardinalityIdx, Percentile: $percentile, Value: $percentileValue>")
+                    logger.debug("<Cardinality: $cardinalityIndex, Percentile: $percentile, Value: $percentileValue>")
                 }
 
-                logger.debug("<Correlation: $meanCorrelation, Number of selected topics: $currentCardinalityIdx, Last gene evaluated: $topicStatusString>")
+                logger.debug(
+                    "<Correlation: $meanCorrelation, Number of selected topics: $cardinalityIndex, Last gene evaluated: $lastBitString>"
+                )
 
-                cardinalities.add(currentCardinalityIdx + 1)
-                correlations.add(meanCorrelation)
-                variableValues.add(topicStatus.toTypedArray())
+                streamedCardinalities.add(cardinalityIndex + 1)
+                streamedCorrelations.add(meanCorrelation)
+                streamedBitsetsByK.add(selectedTopicMask.toTypedArray())
 
                 // STREAM NOW (AVERAGE)
                 sendProgress(
                     out, CardinalityResult(
                         target = targetToAchieve,
-                        threadName = threadName,
-                        cardinality = currentCardinalityIdx + 1,
+                        threadName = workerThreadName,
+                        cardinality = cardinalityIndex + 1,
                         correlation = meanCorrelation,
-                        functionValuesCsvLine = "${currentCardinalityIdx + 1} $meanCorrelation",
-                        variableValuesCsvLine = booleanArrayToVarLine(topicStatus)
+                        functionValuesCsvLine = "${cardinalityIndex + 1} $meanCorrelation",
+                        variableValuesCsvLine = booleanArrayToVarLine(selectedTopicMask)
                     )
                 )
             }
 
             problem = BestSubsetProblem(
-                parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels, correlationStrategy, targetStrategy
+                parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels,
+                correlationStrategy, objectiveEncodingStrategy
             )
 
-            /* Build solutions from precomputed gene vectors to keep topicDistribution/etc. consistent */
+            /* Build solutions from precomputed gene vectors to keep topicDistribution consistent. */
             for (index in 0 until numberOfTopics) {
                 val solution = BestSubsetSolution(
                     numberOfVariables = 1,
@@ -314,12 +320,10 @@ class DatasetModel {
                     topicLabels = problem.topicLabels,
                     forcedCardinality = null
                 )
-                val genes = variableValues[index]
-                /* jMetal 6.x: no setVariable on BinarySolution; use the helper on our solution type */
+                val genes = streamedBitsetsByK[index]
                 solution.setVariableValue(0, solution.createNewBitSet(numberOfTopics, genes))
-                /* jMetal 6.x: objectives() property array */
-                solution.objectives()[0] = cardinalities[index].toDouble()
-                solution.objectives()[1] = correlations[index]
+                solution.objectives()[0] = streamedCardinalities[index].toDouble()
+                solution.objectives()[1] = streamedCorrelations[index]
 
                 notDominatedSolutions.add(solution)
                 allSolutions.add(solution)
@@ -331,46 +335,43 @@ class DatasetModel {
              * BEST / WORST experiments (streamed)
              * ---------------------------------
              *
-             * - -Fun/-Var: Append a row **only** when the per-K representative improves (multiple rows per K allowed).
-             *              We sort each increment batch by (K asc, corr asc|desc) before streaming.
-             *              At the very end, `DatasetView` globally re-sorts by (K asc, corr asc).
-             * - -Top:      After each generation, compute the **exact 10 lines** for each K from problem.topSolutions;
-             *              if that 10-line block changed (content or order), send a **TopKReplaceBatch** for the
-             *              changed Ks only. On `RunCompleted`, also send a final batch to ensure completeness.
+             * - -Fun/-Var: append only improvements per K (sorted by K and correlation).
+             * - -Top: build exact 10-line blocks per K (corr ASC) and replace only on changes.
+             *
+             * Classic NSGA-II constructor is used; MNDS (MergeNonDominatedSortRanking) is plugged
+             * into the environmental selection by overriding `replacement(...)` below.
              */
-
             if (populationSize < numberOfTopics) throw ParseException(
                 "Value for the option <<p>> or <<po>> must be greater or equal than/to $numberOfTopics. Current value is $populationSize. Check the usage section below."
             )
             numberOfIterations = parameters.numberOfIterations
 
             problem = BestSubsetProblem(
-                parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels, correlationStrategy, targetStrategy
+                parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels,
+                correlationStrategy, objectiveEncodingStrategy
             )
             crossover = BinaryPruningCrossover(0.7)
             mutation = BitFlipMutation(0.3)
-            selection = BinaryTournamentSelection(RankingAndCrowdingDistanceComparator())
 
-            val evaluator = SequentialSolutionListEvaluator<BinarySolution>()
+            /* Classic API: tournament selection + sequential evaluator. */
+            val selectionOperator: SelectionOperator<List<BinarySolution>, BinarySolution> =
+                BinaryTournamentSelection(RankingAndCrowdingDistanceComparator())
+            val listEvaluator: SolutionListEvaluator<BinarySolution> =
+                SequentialSolutionListEvaluator()
 
-            /* (1) Track monotone best-so-far correlation per K (for deciding whether to stream). */
-            val bestSeenCorrByK = java.util.TreeMap<Int, Double>()
+            /* (1) Track monotone best-so-far correlation per K for streaming decisions. */
+            val bestSeenCorrelationByK = java.util.TreeMap<Int, Double>()
 
-            /* (2) Track the last sent 10-row signature for -Top per K (for replace semantics). */
-            val lastSentTopSigByK = mutableMapOf<Int, Int>()
-
-            val lastGenerationIndex = AtomicInteger(0)
+            /* (2) Track last sent 10-row signature for -Top replacement semantics. */
+            val lastSentTopSignatureByK = mutableMapOf<Int, Int>()
 
             /* Per-generation hook:
              *  (A) -Fun/-Var: stream improved Ks (sorted), one row per K for this generation.
-             *  (B) -Top:      replace the 10-row block for any K whose top-10 changed (batched).
+             *  (B) -Top: replace K blocks whose top-10 changed.
              */
-            val onGeneration: (Int, List<BinarySolution>) -> Unit = { generationIndex, _ ->
-                lastGenerationIndex.set(generationIndex)
-
+            val onGeneration: (Int, List<BinarySolution>) -> Unit = { _, _ ->
                 /* ------------------- (A) -Fun / -Var ------------------- */
-                // Use the top solution per K from BestSubsetProblem.topSolutions.
-                val currentTopByK: Map<Int, BinarySolution> =
+                val topSolutionByK: Map<Int, BinarySolution> =
                     problem.topSolutions.mapNotNull { (kAsDouble, list) ->
                         val top = list.firstOrNull() ?: return@mapNotNull null
                         kAsDouble.toInt() to top
@@ -378,27 +379,21 @@ class DatasetModel {
 
                 val improvedRows = mutableListOf<Pair<Int, BinarySolution>>()
 
-                for ((k, topSol) in currentTopByK.entries) {
+                for ((k, topSol) in topSolutionByK.entries) {
                     val corr = (topSol as BestSubsetSolution).getCorrelation()
-                    val prev = bestSeenCorrByK[k]
-
+                    val previousBest = bestSeenCorrelationByK[k]
                     val improved = when (targetToAchieve) {
-                        Constants.TARGET_WORST -> (prev == null) || corr < prev - 1e-12
-                        else -> (prev == null) || corr > prev + 1e-12
+                        Constants.TARGET_WORST -> (previousBest == null) || corr < previousBest - 1e-12
+                        else -> (previousBest == null) || corr > previousBest + 1e-12
                     }
-
                     if (improved) {
-                        bestSeenCorrByK[k] = corr
+                        bestSeenCorrelationByK[k] = corr
                         improvedRows += k to topSol
                     }
                 }
 
-                // Sort improved rows to keep the files ordered as they grow by appending.
-                //  BEST  -> (K asc, corr asc)
-                //  WORST -> (K asc, corr desc)
                 improvedRows.sortWith(funVarComparatorFor(targetToAchieve))
 
-                // Stream the improved rows (append). Multiple rows per K over time is expected.
                 for ((k, sol) in improvedRows) {
                     sendProgress(
                         out, CardinalityResult(
@@ -413,18 +408,16 @@ class DatasetModel {
                 }
 
                 /* ---------------------- (B) -Top (batched) -------------- */
-                // For each K, build the exact 10-line block (corr ASC).
-                // Replace only if the content or order actually changed.
                 val changedBlocks = mutableMapOf<Int, List<String>>()
                 for ((kAsDouble, list) in problem.topSolutions) {
                     val k = kAsDouble.toInt()
                     val lines = top10CsvLinesForK(list)
-                    if (lines.isEmpty()) continue  // do not send partial blocks
+                    if (lines.isEmpty()) continue  // skip partial blocks
 
-                    val sig = topBlockSig(lines)
-                    val prevSig = lastSentTopSigByK[k]
-                    if (prevSig == null || prevSig != sig) {
-                        lastSentTopSigByK[k] = sig
+                    val signature = topBlockSig(lines)
+                    val previousSignature = lastSentTopSignatureByK[k]
+                    if (previousSignature == null || previousSignature != signature) {
+                        lastSentTopSignatureByK[k] = signature
                         changedBlocks[k] = lines
                     }
                 }
@@ -439,53 +432,54 @@ class DatasetModel {
                 }
             }
 
-            /* Run NSGA-II with the per-generation streaming hook. */
-            val algo = StreamingNSGAII(
+            /* Run NSGA-II with classic constructor and per-generation hook.
+             * MNDS is injected by overriding `replacement(...)` in StreamingNSGAII. */
+            val algorithm = StreamingNSGAII(
                 problem = problem,
                 maxEvaluations = numberOfIterations,
                 populationSize = populationSize,
                 crossover = crossover,
                 mutation = mutation,
-                selection = selection,
-                evaluator = evaluator,
+                selection = selectionOperator,
+                evaluator = listEvaluator,
                 onGen = onGeneration,
                 logger = logger
             )
 
-            logger.info("Starting NSGA-II run with Streaming hook: {}", algo.javaClass.name)
+            logger.info("Starting NSGA-II run with Streaming hook: {}", algorithm.javaClass.name)
 
             val startNsLocal = System.nanoTime()
-            algo.run()
+            algorithm.run()
             computingTime = (System.nanoTime() - startNsLocal) / 1_000_000
 
             /* ---------------- Collect final solution sets ---------------- */
 
-            // Non-dominated set (deduplicated, order preserved), fix objectives to "external view".
-            notDominatedSolutions = java.util.LinkedHashSet(algo.result).toMutableList()
+            // Non-dominated set (deduplicated, order preserved); fix objectives to external view.
+            notDominatedSolutions = java.util.LinkedHashSet(algorithm.result()).toMutableList()
             fixObjectiveFunctionValues(notDominatedSolutions)
 
-            // Track Ks already covered by non-dominated; we keep dominated only for Ks not present above.
-            val nonDominatedK = notDominatedSolutions
+            // Keep dominated only for cardinalities not present in non-dominated set.
+            val nonDominatedCardinalities = notDominatedSolutions
                 .mapTo(LinkedHashSet<Double>(notDominatedSolutions.size)) { it.getCardinality() }
 
             allSolutions.addAll(notDominatedSolutions)
 
             dominatedSolutions = problem.dominatedSolutions.values
                 .asSequence()
-                .filter { s -> !nonDominatedK.contains(s.getCardinality()) }
+                .filter { s -> !nonDominatedCardinalities.contains(s.getCardinality()) }
                 .toMutableList()
             fixObjectiveFunctionValues(dominatedSolutions)
 
             allSolutions.addAll(dominatedSolutions)
 
-            // Gather topSolutions (fixed objectives, but we do not stream them line-by-line here).
+            // Gather topSolutions (objectives fixed; streaming handled separately).
             topSolutions.clear()
-            problem.topSolutions.values.forEach { aList ->
-                val fixed = fixObjectiveFunctionValues(aList.toMutableList())
+            problem.topSolutions.values.forEach { perKList ->
+                val fixed = fixObjectiveFunctionValues(perKList.toMutableList())
                 topSolutions.addAll(fixed)
             }
 
-            /* -------- Final -Top replace to ensure the snapshot is complete -------- */
+            /* Final -Top replace to ensure a complete snapshot. */
             if (out != null) {
                 val finalBlocks = mutableMapOf<Int, List<String>>()
                 for ((kAsDouble, list) in problem.topSolutions) {
@@ -506,108 +500,97 @@ class DatasetModel {
         }
 
         /* ---------------- Topic presence matrix (unchanged) ---------------- */
-        for (solutionToAnalyze in allSolutions) {
-            val topicStatus = (solutionToAnalyze as BestSubsetSolution).retrieveTopicStatus()
-            val k = solutionToAnalyze.getCardinality()
-            for (i in topicStatus.indices) {
-                topicDistribution[topicLabels[i]]?.let {
-                    var status = false
-                    if (topicStatus[i]) status = true
-                    it[k] = status
+        for (solution in allSolutions) {
+            val topicMask = (solution as BestSubsetSolution).retrieveTopicStatus()
+            val k = solution.getCardinality()
+            for (topicIndex in topicMask.indices) {
+                topicDistribution[topicLabels[topicIndex]]?.let { presenceByK ->
+                    presenceByK[k] = topicMask[topicIndex]
                 }
             }
         }
 
         allSolutions = sortByCardinality(allSolutions)
 
-        val computingTime = (System.nanoTime() - startNs) / 1_000_000
-        this.computingTime = computingTime
-        sendProgress(out, RunCompleted(targetToAchieve, threadName, computingTime))
+        val totalRuntimeMs = (System.nanoTime() - runStartNs) / 1_000_000
+        this.computingTime = totalRuntimeMs
+        sendProgress(out, RunCompleted(targetToAchieve, workerThreadName, totalRuntimeMs))
 
         logger.info("Not dominated solutions generated by execution with target \"$targetToAchieve\": ${notDominatedSolutions.size}/$numberOfTopics.")
         logger.info("Dominated solutions generated by execution with target \"$targetToAchieve\": ${dominatedSolutions.size}/$numberOfTopics.")
         if (targetToAchieve != Constants.TARGET_AVERAGE)
             logger.info("Total solutions generated by execution with target \"$targetToAchieve\": ${allSolutions.size}/$numberOfTopics.")
 
-        return Triple(allSolutions, topSolutions, Triple(targetToAchieve, Thread.currentThread().name, computingTime))
+        return Triple(allSolutions, topSolutions, Triple(targetToAchieve, Thread.currentThread().name, totalRuntimeMs))
     }
 
-    private fun sendProgress(out: SendChannel<ProgressEvent>?, ev: ProgressEvent) {
+    private fun sendProgress(out: SendChannel<ProgressEvent>?, event: ProgressEvent) {
         if (out == null) return
-        /* Block to preserve ordering / back-pressure semantics */
-        kotlinx.coroutines.runBlocking { out.send(ev) }
+        kotlinx.coroutines.runBlocking { out.send(event) } // preserve ordering / back-pressure
     }
 
     /* ------------------------- Helpers ------------------------- */
 
     private fun loadCorrelationMethod(correlationMethod: String): (Array<Double>, Array<Double>) -> Double {
 
-        val pearsonCorrelation: (Array<Double>, Array<Double>) -> Double = { firstArray, secondArray ->
-            val pcorr = PearsonsCorrelation()
-            pcorr.correlation(firstArray.toDoubleArray(), secondArray.toDoubleArray())
+        val pearson: (Array<Double>, Array<Double>) -> Double = { first, second ->
+            PearsonsCorrelation().correlation(first.toDoubleArray(), second.toDoubleArray())
         }
-        val kendallCorrelation: (Array<Double>, Array<Double>) -> Double = { firstArray, secondArray ->
-            val pcorr = KendallsCorrelation()
-            pcorr.correlation(firstArray.toDoubleArray(), secondArray.toDoubleArray())
+        val kendall: (Array<Double>, Array<Double>) -> Double = { first, second ->
+            KendallsCorrelation().correlation(first.toDoubleArray(), second.toDoubleArray())
         }
 
         this.correlationMethod = correlationMethod
 
         return when (correlationMethod) {
-            Constants.CORRELATION_PEARSON -> pearsonCorrelation
-            Constants.CORRELATION_KENDALL -> kendallCorrelation
-            else -> pearsonCorrelation
+            Constants.CORRELATION_PEARSON -> pearson
+            Constants.CORRELATION_KENDALL -> kendall
+            else -> pearson
         }
     }
 
     /**
-     * Internal objective encoding for NSGA-II depending on the **target**.
-     * BEST:  keep K as-is, store correlation negated (so "smaller" is better internally).
-     * WORST: negate K, keep correlation as-is.
+     * Internal objective encoding for NSGA-II depending on the target:
+     *  BEST:  objective[0] = +K, objective[1] = -corr (max corr).
+     *  WORST: objective[0] = -K, objective[1] = +corr (min corr).
      */
     private fun loadTargetToAchieve(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
 
-        val bestStrategy: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
-            /* objective[0] = +K, objective[1] = -corr (maximize corr) */
+        val encodeForBest: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
             solution.objectives()[0] = (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble()
             solution.objectives()[1] = -correlation
             solution
         }
-        val worstStrategy: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
-            /* objective[0] = -K (maximize -K ≡ minimize K), objective[1] = +corr (minimize corr later when ranking worst) */
+        val encodeForWorst: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
             solution.objectives()[0] = -(solution as BestSubsetSolution).numberOfSelectedTopics.toDouble()
             solution.objectives()[1] = correlation
             solution
         }
 
-
         this.targetToAchieve = targetToAchieve
 
         return when (targetToAchieve) {
-            Constants.TARGET_BEST -> bestStrategy
-            Constants.TARGET_WORST -> worstStrategy
-            else -> bestStrategy
+            Constants.TARGET_BEST -> encodeForBest
+            Constants.TARGET_WORST -> encodeForWorst
+            else -> encodeForBest
         }
     }
 
     private fun sortByCardinality(solutionsToSort: MutableList<BinarySolution>): MutableList<BinarySolution> {
-        solutionsToSort.sortWith(kotlin.Comparator { sol1: BinarySolution, sol2: BinarySolution ->
-            (sol1 as BestSubsetSolution).compareTo(sol2 as BestSubsetSolution)
-        })
+        solutionsToSort.sortWith { left: BinarySolution, right: BinarySolution ->
+            (left as BestSubsetSolution).compareTo(right as BestSubsetSolution)
+        }
         return solutionsToSort
     }
 
-    /** Adjust objective values from the internal NSGA-II encoding to the external reporting view. */
+    /** Adjust objective values from internal encoding to the external reporting view. */
     private fun fixObjectiveFunctionValues(solutionsToFix: MutableList<BinarySolution>): MutableList<BinarySolution> {
         when (targetToAchieve) {
             Constants.TARGET_BEST -> solutionsToFix.forEach { s ->
-                /* correlation was stored as negative internally → flip back */
-                s.objectives()[1] = -s.getCorrelation()
+                s.objectives()[1] = -s.getCorrelation()  // correlation stored as negative internally
             }
-
             Constants.TARGET_WORST -> solutionsToFix.forEach { s ->
-                /* K was stored as negative internally → flip back */
-                s.objectives()[0] = -s.getCardinality()
+                s.objectives()[0] = -s.getCardinality()  // K stored as negative internally
             }
         }
         return solutionsToFix
@@ -631,13 +614,13 @@ class DatasetModel {
         val k = this.getCardinality()
         val corr = this.getCorrelation()
         return when (target) {
-            Constants.TARGET_BEST -> "${k} ${-corr}"  // corr negated internally, flip back here
-            Constants.TARGET_WORST -> "${-k} ${corr}"  // K negated internally, flip back here
+            Constants.TARGET_BEST -> "${k} ${-corr}"   // corr negated internally → flip back
+            Constants.TARGET_WORST -> "${-k} ${corr}"  // K negated internally → flip back
             else -> "$k $corr"
         }
     }
 
-    /** Format for -Var: contiguous bitstring (no spaces) to match existing writer. */
+    /** Format for -Var: contiguous bitstring matching the existing writer. */
     private fun BinarySolution.toVarLine(): String {
         val bits = (this as BestSubsetSolution).retrieveTopicStatus()
         val sb = StringBuilder(bits.size)
@@ -645,59 +628,51 @@ class DatasetModel {
         return sb.toString()
     }
 
-    /** CSV row for -Top: "Cardinality,Correlation,Topics" */
+    /** CSV row for -Top: "Cardinality,Correlation,Topics". */
     private fun BestSubsetSolution.toTopCsv(): String =
         "${getCardinality()},${getCorrelation()},${getTopicLabelsFromTopicStatus()}"
 
-    /* ---------- Additional helpers for streaming order & -Top blocks ---------- */
+    /* ---------- Helpers for streaming order & -Top blocks ---------- */
 
     /**
-     * Comparator used to keep -Fun/-Var **orderly as the file grows by appending**.
-     *
-     * Rule:
-     *  • Primary: K ascending (actual cardinality, external view).
-     *  • Secondary: correlation ordering chosen to keep *append order* sensible:
-     *      - BEST:  corr ascending (improvements increase corr → newer lines go after older).
-     *      - WORST: corr **descending** (improvements decrease corr → newer lines go after older).
-     *
-     * Final rewrite by the view is always (K asc, corr asc) for a single stable order.
+     * Comparator to keep -Fun/-Var orderly as files grow by appending.
+     * Primary key: K ascending. Secondary key: correlation ordered so that improvements
+     * are appended after older rows (BEST: corr asc; WORST: corr desc).
      */
-    private fun funVarComparatorFor(target: String): Comparator<Pair<Int, BinarySolution>> {
-        return if (target == Constants.TARGET_WORST) {
+    private fun funVarComparatorFor(target: String): Comparator<Pair<Int, BinarySolution>> =
+        if (target == Constants.TARGET_WORST) {
             compareBy<Pair<Int, BinarySolution>> { it.first }
                 .thenByDescending { (it.second as BestSubsetSolution).getCorrelation() }
         } else {
             compareBy<Pair<Int, BinarySolution>> { it.first }
                 .thenBy { (it.second as BestSubsetSolution).getCorrelation() }
         }
-    }
 
     /**
-     * Build the **exact 10 CSV lines** for a -Top block (for a given K's list).
-     * Lines are sorted by correlation **ascending** to match the requested format.
-     * If there are fewer than 10 entries available, we return an empty list and
-     * skip emitting a partial block (keeps the -Top file shape stable).
+     * Build the exact 10 CSV lines for a -Top block (for a given K list).
+     * Lines are sorted by correlation ascending. If fewer than 10 entries are available,
+     * return an empty list and skip emitting a partial block.
      */
-    private fun top10CsvLinesForK(
-        topList: List<BinarySolution>
-    ): List<String> {
+    private fun top10CsvLinesForK(topList: List<BinarySolution>): List<String> {
         val ascByCorr = topList.sortedBy { (it as BestSubsetSolution).getCorrelation() }
         if (ascByCorr.size < 10) return emptyList()
         val ten = ascByCorr.take(10)
         return ten.map { (it as BestSubsetSolution).toTopCsv() }
     }
 
-    /** Cheap and stable signature of a 10-line block to detect content/order changes. */
+    /** Small, stable signature of a 10-line block to detect content/order changes. */
     private fun topBlockSig(lines: List<String>): Int =
         lines.joinToString("\n").hashCode()
 
-    /* ---------------------- Streaming NSGA-II wrapper ---------------------- */
+    /* ---------------------- Streaming NSGA-II wrapper (classic API + MNDS) ---------------------- */
 
     /**
-     * Minimal subclass of NSGA-II with a per-generation callback:
-     *  - We invoke `onGen` at init (gen = 0) and once per generation after replacement.
-     *  - The model never mutates objective values here; it only reads solutions
-     *    and delegates streaming decisions to the `onGen` lambda.
+     * Subclass of classic NSGA-II with:
+     *  - A per-generation callback (invoked at init and after each replacement).
+     *  - Environmental selection overridden to use **MNDS** (MergeNonDominatedSortRanking)
+     *    instead of the default fast non-dominated sorting.
+     *  - Local crowding-distance computation (no dependency on CrowdingDistance classes).
+     *  - Does not mutate objective values; only reads solutions and delegates streaming to `onGen`.
      */
     private class StreamingNSGAII(
         problem: Problem<BinarySolution>,
@@ -720,20 +695,122 @@ class DatasetModel {
         selection,
         evaluator
     ) {
-        private var genIndex = 0
+        private var generationIndex = 0
 
         override fun initProgress() {
             super.initProgress()
-            genIndex = 0
-            logger.debug("gen={} initProgress -> initial population ready (size={})", genIndex, population.size)
-            onGen.invoke(genIndex, population)
+            generationIndex = 0
+            logger.debug("gen={} initProgress -> initial population ready (size={})", generationIndex, population.size)
+            onGen.invoke(generationIndex, population)
         }
 
         override fun updateProgress() {
             super.updateProgress()
-            genIndex += 1
-            logger.debug("gen={} updateProgress -> population updated (size={})", genIndex, population.size)
-            onGen.invoke(genIndex, population)
+            generationIndex += 1
+            logger.debug("gen={} updateProgress -> population updated (size={})", generationIndex, population.size)
+            onGen.invoke(generationIndex, population)
+        }
+
+        /**
+         * Environmental selection using **MNDS** instead of the default FNS:
+         *   1) Join parent + offspring populations.
+         *   2) Rank with MergeNonDominatedSortRanking (MNDS).
+         *   3) Fill next population front-by-front; when a front overflows, apply *local*
+         *      crowding distance and keep the most diverse.
+         */
+        override fun replacement(
+            parentPopulation: List<BinarySolution>,
+            offspringPopulation: List<BinarySolution>
+        ): List<BinarySolution> {
+            val targetPopulationSize = parentPopulation.size
+
+            // 1) Merge parent + offspring
+            val mergedPopulation = ArrayList<BinarySolution>(targetPopulationSize + offspringPopulation.size).apply {
+                addAll(parentPopulation)
+                addAll(offspringPopulation)
+            }
+
+            // 2) MNDS ranking — in 6.9.x: use no-arg ctor + compute(list)
+            val mndsRanking: Ranking<BinarySolution> = MergeNonDominatedSortRanking()
+            mndsRanking.compute(mergedPopulation)
+
+            // 3) Build next gen using fronts + crowding on the last partial front
+            val nextGeneration = ArrayList<BinarySolution>(targetPopulationSize)
+            var frontIndex = 0
+            while (nextGeneration.size < targetPopulationSize && frontIndex < mndsRanking.numberOfSubFronts) {
+                val currentFront: MutableList<BinarySolution> = ArrayList(mndsRanking.getSubFront(frontIndex)) // copy to sort by crowding
+                if (nextGeneration.size + currentFront.size <= targetPopulationSize) {
+                    nextGeneration.addAll(currentFront)
+                } else {
+                    val slotsRemaining = targetPopulationSize - nextGeneration.size
+                    val crowdingDistanceBySolution = computeCrowdingDistances(currentFront)
+
+                    // Highest crowding distance first (desc), using explicit comparator
+                    currentFront.sortWith(java.util.Comparator { a, b ->
+                        val da = crowdingDistanceBySolution[a] ?: Double.NEGATIVE_INFINITY
+                        val db = crowdingDistanceBySolution[b] ?: Double.NEGATIVE_INFINITY
+                        java.lang.Double.compare(db, da)
+                    })
+
+                    nextGeneration.addAll(currentFront.subList(0, slotsRemaining))
+                }
+                frontIndex++
+            }
+            return nextGeneration
+        }
+
+        /**
+         * Minimal, local **crowding distance** computation for a single front.
+         * Matches NSGA-II’s definition:
+         *   - For each objective, normalize [f(i+1) - f(i-1)] by (f_max - f_min).
+         *   - Endpoints get +∞ to preserve boundary points.
+         */
+        private fun computeCrowdingDistances(frontSolutions: List<BinarySolution>): Map<BinarySolution, Double> {
+            val frontSize = frontSolutions.size
+            if (frontSize == 0) return emptyMap()
+            if (frontSize <= 2) {
+                // both (or single) endpoints: infinite crowding to keep them
+                return frontSolutions.associateWith { Double.POSITIVE_INFINITY }
+            }
+
+            val objectiveCount = frontSolutions[0].objectives().size
+            val crowdingDistanceBySolution = HashMap<BinarySolution, Double>(frontSize)
+            frontSolutions.forEach { crowdingDistanceBySolution[it] = 0.0 }
+
+            // Indices used to sort the front by each objective
+            val sortIndex: MutableList<Int> = MutableList(frontSize) { it }
+
+            for (objective in 0 until objectiveCount) {
+                // Sort indices by this objective's value
+                sortIndex.sortBy { idx -> frontSolutions[idx].objectives()[objective] }
+
+                val minObjective = frontSolutions[sortIndex.first()].objectives()[objective]
+                val maxObjective = frontSolutions[sortIndex.last()].objectives()[objective]
+                val objectiveRange = maxObjective - minObjective
+
+                // Endpoints always infinite (preserve extreme trade-offs)
+                crowdingDistanceBySolution[frontSolutions[sortIndex.first()]] = Double.POSITIVE_INFINITY
+                crowdingDistanceBySolution[frontSolutions[sortIndex.last()]] = Double.POSITIVE_INFINITY
+
+                if (objectiveRange == 0.0) {
+                    // All same value on this objective → contributes nothing this round
+                    continue
+                }
+
+                // Interior points
+                for (position in 1 until frontSize - 1) {
+                    val leftNeighbor = frontSolutions[sortIndex[position - 1]].objectives()[objective]
+                    val rightNeighbor = frontSolutions[sortIndex[position + 1]].objectives()[objective]
+                    val increment = (rightNeighbor - leftNeighbor) / objectiveRange
+
+                    val currentSolution = frontSolutions[sortIndex[position]]
+                    if (crowdingDistanceBySolution[currentSolution] != Double.POSITIVE_INFINITY) {
+                        crowdingDistanceBySolution[currentSolution] =
+                            crowdingDistanceBySolution[currentSolution]!! + increment
+                    }
+                }
+            }
+            return crowdingDistanceBySolution
         }
     }
 }

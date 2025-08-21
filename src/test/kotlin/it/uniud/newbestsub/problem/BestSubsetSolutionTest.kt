@@ -20,10 +20,6 @@ class BestSubsetSolutionTest {
     @BeforeEach
     @DisplayName("BestSubsetSolution - Initialize Tests")
     fun initTest() {
-        /* Prepare a tiny synthetic dataset:
-         * - topics = 10
-         * - systems = topics + 1 (11)
-         */
         val numTopics = 10
         val numSystems = numTopics + 1
 
@@ -60,7 +56,7 @@ class BestSubsetSolutionTest {
             testTarg
         )
 
-        /* New constructor: we don’t pass the problem anymore */
+        // New constructor: the problem instance is not passed here
         testSol = BestSubsetSolution(
             numberOfVariables = 1,
             numberOfObjectives = 2,
@@ -73,7 +69,6 @@ class BestSubsetSolutionTest {
     @Test
     @DisplayName("SetBitValue")
     fun setBitValueTest() {
-
         println("[BestSubsetSolutionTest setBitValue] - Test begins.")
 
         val oldSelTop = testSol.numberOfSelectedTopics
@@ -98,16 +93,24 @@ class BestSubsetSolutionTest {
     @Test
     @DisplayName("GetTotalNumberOfBits")
     fun getTotalNumberOfBitsTest() {
-
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test begins.")
 
         var sum = 0
-        /* jMetal 6.x: use property-style accessors */
+        // jMetal 6.x: property-style accessors
         (0 until testSol.variables().size).forEach { index ->
             sum += testSol.variables()[index].length()
         }
-        println("[BestSubsetSolutionTest setBitValue] - Testing: <Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits}>.")
-        assertEquals(true, sum == testSol.totalNumberOfBits, "<Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits}>.")
+
+        println(
+            "[BestSubsetSolutionTest getTotalNumberOfBits] - Testing: " +
+            "<Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits()}>."
+        )
+
+        assertEquals(
+            true,
+            sum == testSol.totalNumberOfBits(),
+            "<Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits()}>."
+        )
 
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test ends.")
     }
@@ -115,7 +118,6 @@ class BestSubsetSolutionTest {
     @Test
     @DisplayName("Copy")
     fun copyTest() {
-
         println("[BestSubsetSolutionTest copy] - Test begins.")
         assertEquals(true, testSol.copy() == testSol)
         println("[BestSubsetSolutionTest copy] - Test ends.")
