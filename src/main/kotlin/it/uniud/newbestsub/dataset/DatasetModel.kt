@@ -84,6 +84,9 @@ class DatasetModel {
     var topSolutions = mutableListOf<BinarySolution>()
     var allSolutions = mutableListOf<BinarySolution>()
 
+    /** Shared, read-only numeric bundle (dense primitive matrices). Built in refreshDerivedData(). */
+    private var precomputedData: PrecomputedData? = null
+
     /* ------------------------------ Data loading/expansion ------------------------------ */
 
     fun loadData(datasetPath: String) {
@@ -155,19 +158,24 @@ class DatasetModel {
     }
 
     private fun refreshDerivedData() {
+        // Reset per-topic presence matrix
         topicLabels.forEach { label -> topicDistribution[label] = TreeMap() }
 
+        // Systems count & labels (keep legacy iteration order for external reporting)
         numberOfSystems = averagePrecisions.size
-
         val apEntryIterator = averagePrecisions.entries.iterator()
         systemLabels = Array(numberOfSystems) { apEntryIterator.next().key }
 
+        // Full-set mean AP per system (legacy boxed path kept for AVERAGE branch)
         val useAllTopicsMask = BooleanArray(numberOfTopics).apply { Arrays.fill(this, true) }
-
         val apIteratorForMean = averagePrecisions.entries.iterator()
         meanAveragePrecisions = Array(averagePrecisions.size) {
             Tools.getMean(apIteratorForMean.next().value.toDoubleArray(), useAllTopicsMask)
         }
+
+        /* NEW: Build the shared primitive bundle once per refresh (fast path for Best/Worst). */
+        val primitiveAP: Map<String, DoubleArray> = toPrimitiveAPRows(averagePrecisions)
+        precomputedData = buildPrecomputedData(primitiveAP)
     }
 
     /* ------------------------------ Solve + streaming ------------------------------ */
@@ -187,7 +195,7 @@ class DatasetModel {
         populationSize = parameters.populationSize
         numberOfRepetitions = parameters.numberOfRepetitions
 
-        val correlationStrategy = loadCorrelationMethod(parameters.correlationMethod)
+        val correlationStrategy = loadCorrelationMethod(parameters.correlationMethod)  // boxed (AVERAGE)
         val objectiveEncodingStrategy = loadTargetToAchieve(parameters.targetToAchieve)
 
         logger.info(
@@ -265,7 +273,7 @@ class DatasetModel {
                         selectedTopicMask.forEach { append(if (it) '1' else '0') }
                     }
 
-                    // Compute correlation on the reduced mean vector
+                    // Compute correlation on the reduced mean vector (boxed path by design)
                     val apIterator = this@DatasetModel.averagePrecisions.entries.iterator()
                     val reducedMeanVector = Array(averagePrecisions.size) {
                         Tools.getMean(apIterator.next().value.toDoubleArray(), selectedTopicMask)
@@ -306,9 +314,15 @@ class DatasetModel {
                 )
             }
 
+            /* NEW: construct the problem with the primitive path (keeps types uniform). */
             problem = BestSubsetProblem(
-                parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels,
-                correlationStrategy, objectiveEncodingStrategy
+                parameters = parameters,
+                numberOfTopics = numberOfTopics,
+                precomputedData = precomputedData
+                    ?: buildPrecomputedData(toPrimitiveAPRows(averagePrecisions)),
+                topicLabels = topicLabels,
+                correlationFunction = loadPrimitiveCorrelationMethod(parameters.correlationMethod),
+                targetStrategy = objectiveEncodingStrategy
             )
 
             /* Build solutions from precomputed gene vectors to keep topicDistribution consistent. */
@@ -333,23 +347,23 @@ class DatasetModel {
 
             /* ---------------------------------
              * BEST / WORST experiments (streamed)
-             * ---------------------------------
-             *
-             * - -Fun/-Var: append only improvements per K (sorted by K and correlation).
-             * - -Top: build exact 10-line blocks per K (corr ASC) and replace only on changes.
-             *
-             * Classic NSGA-II constructor is used; MNDS (MergeNonDominatedSortRanking) is plugged
-             * into the environmental selection by overriding `replacement(...)` below.
-             */
+             * --------------------------------- */
             if (populationSize < numberOfTopics) throw ParseException(
                 "Value for the option <<p>> or <<po>> must be greater or equal than/to $numberOfTopics. Current value is $populationSize. Check the usage section below."
             )
             numberOfIterations = parameters.numberOfIterations
 
+            /* NEW: construct the problem via the primitive precomputed bundle. */
             problem = BestSubsetProblem(
-                parameters, numberOfTopics, averagePrecisions, meanAveragePrecisions, topicLabels,
-                correlationStrategy, objectiveEncodingStrategy
+                parameters = parameters,
+                numberOfTopics = numberOfTopics,
+                precomputedData = precomputedData
+                    ?: buildPrecomputedData(toPrimitiveAPRows(averagePrecisions)),
+                topicLabels = topicLabels,
+                correlationFunction = loadPrimitiveCorrelationMethod(parameters.correlationMethod),
+                targetStrategy = objectiveEncodingStrategy
             )
+
             crossover = BinaryPruningCrossover(0.7)
             mutation = BitFlipMutation(0.3)
 
@@ -542,6 +556,23 @@ class DatasetModel {
 
         this.correlationMethod = correlationMethod
 
+        return when (correlationMethod) {
+            Constants.CORRELATION_PEARSON -> pearson
+            Constants.CORRELATION_KENDALL -> kendall
+            else -> pearson
+        }
+    }
+
+    /* NEW: Primitive correlation loader for Best/Worst (DoubleArray-based, no boxing). */
+    private fun loadPrimitiveCorrelationMethod(
+        correlationMethod: String
+    ): (DoubleArray, DoubleArray) -> Double {
+        val pearson: (DoubleArray, DoubleArray) -> Double = { left, right ->
+            PearsonsCorrelation().correlation(left, right)
+        }
+        val kendall: (DoubleArray, DoubleArray) -> Double = { left, right ->
+            KendallsCorrelation().correlation(left, right)
+        }
         return when (correlationMethod) {
             Constants.CORRELATION_PEARSON -> pearson
             Constants.CORRELATION_KENDALL -> kendall

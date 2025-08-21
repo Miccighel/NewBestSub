@@ -141,20 +141,43 @@ class BestSubsetSolution(
     }
 
     fun retrieveTopicStatus(): BooleanArray {
-        val bs = variables[0]
-        val out = BooleanArray(bs.length())  /* jMetal 6.x: use length() instead of binarySetLength */
-        for (i in out.indices) out[i] = bs.get(i)
-        return out
+        // If we have a cached array with the right length, reuse it
+        topicStatus?.let { cached ->
+            if (cached.size == numberOfTopics) {
+                // Convert Array<Boolean> → BooleanArray efficiently
+                val mask = BooleanArray(numberOfTopics)
+                var i = 0
+                while (i < numberOfTopics) {
+                    mask[i] = cached[i]; i++
+                }
+                return mask
+            }
+        }
+
+        // Build a full-length mask from the underlying bitset
+        val mask = BooleanArray(numberOfTopics)
+        val bits = getVariableValue(0) // jMetal BinarySet
+        var i = 0
+        while (i < numberOfTopics) {
+            mask[i] = bits.get(i)
+            i++
+        }
+
+        // Cache as boxed array for any callers that expect Array<Boolean>
+        topicStatus = Array(numberOfTopics) { idx -> mask[idx] }
+        return mask
     }
 
     fun getTopicLabelsFromTopicStatus(): String {
-        var selectedTopicLabels = "["
-        topicStatus.forEachIndexed { index, keep ->
-            if (keep) selectedTopicLabels += "${topicLabels[index]} "
+        val mask: BooleanArray = retrieveTopicStatus()
+        val labels: Array<String> = this.topicLabels   // already set by ctor
+        val n = kotlin.math.min(mask.size, labels.size)
+
+        val out = ArrayList<String>(numberOfSelectedTopics)
+        for (i in 0 until n) {
+            if (mask[i]) out.add(labels[i])
         }
-        if (selectedTopicLabels.length > 1) selectedTopicLabels = selectedTopicLabels.dropLast(1)
-        selectedTopicLabels += "]"
-        return selectedTopicLabels
+        return out.joinToString(" ")
     }
 
     fun getVariableValueString(index: Int): String {
