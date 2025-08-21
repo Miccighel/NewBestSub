@@ -39,7 +39,7 @@ class BestSubsetSolution(
 
     init {
         /* Determinism: all randomness goes through jMetal's singleton RNG, which
-         * is bridged by RngBridge when the user enables the deterministic option. */
+         * is bridged by RandomBridge when the user enables the deterministic option. */
         val rng = JMetalRandom.getInstance()
         require(numberOfTopics > 0) { "numberOfTopics must be > 0" }
         require(forcedCardinality == null || (forcedCardinality in 1..numberOfTopics)) {

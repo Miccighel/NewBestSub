@@ -5,7 +5,7 @@ import org.uma.jmetal.util.pseudorandom.PseudoRandomGenerator
 import java.util.SplittableRandom
 
 /*
- * RngBridge
+ * RandomBridge
  * ---------
  * Deterministic RNG plumbing for jMetal.
  *
@@ -21,7 +21,7 @@ import java.util.SplittableRandom
  * We therefore DO NOT override nextInt() or nextLong() (they are not in your interface).
  * Program.kt ensures sequential execution when deterministic mode is enabled.
  */
-object RngBridge {
+object RandomBridge {
 
     /* Master seed installed when deterministic mode is enabled */
     private var masterSeed: Long = 0L
@@ -68,7 +68,7 @@ object RngBridge {
     fun installDeterministic(seed: Long) {
         masterSeed = seed
         val adapter = SplittableAdapter(masterSeed)
-        JMetalRandom.getInstance().setRandomGenerator(adapter)
+        JMetalRandom.getInstance().randomGenerator = adapter
         installed = true
     }
 
@@ -89,11 +89,11 @@ object RngBridge {
         val jmr = JMetalRandom.getInstance()
         val prev: PseudoRandomGenerator = jmr.randomGenerator
         val temp = SplittableAdapter(seed)
-        jmr.setRandomGenerator(temp)
+        jmr.randomGenerator = temp
         try {
             return block()
         } finally {
-            jmr.setRandomGenerator(prev)
+            jmr.randomGenerator = prev
         }
     }
 
@@ -101,7 +101,7 @@ object RngBridge {
 
     /*
      * SplitMix64 finalizer (signed literals to avoid "Value out of range").
-     * Constants: -0x40A7B892E31B1A47L and -0x6B2FB644ECCEEE15L
+     * Constants: -0x40A7_B892_E31B_1A47L and -0x6B2F_B644_ECCE_EE15L
      */
     private fun mix64(z0: Long): Long {
         var z = z0

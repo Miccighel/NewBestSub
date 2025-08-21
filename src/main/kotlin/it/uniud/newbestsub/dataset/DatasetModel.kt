@@ -614,8 +614,8 @@ class DatasetModel {
         val k = this.getCardinality()
         val corr = this.getCorrelation()
         return when (target) {
-            Constants.TARGET_BEST -> "${k} ${-corr}"   // corr negated internally → flip back
-            Constants.TARGET_WORST -> "${-k} ${corr}"  // K negated internally → flip back
+            Constants.TARGET_BEST -> "$k ${-corr}"   // corr negated internally → flip back
+            Constants.TARGET_WORST -> "${-k} $corr"  // K negated internally → flip back
             else -> "$k $corr"
         }
     }

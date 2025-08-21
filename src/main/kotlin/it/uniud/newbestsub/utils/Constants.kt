@@ -15,14 +15,6 @@ object Constants {
     /* Single timestamp token for this run; used at the END of the run folder name */
     val RUN_TIMESTAMP: String? = SimpleDateFormat("yyyy-MM-dd-hh-mm-ss").format(Date())
 
-    /* Name of the run container folder (params + timestamp).
-     * Initialized to timestamp, then overwritten by DatasetView.ensureRunDir() to the FINAL name. */
-    var RUN_CONTAINER_FOLDER_NAME: String = SimpleDateFormat("yyyy-MM-dd-hh-mm-ss").format(Date())
-
-    /* Logs: same naming as the run container, under /log/<same-folder>/ */
-    val LOG_PATH: String
-        get() = "${NEWBESTSUB_PATH}log$PATH_SEPARATOR$RUN_CONTAINER_FOLDER_NAME$PATH_SEPARATOR"
-
     val LOG_FILE_NAME = "Execution"
     val LOG_FILE_SUFFIX = ".log"
 

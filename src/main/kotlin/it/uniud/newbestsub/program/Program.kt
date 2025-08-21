@@ -5,7 +5,7 @@ import it.uniud.newbestsub.dataset.Parameters
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools
 import it.uniud.newbestsub.utils.Tools.updateLogger
-import it.uniud.newbestsub.utils.RngBridge
+import it.uniud.newbestsub.utils.RandomBridge
 import org.apache.commons.cli.*
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.LogManager
@@ -201,7 +201,7 @@ object Program {
                         seed = null
                     )
                     val derived = seedFromCli ?: Tools.stableSeedFrom(seedTemplate)
-                    RngBridge.installDeterministic(derived)
+                    RandomBridge.installDeterministic(derived)
                     logger.info("Deterministic mode: ON (masterSeed=$derived)")
                     derived
                 } else {

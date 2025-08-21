@@ -1,71 +1,60 @@
 package it.uniud.newbestsub.problem
 
-import it.uniud.newbestsub.dataset.Parameters
-import it.uniud.newbestsub.utils.Constants
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.uma.jmetal.solution.binarysolution.BinarySolution
-import java.util.*
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class BitFlipMutationTest {
 
     @Test
-    @DisplayName("Execute")
+    @DisplayName("BitFlipMutation flips exactly one bit and keeps ≥1 topic selected")
     fun testExecute() {
-
         println("[BitFlipMutationTest execute] - Test begins.")
 
-        val testAvgPrec: MutableMap<String, Array<Double>> = LinkedHashMap()
-        val testCorr = { _: Array<Double>, _: Array<Double> -> 0.0 }
-        val testTarg = { sol: BinarySolution, _: Double -> sol }
-        val testMut = BitFlipMutation(1.0)
-
-        /* Consistent sizes */
         val numTopics = 10
-        val numSystems = numTopics + 1
+        val labels = Array(numTopics) { "t$it" }
 
-        for (index in 0 until numSystems) {
-            val random = Random()
-            val fakeAvgPrec = Array(numTopics) { (1 + (100 - 1) * random.nextDouble()) / 100 }
-            testAvgPrec["Test $index"] = fakeAvgPrec
-        }
-
-        val parameters = Parameters(
-            "AH99",
-            Constants.CORRELATION_PEARSON,
-            Constants.TARGET_BEST,
-            10000, 1000, 1000, 0,
-            listOf(50)
-        )
-
-        val meanAP = Array(numSystems) { 0.0 }
-        val topicLabels = Array(numTopics) { "Test" }
-
-        val testProb = BestSubsetProblem(
-            parameters,
-            numTopics,
-            testAvgPrec,
-            meanAP,
-            topicLabels,
-            testCorr,
-            testTarg
-        )
-
-        /* New constructor (no problem passed) */
-        var testSol = BestSubsetSolution(
+        val sol = BestSubsetSolution(
             numberOfVariables = 1,
             numberOfObjectives = 2,
             numberOfTopics = numTopics,
-            topicLabels = topicLabels,
+            topicLabels = labels,
             forcedCardinality = null
         )
 
-        val oldStatus = testSol.getVariableValueString(0)
-        testSol = testMut.execute(testSol) as BestSubsetSolution
-        val newStatus = testSol.getVariableValueString(0)
-        println("[BitFlipMutationTest execute] - Testing: <Old. Topic Stat. Val.: $oldStatus, New. Topic Stat. Val.: $newStatus>.")
-        assertEquals(false, oldStatus == newStatus, "<Old. Topic Stat. Val.: $oldStatus, New. Topic Stat. Val.: $newStatus>")
+        // Ensure the internal bitset has the right length (avoid length=1 default)
+        val emptyGenes = Array(numTopics) { false }
+        sol.setVariableValue(0, sol.createNewBitSet(numTopics, emptyGenes))
+
+        // Start from a known mask with at least two 1s
+        sol.setBitValue(0, true)
+        sol.setBitValue(1, true)
+
+        val mutation = BitFlipMutation(probability = 1.0)
+
+        val before = sol.retrieveTopicStatus()
+        val beforeSelected = sol.numberOfSelectedTopics
+
+        mutation.execute(sol)
+
+        val after = sol.retrieveTopicStatus()
+        val afterSelected = sol.numberOfSelectedTopics
+
+        // Hamming distance between before/after should be exactly 1
+        val hamming = before.indices.count { before[it] != after[it] }
+
+        println(
+            "[BitFlipMutationTest execute] - Hamming: $hamming, " +
+                "beforeSelected=$beforeSelected, afterSelected=$afterSelected"
+        )
+
+        assertEquals(1, hamming, "Mutation should flip exactly one bit (Hamming=1)")
+        assertTrue(afterSelected >= 1, "At least one topic must remain selected")
+        assertTrue(
+            afterSelected == beforeSelected + 1 || afterSelected == beforeSelected - 1,
+            "Cardinality should change by exactly ±1"
+        )
 
         println("[BitFlipMutationTest execute] - Test ends.")
     }

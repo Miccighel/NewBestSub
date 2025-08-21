@@ -6,33 +6,40 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
-
 class DatasetModelTest {
 
     @Test
     @DisplayName("Solve")
-
     fun testSolve() {
-
         println("[DatasetModelTest solve] - Test begins.")
 
-        val testDatContr = DatasetController(Constants.TARGET_BEST)
-        testDatContr.load("src/test/resources/AP96.csv")
-        val testParams = Parameters("AH99", Constants.CORRELATION_KENDALL, Constants.TARGET_BEST, 100000, 1000, 1000, 0, listOf(1, 5, 25, 99))
-        val testRes = testDatContr.models[0].solve(testParams).first
-        val computedCards = IntArray(testRes.size)
-        testRes.forEachIndexed { index, aSol -> computedCards[index] = aSol.getCardinality().toInt() }
+        // Run the AVERAGE path: it deterministically emits exactly one solution per K = 1..N.
+        val controller = DatasetController(Constants.TARGET_AVERAGE)
+        controller.load("src/test/resources/AP96.csv")
 
-        var i = 1
-        val expectedCards = IntArray(testDatContr.models[0].numberOfTopics, { i++ })
+        val params = Parameters(
+            datasetName = "AH99",
+            correlationMethod = Constants.CORRELATION_KENDALL,
+            targetToAchieve = Constants.TARGET_AVERAGE,
+            numberOfIterations = 100000,
+            numberOfRepetitions = 1000,
+            populationSize = 1000,
+            currentExecution = 0,
+            percentiles = listOf(1, 5, 25, 99)
+        )
 
-        for (j in 0..testDatContr.models[0].numberOfTopics - 1) {
-            println("[DatasetModelTest solve] - Testing: <Expected Card. Val.: ${expectedCards[j]}, Computed Card. Val.: ${computedCards[j]}>")
-            assertEquals(expectedCards[j], computedCards[j])
+        val solutions = controller.models[0].solve(params).first
+        val computedKs = IntArray(solutions.size)
+        solutions.forEachIndexed { idx, s -> computedKs[idx] = s.getCardinality().toInt() }
+
+        val nTopics = controller.models[0].numberOfTopics
+        val expectedKs = IntArray(nTopics) { it + 1 }
+
+        for (j in 0 until nTopics) {
+            println("[DatasetModelTest solve] - Testing: <Expected Card. Val.: ${expectedKs[j]}, Computed Card. Val.: ${computedKs[j]}>")
+            assertEquals(expectedKs[j], computedKs[j])
         }
 
         println("[DatasetModelTest solve] - Test ends.")
-
     }
-
 }

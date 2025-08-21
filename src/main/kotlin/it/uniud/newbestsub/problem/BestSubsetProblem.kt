@@ -146,12 +146,12 @@ class BestSubsetProblem(
         /* Remove duplicates by genotype, preserving order. */
         run {
             val seen = LinkedHashSet<String>(entryList.size)
-            val dedup = mutableListOf<BinarySolution>()
+            val dedupe = mutableListOf<BinarySolution>()
             for (s in entryList) {
                 val key = tieBreak(s)
-                if (seen.add(key)) dedup += s
+                if (seen.add(key)) dedupe += s
             }
-            topSolutions[kKey] = dedup.take(Constants.TOP_SOLUTIONS_NUMBER).toMutableList()
+            topSolutions[kKey] = dedupe.take(Constants.TOP_SOLUTIONS_NUMBER).toMutableList()
         }
 
         iterationCounter++

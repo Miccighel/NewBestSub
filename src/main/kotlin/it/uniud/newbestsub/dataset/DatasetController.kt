@@ -1,14 +1,11 @@
 package it.uniud.newbestsub.dataset
 
 import com.opencsv.CSVReader
-import com.opencsv.CSVWriter
 import it.uniud.newbestsub.utils.Constants
-import it.uniud.newbestsub.utils.RngBridge
+import it.uniud.newbestsub.utils.RandomBridge
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import org.apache.commons.lang3.StringUtils
 import org.apache.logging.log4j.LogManager
-import org.uma.jmetal.solution.binarysolution.BinarySolution
 import java.io.*
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -16,8 +13,6 @@ import java.nio.file.StandardCopyOption
 import java.util.*
 import java.util.SplittableRandom
 import kotlin.collections.LinkedHashMap
-
-typealias RunResult = Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>>
 
 /*
  * DatasetController
@@ -29,9 +24,9 @@ typealias RunResult = Triple<List<BinarySolution>, List<BinarySolution>, Triple<
  *
  * Determinism:
  *  - When Parameters.deterministic == true we execute **sequentially** and route all
- *    randomness through jMetal's singleton using RngBridge.withSeed(...).
+ *    randomness through jMetal's singleton using RandomBridge.withSeed(...).
  *  - Expansion helpers (expandTopics/expandSystems) also switch to a SplittableRandom
- *    derived from RngBridge.childSeed(...) to make fake data reproducible.
+ *    derived from RandomBridge.childSeed(...) to make fake data reproducible.
  *
  * Efficiency notes:
  *  - Printer uses a Channel with back-pressure.
@@ -89,11 +84,11 @@ class DatasetController(
      * expandTopics
      * ------------
      * Adds `expansionCoefficient` fake topics. In deterministic mode we use a seed derived
-     * from RngBridge so that labels and random APs are identical across runs.
+     * from RandomBridge so that labels and random APs are identical across runs.
      */
     fun expandTopics(expansionCoefficient: Int) {
         val rng: SplittableRandom? =
-            if (RngBridge.isInstalled()) SplittableRandom(RngBridge.childSeed("EXPAND_TOPICS", expansionNonce++))
+            if (RandomBridge.isInstalled()) SplittableRandom(RandomBridge.childSeed("EXPAND_TOPICS", expansionNonce++))
             else null
 
         val systemLabels = models[0].systemLabels
@@ -114,11 +109,11 @@ class DatasetController(
     /*
      * expandSystems
      * -------------
-     * Adds `expansionCoefficient` fake systems. Deterministic when RngBridge is installed.
+     * Adds `expansionCoefficient` fake systems. Deterministic when RandomBridge is installed.
      */
     fun expandSystems(expansionCoefficient: Int, trueNumberOfSystems: Int) {
         val rng: SplittableRandom? =
-            if (RngBridge.isInstalled()) SplittableRandom(RngBridge.childSeed("EXPAND_SYSTEMS", expansionNonce++))
+            if (RandomBridge.isInstalled()) SplittableRandom(RandomBridge.childSeed("EXPAND_SYSTEMS", expansionNonce++))
             else null
 
         val systemLabels = Array(expansionCoefficient) { index ->
@@ -143,7 +138,7 @@ class DatasetController(
      * Drives the three targets when TARGET_ALL, or a single target otherwise.
      * Deterministic mode:
      *  - Sequential execution
-     *  - Seeded via RngBridge.childSeed("BEST"/"WORST"/"AVERAGE") (or the single target)
+     *  - Seeded via RandomBridge.childSeed("BEST"/"WORST"/"AVERAGE") (or the single target)
      * Parallel mode:
      *  - Retains existing coroutine-based parallel execution.
      */
@@ -197,15 +192,15 @@ class DatasetController(
                         }
 
                         /* BEST */
-                        RngBridge.withSeed(RngBridge.childSeed("BEST")) {
+                        RandomBridge.withSeed(RandomBridge.childSeed("BEST")) {
                             models[0].solve(bestParameters, progress)
                         }
                         /* WORST */
-                        RngBridge.withSeed(RngBridge.childSeed("WORST")) {
+                        RandomBridge.withSeed(RandomBridge.childSeed("WORST")) {
                             models[1].solve(worstParameters, progress)
                         }
                         /* AVERAGE */
-                        RngBridge.withSeed(RngBridge.childSeed("AVERAGE")) {
+                        RandomBridge.withSeed(RandomBridge.childSeed("AVERAGE")) {
                             models[2].solve(averageParameters, progress)
                         }
 
@@ -303,7 +298,7 @@ class DatasetController(
                         }
 
                         val label = parameters.targetToAchieve.uppercase(Locale.ROOT)
-                        RngBridge.withSeed(RngBridge.childSeed(label)) {
+                        RandomBridge.withSeed(RandomBridge.childSeed(label)) {
                             models[0].solve(parameters, progress)
                         }
 
@@ -510,7 +505,7 @@ class DatasetController(
             if (rows.size > 1) rows.drop(1) else emptyList()
 
         fun minDataLen(tables: List<List<Array<String>>>): Int =
-            tables.minOfOrNull { (if (it.size > 0) it.size - 1 else 0) } ?: 0
+            tables.minOfOrNull { (if (it.isNotEmpty()) it.size - 1 else 0) } ?: 0
 
         fun safeDouble(s: String): Double? = runCatching { s.trim().toDouble() }.getOrNull()
 
@@ -1070,7 +1065,6 @@ class DatasetController(
         }
 
         /* ---------- Merged CSV artifacts ---------- */
-        val isAll = (targetToAchieve == Constants.TARGET_ALL)
 
         val copyMergedCsv = { path: String, label: String ->
             if (copyIfExists(path, csvDestDir)) {

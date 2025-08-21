@@ -1,6 +1,6 @@
 # NewBestSub
 
-Efficient topic-set reduction for IR evaluation using a multi-objective evolutionary algorithm (NSGA‑II). This repo reproduces and extends results on selecting small topic subsets that preserve the system ranking induced by the full set.
+Efficient topic-set reduction for IR evaluation using a multi-objective evolutionary algorithm (NSGA-II). This repo reproduces and extends results on selecting small topic subsets that preserve the system ranking induced by the full set.
 
 > JDIQ 2018: <https://doi.org/10.1145/3239573>  
 > SIGIR 2018: <https://dl.acm.org/citation.cfm?doid=3209978.3210108>
@@ -9,23 +9,23 @@ Efficient topic-set reduction for IR evaluation using a multi-objective evolutio
 
 ## ✨ What’s inside
 
-- **BEST / WORST / AVERAGE** experiments with **NSGA‑II (jMetal 5.10)**
-- **Streaming I/O** for results  
-  - **FUN / VAR**: append during the run; on close, globally sort by **(K asc, corr asc)** for aligned and stable files  
-  - **TOP**: replace‑batch semantics, for each K always write the exact 10 lines, replacing the block when it changes
+- **BEST / WORST / AVERAGE** experiments with **NSGA-II (jMetal 6.9.x)**
+- **Streaming NSGA-II wrapper**  
+  Per-generation callback to stream progress:
+  - **FUN / VAR:** append only *improvements per K* (kept sorted per batch for stable growth); final global sort is handled at close by the view layer.
+  - **TOP:** exact 10-line blocks per K; replace a block only when it changes.
+- **Environmental selection via MNDS**  
+  NSGA-II replacement uses **MergeNonDominatedSortRanking (MNDS)** plus local crowding distance to fill the last partial front.
 - **Dual outputs**  
-  - **CSV** via `CSVView` (streaming‑first)  
-  - **Parquet** via `ParquetView` (streaming‑first, no coupling to CSV)
+  - **CSV** (streaming-first)  
+  - **Parquet** (streaming-first, Snappy, no CSV coupling)
 - **Consistent formatting**  
-  - Correlations serialized with 6‑digit precision in both CSV and Parquet  
-  - **VAR** stores only the topic labels set to 1, pipe‑delimited (`label1|label2|…`), not the full bitstring  
-  - **TOP** topics are pipe‑delimited too, no brackets
-- **Clean layout**: per‑run subfolders `.../CSV/` and `.../Parquet/`
-- **Robust Parquet**  
-  - Snappy compression, overwrite semantics  
-  - Uses Hadoop `RawLocalFileSystem` to avoid local `.crc` sidecar files
+  - Correlations serialized with 6-digit precision in both CSV and Parquet  
+  - **VAR** stores a **contiguous bitstring** (e.g., `101001…`) matching the streaming writer  
+  - **TOP** topics are pipe-delimited (`label1|label2|…`), no brackets
+- **Clean layout**: per-run subfolders `.../CSV/` and `.../Parquet/`
 - **Deterministic mode**  
-  - Reproducible runs by fixing the master seed via `--seed` or by enabling `--deterministic`, which derives a stable seed from key parameters
+  Reproducible runs via a master seed or auto-derived stable seed
 
 ---
 
@@ -41,10 +41,10 @@ Efficient topic-set reduction for IR evaluation using a multi-objective evolutio
 mvn -DskipTests=false clean package
 ```
 
-This produces:
-
+Artifacts:
 ```
 target/NewBestSub-2.0-jar-with-dependencies.jar
+target/NewBestSub-2.0-test-jar-with-dependencies.jar
 ```
 
 ### Run
@@ -52,16 +52,9 @@ target/NewBestSub-2.0-jar-with-dependencies.jar
 java -Xmx4g -jar target/NewBestSub-2.0-jar-with-dependencies.jar --help
 ```
 
-Example run:
+Example:
 ```bash
-java -Xmx4g -jar target/NewBestSub-2.0-jar-with-dependencies.jar \
-  --fileIn data/TREC8/AP \
-  --corr Pearson \
-  --targ Best \
-  --log Verbose \
-  --iter 50 \
-  --pop 200 \
-  --deterministic --seed 1337
+java -Xmx4g -jar target/NewBestSub-2.0-jar-with-dependencies.jar   -fi AH99 -c Pearson -t All -po 2000 -i 10000 -r 2000 -pe 1,100 -log Limited
 ```
 
 ---
@@ -69,72 +62,73 @@ java -Xmx4g -jar target/NewBestSub-2.0-jar-with-dependencies.jar \
 ## 🧩 Architecture overview
 
 - **`DatasetModel`**  
-  Loads data, manages run parameters, runs NSGA‑II, emits streaming progress events:  
-  `CardinalityResult` (append to FUN/VAR), `TopKReplaceBatch` (replace‑block write for TOP), `RunCompleted`.
-- **`DatasetView` (composite façade)**  
-  Fans out to **`CSVView`** (streaming‑first CSV) and **`ParquetView`** (streaming‑first Parquet).  
-  Public API: `print(runResult, model)`, `appendCardinality(model, event)`, `replaceTopBatch(model, blocks)`, `closeStreams(model)`.  
-  Helpers: `writeCsv(rows, path)` and `writeParquet(rows, path)` for final tables.
-- **`ViewPaths`**  
-  Canonical run folders and path builders that ensure the `CSV/` and `Parquet/` subfolders.
+  Loads data, wires correlation/target strategies, runs NSGA-II, and emits streaming events:  
+  - `CardinalityResult` → append to FUN/VAR  
+  - `TopKReplaceBatch` → replace-block write for TOP  
+  - `RunCompleted` → finalize/close writers
+
+- **Streaming NSGA-II wrapper**  
+  Subclasses classic jMetal NSGA-II to:
+  - call a per-generation hook (`onGen`) at init and after each generation
+  - override `replacement(...)` to use **MNDS + local crowding distance**
+
+- **Operators**  
+  - `BinaryPruningCrossover`: length-safe AND/OR crossover; guarantees at least one selected topic; uses jMetal RNG  
+  - `BitFlipMutation`: length-safe single-bit toggle with the same feasibility guarantee
+
+- **Views**  
+  `DatasetView` drives `CSVView` and `ParquetView`. Both are streaming-first; on close they flush, globally sort when needed, and write final tables.
+
+- **Paths**  
+  `ViewPaths` builds canonical per-run folders with `CSV/` and `Parquet/` subdirs.
 
 ### Streaming details
 
-- **FUN/VAR (CSV and Parquet)**  
-  Append during the run for visibility, maintain an in‑memory buffer per `(dataset, exec, target)`, and on `closeStreams` globally sort by `(K asc, corr asc)` before the final write.
-- **TOP (CSV and Parquet)**  
-  Cache per‑K blocks (exact 10 lines). On replace batches rewrite the full TOP file (header plus K‑ordered blocks). Finalize again at close to guarantee completeness.
+- **FUN / VAR**  
+  During the run, only improved representatives per K are appended. Each generation’s batch is sorted by **K asc** and by **correlation** (BEST: asc for external view; WORST: desc for external view). Final global sort occurs on close.
+
+- **TOP**  
+  Always exactly 10 rows per K (corr asc). On change, the corresponding K block is atomically replaced.
 
 ### Precision and formatting
 
-- Correlations are serialized with 6‑digit precision in CSV and Parquet.  
-- Topics use the pipe `|` delimiter, with no brackets in any output.
+- Correlations: 6 decimal digits everywhere  
+- **VAR**: contiguous bitstring (no brackets)  
+- **TOP**: topic labels pipe-delimited (`label1|label2|…`), no brackets
 
 ---
 
 ## 🗂️ Outputs
 
-All output files are placed under a per‑run container folder (constructed from dataset name, correlation, topics, systems, iterations, population, repetitions or executions, and target), then split into:
+Per-run container folder (derived from dataset, correlation, topics, systems, iterations, population, repetitions/executions, and target) containing:
 
 ```
 .../<run-container>/CSV/
 .../<run-container>/Parquet/
 ```
 
-### CSV files
-- **Function values** (`.../CSV/...-Fun.csv`)  
-  Space‑separated: `K corr`, with `K` as integer and `corr` with 6 digits.
-- **Variable values** (`.../CSV/...-Var.csv`)  
-  Topic labels with bit=1, pipe‑delimited.
-- **Top solutions** (`.../CSV/...-Top.csv`)  
-  Header: `Cardinality,Correlation,Topics`. Topics are pipe‑delimited, 10 rows per K.
-- **Aggregated / Info** (`.../CSV/...-Aggregated.csv`, `.../CSV/...-Info.csv`)  
-  Final tables for analysis and plots.
+### CSV
+- `...-Fun.csv`: `K corr` (space-separated; `K` int; `corr` with 6 digits)
+- `...-Var.csv`: contiguous bitstring for variables
+- `...-Top-10-Solutions.csv`: `Cardinality,Correlation,Topics` (topics pipe-delimited)
+- `...-Final.csv`, `...-Info.csv`: final summary/metadata
 
-### Parquet files
-- **Function values** (`.../Parquet/...-Fun.parquet`)  
-  Schema: `message Fun { required int32 K; required double Correlation; }`
-- **Variable values** (`.../Parquet/...-Var.parquet`)  
-  Schema: `message Var { required int32 K; required binary Labels (UTF8); }` where `Labels` is the pipe‑delimited set with bit=1.
-- **Top solutions** (`.../Parquet/...-Top.parquet`)  
-  Schema: `message Top { required int32 K; required double Correlation; required binary Topics (UTF8); }` where `Topics` is pipe‑delimited, 10 entries per K.
-- **Aggregated / Info** (`.../Parquet/...-Aggregated.parquet`, `.../Parquet/...-Info.parquet`)  
-  Written via a generic header‑driven table writer.
+### Parquet
+- `...-Fun.parquet`: schema `{ K:int, Correlation:double }`
+- `...-Var.parquet`: schema `{ K:int, Bits:string }` (`Bits` is the contiguous bitstring)
+- `...-Top-10-Solutions.parquet`: schema `{ K:int, Correlation:double, Topics:string }` (topics pipe-delimited)
+- `...-Aggregated.parquet`, `...-Info.parquet`: final tables
 
 ---
 
-## 🧠 Targets and objectives
+## 🧠 Targets & objectives (external view)
 
-- **BEST**  
-  Internal search may use a sign flip for correlation. All outputs contain the true correlation.
-- **WORST**  
-  Internal search negates K. Outputs contain the true K and correlation.
-- **AVERAGE**  
-  One pass per cardinality K, streamed directly.
-- **ALL**  
-  Runs BEST, WORST, and AVERAGE in one execution.
+- **BEST**: maximize correlation; reports true `K` and true correlation  
+- **WORST**: minimize correlation; reports true `K` and true correlation  
+- **AVERAGE**: single pass per K with repetitions; streamed directly  
+- **ALL**: runs BEST, WORST, and AVERAGE
 
-Reporting is always the external view. Correlations grow toward 1.0 as K approaches N.
+Internal signs may be flipped to simplify search; outputs are always unflipped (human-readable).
 
 ---
 
@@ -142,10 +136,10 @@ Reporting is always the external view. Correlations grow toward 1.0 as K approac
 
 CSV with header row:
 
-- First row: `,<topic_1>,<topic_2>,...,<topic_n>`
-- Then one row per system: `<system_id>,<AP_t1>,<AP_t2>,...,<AP_tn>`
+- Header: `,<topic_1>,<topic_2>,...,<topic_n>`
+- One row per system: `<system_id>,<AP_t1>,<AP_t2>,...,<AP_tn>`
 
-Example with 3 topics:
+Example:
 ```csv
 , t1, t2, t3
 BM25, 0.31, 0.45, 0.22
@@ -157,120 +151,88 @@ RM3,  0.40, 0.51, 0.26
 
 ## 🧷 Deterministic execution
 
-Use this mode to make runs reproducible.
-
-- `--seed <long>` sets the master seed explicitly.  
-- `--deterministic` enables deterministic mode; if `--seed` is not provided, a stable seed is derived from key parameters.  
-- The effective seed is logged at startup and embedded in the output folder name.
+- `--seed <long>` sets the master seed explicitly  
+- `--deterministic` enables deterministic mode; if `--seed` is absent, a stable seed is derived from key parameters  
+- Effective seed is logged and embedded in the output folder name
 
 ---
 
 ## 🖥️ CLI options
 
-All flags support a short and a long form. Required flags depend on the selected target.
+**Required**
+- `-fi, --fileIn <file>` input CSV *basename* (no extension)  
+- `-c, --corr <Pearson|Kendall>` correlation method  
+- `-t, --targ <Best|Worst|Average|All>` target  
+- `-l, --log <Verbose|Limited|Off>` logging level
 
-### Required
+**Optional (general)**
+- `--copy` copy results into `NewBestSub-Experiments` sibling folder  
+- `-det, --deterministic` enable deterministic mode  
+- `-sd, --seed <long>` master seed (implies deterministic mode)  
+- `-mr, --mrg <int>` merge N executions
 
-- `-fi, --fileIn <file>`  
-  Relative path to the CSV dataset file, without extension.
-
-- `-c, --corr <method>`  
-  Correlation method. Available: `Pearson`, `Kendall`.
-
-- `-t, --targ <target>`  
-  Target to run. Available: `Best`, `Worst`, `Average`, `All`.
-
-- `-l, --log <level>`  
-  Logging level. Available: `Verbose`, `Limited`, `Off`.
-
-### Optional, general
-
-- `--copy`  
-  Copy results of the current execution into `NewBestSub-Experiments` under the same base folder. Requires the following folder layout to exist: `baseFolder/NewBestSub/...` and `baseFolder/NewBestSub-Experiments/...`.
-
-- `-det, --deterministic`  
-  Enable deterministic execution. If used without `--seed`, a stable seed is derived from key parameters.
-
-- `-sd, --seed <long>`  
-  Explicit master seed for deterministic execution. Implies `--deterministic`.
-
-- `-mr, --mrg <int>`  
-  Number of executions to merge. Must be a positive integer.
-
-### Optional, target‑specific
-
-- `-i, --iter <int>`  
-  Number of iterations. Used for `Best`, `Worst`, `All`.
-
-- `-po, --pop <int>`  
-  Initial population size. Must be an integer, greater than or equal to the number of topics, and greater than the value used for `--max` if that option is set. Used for `Best`, `Worst`, `All`.
-
-- `-r, --rep <int>`  
-  Number of repetitions per cardinality when running `Average`. Must be a positive integer. Used for `Average`, `All`.
-
-- `-pe, --perc <a,b>`  
-  Percentile range to compute, as two comma‑separated integers, for example `-pe 1,100`. Used for `Average`, `All`.
-
-- `-et, --expt <int>`  
-  Number of fake topics to add at each iteration. Must be a positive integer.
-
-- `-es, --exps <int>`  
-  Number of fake systems to add at each iteration. Must be a positive integer.
-
-- `-mx, --max <int>`  
-  Maximum number of fake topics or systems to reach when using expansion options.
+**Optional (target-specific)**
+- `-i, --iter <int>` iterations (Best/Worst/All)  
+- `-po, --pop <int>` population size (≥ topics; Best/Worst/All)  
+- `-r, --rep <int>` repetitions per K (Average/All)  
+- `-pe, --perc <a,b>` percentile range (Average/All)  
+- `-et, --expt <int>` fake topics to add per step  
+- `-es, --exps <int>` fake systems to add per step  
+- `-mx, --max <int>` cap for expansions
 
 ---
 
 ## 🧪 Testing
 
-JUnit 5 with Surefire 3.x.
+JUnit 5 with Surefire 3.x:
 
 ```bash
 mvn -DskipTests=false -Dmaven.test.skip=false -Dsurefire.printSummary=true test
 ```
 
-Tips:
-- Import `org.uma.jmetal.solution.binarysolution.BinarySolution` for jMetal 5.10.
-- Surefire configuration matches `**/*Test.class` and disables the module path.
+Notes:
+- Import `org.uma.jmetal.solution.binarysolution.BinarySolution` (jMetal 6.x).
+- Surefire picks up `**/*Test.class`; module path disabled.
 
 ---
 
-## ⚙️ Build and logging
+## ⚙️ Build & logging
 
-Key build dependencies (see `pom.xml`):
+Key versions (see `pom.xml`):
+- **Kotlin** 2.2.0  
+- **Java** 21  
+- **jMetal** 6.9.1  
+- **Parquet** 1.15.2 / **Hadoop** 3.3.6  
+- **Log4j2** 2.24.3  
+- **JUnit** 5.13.4
 
-- Kotlin 2.2.0  
-- jMetal 5.10  
-- Parquet 1.15.2  
-- Hadoop 3.3.6  
-- Log4j2 2.24.3  
-- JUnit 5.13.4
-
-**Logging** (`log4j2.xml`):
-- Console and rolling file appenders.
-- Uses the `baseLogFileName` system property for file destinations.
+Logging:
+- Console + rolling files (`log4j2.xml`)
+- Uses `baseLogFileName` system property for destinations
 
 ---
 
 ## 🩺 Troubleshooting
 
-- **`.crc` files appear next to Parquet outputs**  
-  We set `fs.file.impl=org.apache.hadoop.fs.RawLocalFileSystem` to avoid them for local writes.
-- **Multiple SLF4J bindings warning**  
-  Avoid mixing `slf4j-log4j12`; we use Log4j2 bindings.
-- **Opposite‑sign correlations in BEST**  
-  Internal search may negate correlation; outputs always store the true (positive) correlation.
-- **Empty VAR for AVERAGE**  
-  Fixed: we serialize pipe‑delimited labels for bits set to 1 for all targets.
+- **AIOOBE in crossover**  
+  Fixed by a **length-safe** `BinaryPruningCrossover` that caps loops to the smallest bit-vector length and repairs empty children by forcing one selected topic.
+- **`.crc` sidecars with Parquet**  
+  Local writes use Hadoop `RawLocalFileSystem` to avoid `.crc`.
+- **Multiple SLF4J bindings**  
+  Avoid `slf4j-log4j12`; this project uses Log4j2 bindings.
+- **BEST sign confusion**  
+  Internal negatives are flipped back on output; reported correlations are always the true values.
 
 ---
 
-## 🔌 Extending
+## 🧭 Changelog (2025-08-21)
 
-- Plug your own correlation function in `DatasetModel.loadCorrelationMethod(...)`.
-- Swap crossover/mutation operators; keep the `BinarySolution` API.
-- Add new final tables with `DatasetView.writeCsv(...)` and `DatasetView.writeParquet(...)`.
+- Migrated to **jMetal 6.9.x** and Kotlin 2.2, Java 21 toolchain  
+- Added **streaming NSGA-II wrapper** with per-generation progress  
+- Integrated **MNDS** (`MergeNonDominatedSortRanking`) in environmental selection with local crowding distance  
+- Hardened operators: length-safe pruning crossover; feasibility repair in crossover & mutation  
+- Unified **VAR** format to a contiguous bitstring (CSV/Parquet)  
+- Polished logging, output paths, and finalization order
 
 ---
 
