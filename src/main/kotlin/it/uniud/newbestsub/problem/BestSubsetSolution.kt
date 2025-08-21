@@ -1,212 +1,239 @@
 package it.uniud.newbestsub.problem
 
 import org.apache.logging.log4j.LogManager
-import org.uma.jmetal.solution.binarysolution.BinarySolution
+import org.uma.jmetal.solution.binarysolution.impl.DefaultBinarySolution
 import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
-import java.util.Objects
 
+/* --------------------------------------------------------------------------------------------------------------------
+ * BestSubsetSolution
+ * --------------------------------------------------------------------------------------------------------------------
+ * Concrete binary solution backed by jMetal's BinarySet with a few conveniences:
+ *
+ *  • Construction helpers for either a fixed cardinality K or a random non-empty mask.
+ *  • Readable accessors used across the project (retrieveTopicStatus, numberOfSelectedTopics, …).
+ *  • Mirror field `topicStatus` kept for downstream writers (-Top CSV).
+ *  • Step 3 (delta evaluation) scaffolding:
+ *      - `lastEvaluatedMask`, `cachedSumsBySystem` (subset-sum cache)
+ *      - `lastSwapOutIndex`, `lastSwapInIndex`, `lastMutationWasFixedKSwap` (operator hook)
+ *
+ * Notes:
+ *  - Updated to jMetal 6.x API: use variables() / objectives() lists (no get/setVariableValue()).
+ *  - All randomness uses JMetalRandom's singleton to preserve determinism when seeded.
+ * ------------------------------------------------------------------------------------------------------------------ */
 class BestSubsetSolution(
+    /* Kept for call-site compatibility; only numberOfObjectives matters for parent */
+    numberOfVariables: Int,
+    numberOfObjectives: Int,
 
-    /* Core sizes required by Solution API (kept as constructor params for your callers) */
-    private val numberOfVariables: Int,
-    private val numberOfObjectives: Int,
-
-    /* Domain-specific sizes & labels */
+    /* Total number of decision bits (topics). */
     private val numberOfTopics: Int,
+
+    /* Human-readable labels for each topic (private; use getters to read safely). */
     private val topicLabels: Array<String>,
 
-    /* If not null, generate a solution with exactly this cardinality; otherwise sample randomly */
-    forcedCardinality: Int? = null
+    /* If non-null, build an initial mask with exactly this many 1s; otherwise random non-empty. */
+    private val forcedCardinality: Int?
+) : DefaultBinarySolution(listOf(numberOfTopics), numberOfObjectives) {
 
-) : BinarySolution, Comparable<BestSubsetSolution> {
-
-    /* -------- jMetal 6.x storage backing fields --------
-     * jMetal 6 uses property-style accessors:
-     *   variables(), objectives(), constraints(), attributes()
-     * We keep your internal fields and expose them via those methods. */
-    private val variables: MutableList<BinarySet> = MutableList(numberOfVariables) { BinarySet(numberOfTopics) }
-    private val objectives: DoubleArray = DoubleArray(numberOfObjectives) { 0.0 }
-    private val constraints: DoubleArray = DoubleArray(0) /* no constraints in this problem */
-    private val attributes: MutableMap<Any, Any> = LinkedHashMap()
-
-    /* Cached convenience info */
+    /* External mirror for writers (-Top CSV, etc.). */
     var topicStatus: Array<Boolean> = Array(numberOfTopics) { false }
-    var numberOfSelectedTopics: Int = 0
-        private set
+
+    /* Step 3 (delta evaluation) caches. */
+    var lastEvaluatedMask: BooleanArray? = null
+    var cachedSumsBySystem: DoubleArray? = null
+
+    /* Step 3 (delta evaluation) operator flags. */
+    var lastSwapOutIndex: Int? = null
+    var lastSwapInIndex: Int? = null
+    var lastMutationWasFixedKSwap: Boolean = false
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
+    /* -------------------------------- Initialization ------------------------------- */
     init {
-        /* Determinism: all randomness goes through jMetal's singleton RNG, which
-         * is bridged by RandomBridge when the user enables the deterministic option. */
-        val rng = JMetalRandom.getInstance()
-        require(numberOfTopics > 0) { "numberOfTopics must be > 0" }
-        require(forcedCardinality == null || (forcedCardinality in 1..numberOfTopics)) {
-            "forcedCardinality must be in 1..$numberOfTopics (was $forcedCardinality)"
-        }
-
-        /* Initialize topicStatus according to forced cardinality or random sampling (ensuring at least one bit set) */
-        if (forcedCardinality != null) {
-            while (numberOfSelectedTopics < forcedCardinality) {
-                /* rng.nextInt(a,b) in jMetal is inclusive on 'b', hence (0..N-1) for indices */
-                val idx = if (numberOfTopics <= 1) 0 else rng.nextInt(0, numberOfTopics - 1)
-                if (!topicStatus[idx]) {
-                    topicStatus[idx] = true
-                    numberOfSelectedTopics++
-                }
-            }
+        val initialMask: BinarySet = if (forcedCardinality != null) {
+            buildMaskWithExactCardinality(forcedCardinality)
         } else {
-            val columnKeepProbability = rng.nextDouble()
-            for (i in 0 until numberOfTopics) {
-                val keep = rng.nextDouble() > columnKeepProbability
-                if (keep) {
-                    topicStatus[i] = true
-                    numberOfSelectedTopics++
-                }
-            }
-            /* ensure at least one bit set */
-            if (numberOfSelectedTopics == 0) {
-                val flipIndex = if (numberOfTopics <= 1) 0 else rng.nextInt(0, numberOfTopics - 1)
-                topicStatus[flipIndex] = true
-                numberOfSelectedTopics = 1
-            }
+            buildRandomNonEmptyMask()
         }
 
-        /* Encode topicStatus into BinarySet variable 0 */
-        variables[0] = createNewBitSet(numberOfTopics, topicStatus)
+        /* jMetal 6.x: variables() returns a mutable list. Put our mask in slot 0. */
+        variables()[0] = initialMask
 
-        logger.debug("<Num. Sel. Topics: $numberOfSelectedTopics, Sel. Topics: ${getTopicLabelsFromTopicStatus()}, Gene: ${getVariableValueString(0)}>")
+        /* Keep the mirror in sync for downstream writers. */
+        topicStatus = retrieveTopicStatus().toTypedArray()
     }
 
-    // -------- BinarySolution / Solution API (jMetal 6.x) --------
-    // NOTE: The old get*/set* methods disappeared from the interface.
-    // We now expose property-style accessors as required by 6.x.
+    /* ------------------------------ Mask Builders ---------------------------------- */
 
-    override fun variables(): MutableList<BinarySet> = variables
-    override fun objectives(): DoubleArray = objectives
-    override fun constraints(): DoubleArray = constraints
-    override fun attributes(): MutableMap<Any, Any> = attributes
+    /** Build a BinarySet with exactly K bits set (K clamped to [1, numberOfTopics]). */
+    private fun buildMaskWithExactCardinality(desiredK: Int): BinarySet {
+        val clampedK = desiredK.coerceIn(1, numberOfTopics)
+        val mask = BinarySet(numberOfTopics)
 
-    /* jMetal 6.1 bit-size reporting:
-     * - numberOfBitsPerVariable(): per-variable lengths
-     * - totalNumberOfBits(): sum of lengths (we only have 1 BinarySet) */
-    override fun numberOfBitsPerVariable(): List<Int> = listOf(variables[0].length())
-    override fun totalNumberOfBits(): Int = variables[0].length()
+        val rng = JMetalRandom.getInstance()
+        val pool = IntArray(numberOfTopics) { it }  /* 0..n-1 */
+        var i = 0
+        while (i < clampedK) {
+            val swapWith = i + rng.nextInt(0, numberOfTopics - i - 1)
+            val tmp = pool[i]; pool[i] = pool[swapWith]; pool[swapWith] = tmp
+            mask.set(pool[i], true)
+            i++
+        }
+        return mask
+    }
 
-    /* jMetal requires a copy; we keep your deep copy semantics and return the same type. */
+    /** Build a BinarySet with random bits and ensure it's not empty (flip 1 if needed). */
+    private fun buildRandomNonEmptyMask(): BinarySet {
+        val mask = BinarySet(numberOfTopics)
+        val rng = JMetalRandom.getInstance()
+
+        var anySelected = false
+        var bitIndex = 0
+        while (bitIndex < numberOfTopics) {
+            val pick = rng.nextDouble() < 0.5
+            mask.set(bitIndex, pick)
+            anySelected = anySelected or pick
+            bitIndex++
+        }
+
+        if (!anySelected) {
+            val flipIndex = if (numberOfTopics == 1) 0 else rng.nextInt(0, numberOfTopics - 1)
+            mask.set(flipIndex, true)
+        }
+        return mask
+    }
+
+    /* ------------------------------ Public Helpers --------------------------------- */
+
+    /** Return the current topic mask as a primitive BooleanArray (fast for numeric loops). */
+    fun retrieveTopicStatus(): BooleanArray {
+        val bits: BinarySet = variables()[0]
+        val status = BooleanArray(numberOfTopics)
+        var i = 0
+        while (i < numberOfTopics) {
+            status[i] = bits.get(i)
+            i++
+        }
+        return status
+    }
+
+    /** Count of selected topics (cardinality of the bitset). */
+    val numberOfSelectedTopics: Int
+        get() = variables()[0].cardinality()
+
+    /** Set a single bit in the underlying BinarySet. */
+    fun setBitValue(bitIndex: Int, value: Boolean) {
+        variables()[0].set(bitIndex, value)
+    }
+
+    /** String form of variable bits without separators (used by logging/ranking). */
+    fun getVariableValueString(variableIndex: Int): String {
+        val bits: BinarySet = variables()[variableIndex]
+        val sb = StringBuilder(numberOfTopics)
+        var i = 0
+        while (i < numberOfTopics) {
+            sb.append(if (bits.get(i)) '1' else '0')
+            i++
+        }
+        return sb.toString()
+    }
+
+    /** Build a BinarySet from a genes array (used by streaming/Average paths). */
+    fun createNewBitSet(numBits: Int, genes: Array<Boolean>? = null): BinarySet {
+        val bs = BinarySet(numBits)
+        if (genes != null) {
+            val safeLen = minOf(numBits, genes.size)
+            var i = 0
+            while (i < safeLen) {
+                bs.set(i, genes[i])
+                i++
+            }
+        }
+        return bs
+    }
+
+    /** Join labels of selected topics for -Top CSV (use ';' to avoid CSV commas). */
+    fun getTopicLabelsFromTopicStatus(): String {
+        val bits: BinarySet = variables()[0]
+        val names = ArrayList<String>()
+        var i = 0
+        while (i < numberOfTopics) {
+            if (bits.get(i)) names.add(topicLabels[i])
+            i++
+        }
+        return names.joinToString(separator = ";")
+    }
+
+    /** Expose a single topic label safely (for operator logs). */
+    fun topicLabelAt(index: Int): String = topicLabels[index]
+
+    /** Clear Step-3 caches (subset sums). */
+    fun resetIncrementalEvaluationState() {
+        lastEvaluatedMask = null
+        cachedSumsBySystem = null
+    }
+
+    /** Clear Step-3 operator flags (swap info). */
+    fun clearLastMutationFlags() {
+        lastMutationWasFixedKSwap = false
+        lastSwapOutIndex = null
+        lastSwapInIndex = null
+    }
+
+    /* ---------------------------------- Copy --------------------------------------- */
+
+    /**
+     * Deep copy preserving:
+     *  - Variable bitset
+     *  - Objectives
+     *  - topicStatus mirror
+     *  - Step-3 caches and operator flags
+     */
     override fun copy(): BestSubsetSolution {
         val clone = BestSubsetSolution(
-            numberOfVariables = numberOfVariables,
-            numberOfObjectives = numberOfObjectives,
+            numberOfVariables = 1,
+            numberOfObjectives = objectives().size,  // jMetal 6.x: objectives() is a DoubleArray
             numberOfTopics = numberOfTopics,
             topicLabels = topicLabels.copyOf(),
-            forcedCardinality = null /* will be overwritten below */
+            forcedCardinality = null /* not used on clones; we copy bits instead */
         )
-        /* Variables */
-        for (i in 0 until numberOfVariables) {
-            // BinarySet supports clone(); if that ever changes, fall back to manual bit copy.
-            clone.variables()[i] = (this.variables()[i].clone() as BinarySet)
-        }
-        /* Objectives */
-        for (i in 0 until numberOfObjectives) {
-            clone.objectives()[i] = this.objectives()[i]
-        }
-        /* Attributes */
-        clone.attributes().putAll(this.attributes())
 
-        /* Cached fields */
+        /* Copy bitset */
+        val srcBits: BinarySet = variables()[0]
+        val dstBits = BinarySet(numberOfTopics).apply { this.or(srcBits) }
+        clone.variables()[0] = dstBits
+
+        /* Copy objectives (jMetal 6.x: use the objectives() array) */
+        val m = objectives().size
+        var i = 0
+        while (i < m) {
+            clone.objectives()[i] = this.objectives()[i]
+            i++
+        }
+
+        /* Copy mirrors & caches */
         clone.topicStatus = this.topicStatus.copyOf()
-        clone.numberOfSelectedTopics = this.numberOfSelectedTopics
+        clone.lastEvaluatedMask = this.lastEvaluatedMask?.copyOf()
+        clone.cachedSumsBySystem = this.cachedSumsBySystem?.copyOf()
+
+        /* Copy operator flags */
+        clone.lastSwapOutIndex = this.lastSwapOutIndex
+        clone.lastSwapInIndex = this.lastSwapInIndex
+        clone.lastMutationWasFixedKSwap = this.lastMutationWasFixedKSwap
 
         return clone
     }
 
-    /* -------- Convenience & domain helpers -------- */
+    /** External-friendly: cardinality as Double (used by writers/streams). */
+    fun getCardinality(): Double = numberOfSelectedTopics.toDouble()
 
-    fun createNewBitSet(numberOfBits: Int, values: Array<Boolean>): BinarySet {
-        val bitSet = BinarySet(numberOfBits)
-        for (i in 0 until numberOfBits) if (values[i]) bitSet.set(i) else bitSet.clear(i)
-        return bitSet
-    }
+    /** Returns the correlation as stored in objectives()[1]:
+     *  - BEST  : negative of the natural correlation (internal encoding)
+     *  - WORST : natural correlation
+     * External printing logic must convert to the natural view where required.
+     */
+    fun getCorrelation(): Double = objectives()[1]
 
-    fun setBitValue(index: Int, value: Boolean) {
-        val bs = variables[0]
-        if (bs.get(index) != value) {
-            if (value) bs.set(index) else bs.clear(index)
-            if (value) numberOfSelectedTopics++ else numberOfSelectedTopics--
-            topicStatus[index] = value
-        }
-        variables[0] = bs
-    }
-
-    fun retrieveTopicStatus(): BooleanArray {
-        // If we have a cached array with the right length, reuse it
-        topicStatus?.let { cached ->
-            if (cached.size == numberOfTopics) {
-                // Convert Array<Boolean> → BooleanArray efficiently
-                val mask = BooleanArray(numberOfTopics)
-                var i = 0
-                while (i < numberOfTopics) {
-                    mask[i] = cached[i]; i++
-                }
-                return mask
-            }
-        }
-
-        // Build a full-length mask from the underlying bitset
-        val mask = BooleanArray(numberOfTopics)
-        val bits = getVariableValue(0) // jMetal BinarySet
-        var i = 0
-        while (i < numberOfTopics) {
-            mask[i] = bits.get(i)
-            i++
-        }
-
-        // Cache as boxed array for any callers that expect Array<Boolean>
-        topicStatus = Array(numberOfTopics) { idx -> mask[idx] }
-        return mask
-    }
-
-    fun getTopicLabelsFromTopicStatus(): String {
-        val mask: BooleanArray = retrieveTopicStatus()
-        val labels: Array<String> = this.topicLabels   // already set by ctor
-        val n = kotlin.math.min(mask.size, labels.size)
-
-        val out = ArrayList<String>(numberOfSelectedTopics)
-        for (i in 0 until n) {
-            if (mask[i]) out.add(labels[i])
-        }
-        return out.joinToString(" ")
-    }
-
-    fun getVariableValueString(index: Int): String {
-        val bs = variables[index]
-        val sb = StringBuilder(bs.length())  /* jMetal 6.x: use length() */
-        for (i in 0 until bs.length()) sb.append(if (bs.get(i)) '1' else '0')
-        return sb.toString()
-    }
-
-    /* Convenience wrappers for legacy code (keep callers stable where possible) */
-    fun getVariableValue(index: Int) = variables()[index]
-    fun setVariableValue(index: Int, value: BinarySet) {
-        variables()[index] = value
-    }
-
-    override fun compareTo(other: BestSubsetSolution): Int =
-        this.getCardinality().compareTo(other.getCardinality())
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is BestSubsetSolution) return false
-        return this.getCorrelation() == other.getCorrelation() && this.getCardinality() == other.getCardinality()
-    }
-
-    override fun hashCode(): Int = Objects.hash(getCorrelation(), getCardinality())
 }
-
-/* -------- Convenience accessors for objective semantics (jMetal 6.x) --------
- * Old calls like solution.getObjective(i) must migrate to solution.objectives()[i].
- * These helpers keep your meaning explicit across the codebase. */
-fun BinarySolution.getCardinality(): Double = this.objectives()[0]
-fun BinarySolution.getCorrelation(): Double = this.objectives()[1]

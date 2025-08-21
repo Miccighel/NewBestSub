@@ -25,7 +25,7 @@ class BitFlipMutationTest {
 
         // Ensure the internal bitset has the right length (avoid length=1 default)
         val emptyGenes = Array(numTopics) { false }
-        sol.setVariableValue(0, sol.createNewBitSet(numTopics, emptyGenes))
+        sol.variables()[0] = sol.createNewBitSet(numTopics, emptyGenes)
 
         // Start from a known mask with at least two 1s
         sol.setBitValue(0, true)

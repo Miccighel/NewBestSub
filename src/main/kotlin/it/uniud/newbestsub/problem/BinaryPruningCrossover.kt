@@ -5,81 +5,133 @@ import org.uma.jmetal.operator.crossover.CrossoverOperator
 import org.uma.jmetal.solution.binarysolution.BinarySolution
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
-/**
- * Binary "pruning" crossover:
- *  - childA selects topics present in BOTH parents (AND) → more selective
- *  - childB selects topics present in EITHER parent (OR) → more inclusive
- *  - Guarantees childA has at least 1 bit set (flip one random bit if needed)
+/* --------------------------------------------------------------------------------------------------------------------
+ * BinaryPruningCrossover
+ * --------------------------------------------------------------------------------------------------------------------
+ * Behavior
+ * --------
+ * Given two parent masks (true = topic selected):
+ *   • ChildSelective:  bit = (ParentA AND ParentB)
+ *   • ChildInclusive:  bit = (ParentA OR  ParentB)
  *
- * Notes:
- *  - All randomness goes through jMetal’s singleton RNG for determinism.
- *  - Indices use exclusive-upper-bound ranges (0 until nBits) to avoid OOB.
- */
+ * Guarantees
+ * ----------
+ *   • Both children have EXACTLY N bits (N = totalNumberOfBits()).
+ *   • Each child has at least one bit set; if not, one random bit is flipped to true.
+ *   • No access to private fields (e.g., topicLabels) — we rebuild bitsets on parent copies.
+ *
+ * Determinism
+ * -----------
+ * All randomness goes through jMetal’s singleton RNG, so external seeding works.
+ *
+ * Complexity
+ * ----------
+ * O(N) bit ops per crossover call.
+ * ------------------------------------------------------------------------------------------------------------------ */
 class BinaryPruningCrossover(private var probability: Double) : CrossoverOperator<BinarySolution> {
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
-    // jMetal 6.x operator API
+    /* jMetal 6.x operator API */
     override fun crossoverProbability(): Double = probability
     override fun numberOfRequiredParents(): Int = 2
     override fun numberOfGeneratedChildren(): Int = 2
 
-    override fun execute(solutionList: MutableList<BinarySolution>): MutableList<BinarySolution> {
+    override fun execute(parents: MutableList<BinarySolution>): MutableList<BinarySolution> {
         /* Defensive: NSGA-II should always pass exactly 2 parents. */
-        require(solutionList.size >= 2) { "BinaryPruningCrossover requires 2 parents (got ${solutionList.size})" }
-
-        val parent1 = solutionList[0] as BestSubsetSolution
-        val parent2 = solutionList[1] as BestSubsetSolution
-
-        val maskP1: BooleanArray = parent1.retrieveTopicStatus()
-        val maskP2: BooleanArray = parent2.retrieveTopicStatus()
-
-        /* Children are deep copies; we’ll edit bits in-place. */
-        val child1 = parent1.copy()
-        val child2 = parent2.copy()
-
-        if (JMetalRandom.getInstance().nextDouble() < probability) {
-            /* Compute a safe working length across parents and children. */
-            val bitsChild1 = child1.numberOfBitsPerVariable()[0]
-            val bitsChild2 = child2.numberOfBitsPerVariable()[0]
-            val safeLen = minOf(maskP1.size, maskP2.size, bitsChild1, bitsChild2)
-
-            /* Log if anything is mismatched (shouldn’t happen, but better visible than crashing). */
-            if (!(maskP1.size == maskP2.size && maskP1.size == bitsChild1 && bitsChild1 == bitsChild2)) {
-                logger.warn(
-                    "BinaryPruningCrossover: mismatched lengths -> " +
-                            "p1Mask=${maskP1.size}, p2Mask=${maskP2.size}, c1=$bitsChild1, c2=$bitsChild2; using safeLen=$safeLen"
-                )
-            }
-
-            // Pruning crossover over the common, safe range.
-            for (bitIndex in 0 until safeLen) {
-                val p1 = maskP1[bitIndex]
-                val p2 = maskP2[bitIndex]
-                child1.setBitValue(bitIndex, p1 && p2)  // more selective
-                child2.setBitValue(bitIndex, p1 || p2)  // more inclusive
-            }
-
-            // If children are longer than safeLen, we leave tail bits untouched (from parent copy).
-
-            // Ensure feasibility: at least one topic selected in each child.
-            fun ensureAtLeastOneSelected(sol: BestSubsetSolution) {
-                if (sol.numberOfSelectedTopics == 0) {
-                    val n = sol.numberOfBitsPerVariable()[0]
-                    val flipIdx = if (n <= 1) 0 else JMetalRandom.getInstance().nextInt(0, n - 1)
-                    sol.setBitValue(flipIdx, true)
-                }
-            }
-            ensureAtLeastOneSelected(child1)
-            ensureAtLeastOneSelected(child2)
+        require(parents.size >= 2) {
+            "BinaryPruningCrossover requires 2 parents (got ${parents.size})"
         }
 
-        /* Debug (kept for traceability) */
-        logger.debug("<Num. Sel. Topics: ${parent1.numberOfSelectedTopics}, Parent 1: ${parent1.getVariableValueString(0)}>")
-        logger.debug("<Num. Sel. Topics: ${parent2.numberOfSelectedTopics}, Parent 2: ${parent2.getVariableValueString(0)}>")
-        logger.debug("<Num. Sel. Topics: ${child1.numberOfSelectedTopics}, Child 1: ${child1.getVariableValueString(0)}>")
-        logger.debug("<Num. Sel. Topics: ${child2.numberOfSelectedTopics}, Child 2: ${child2.getVariableValueString(0)}>")
-        return mutableListOf(child1, child2)
+        val parentA = parents[0] as BestSubsetSolution
+        val parentB = parents[1] as BestSubsetSolution
+
+        /* Invariant: both parents must share the same N (number of topics). */
+        val nBits = parentA.totalNumberOfBits()
+        require(parentB.totalNumberOfBits() == nBits) {
+            "Parents bit-length mismatch: ${parentA.totalNumberOfBits()} vs ${parentB.totalNumberOfBits()}"
+        }
+
+        /* Normalize masks to exactly N bits to avoid length drift. */
+        val maskA: BooleanArray = normalizeToLength(parentA.retrieveTopicStatus(), nBits)
+        val maskB: BooleanArray = normalizeToLength(parentB.retrieveTopicStatus(), nBits)
+
+        val rng = JMetalRandom.getInstance()
+        val performCrossover = rng.nextDouble() < probability
+
+        /* Build children masks (always length = N). */
+        val childSelectiveMask = BooleanArray(nBits)
+        val childInclusiveMask = BooleanArray(nBits)
+
+        if (performCrossover) {
+            var i = 0
+            while (i < nBits) {
+                val a = maskA[i];
+                val b = maskB[i]
+                childSelectiveMask[i] = a && b  /* selective (AND)   */
+                childInclusiveMask[i] = a || b  /* inclusive (OR)    */
+                i++
+            }
+        } else {
+            /* No crossover → normalized clones. */
+            System.arraycopy(maskA, 0, childSelectiveMask, 0, nBits)
+            System.arraycopy(maskB, 0, childInclusiveMask, 0, nBits)
+        }
+
+        /* Ensure feasibility: at least one topic selected per child. */
+        ensureAtLeastOneTrue(childSelectiveMask, nBits, rng)
+        ensureAtLeastOneTrue(childInclusiveMask, nBits, rng)
+
+        /* Materialize children as COPIES of the parents, then overwrite their bitset with N-bit masks. */
+        val childSelective = parentA.copy().apply {
+            variables()[0] = createNewBitSet(nBits, childSelectiveMask.toTypedArray())
+        }
+        val childInclusive = parentB.copy().apply {
+            variables()[0] = createNewBitSet(nBits, childInclusiveMask.toTypedArray())
+        }
+
+        // After building masks for children:
+        childSelective.variables()[0] = childSelective.createNewBitSet(nBits, childSelectiveMask.toTypedArray())
+        childInclusive.variables()[0] = childInclusive.createNewBitSet(nBits, childInclusiveMask.toTypedArray())
+
+        // New: reset step-3 state
+        childSelective.resetIncrementalEvaluationState()
+        childSelective.clearLastMutationFlags()
+        childInclusive.resetIncrementalEvaluationState()
+        childInclusive.clearLastMutationFlags()
+
+        /* Debug traces (safe at DEBUG level). */
+        logger.debug("<P1 sel=${parentA.numberOfSelectedTopics}> ${parentA.getVariableValueString(0)}")
+        logger.debug("<P2 sel=${parentB.numberOfSelectedTopics}> ${parentB.getVariableValueString(0)}")
+        logger.debug("<C1 sel=${childSelective.numberOfSelectedTopics}> ${childSelective.getVariableValueString(0)}")
+        logger.debug("<C2 sel=${childInclusive.numberOfSelectedTopics}> ${childInclusive.getVariableValueString(0)}")
+
+        return mutableListOf(childSelective, childInclusive)
     }
 
+    /* ------------------------------------- Helpers ------------------------------------- */
+
+    /* Copy/resize a BooleanArray to exactly n elements (truncate or pad with false). */
+    private fun normalizeToLength(mask: BooleanArray, n: Int): BooleanArray {
+        if (mask.size == n) return mask
+        val resized = BooleanArray(n)
+        val copyLen = kotlin.math.min(mask.size, n)
+        if (copyLen > 0) System.arraycopy(mask, 0, resized, 0, copyLen)
+        return resized
+    }
+
+    /* Ensure at least one 'true' in mask; if none, flip a random index to true. */
+    private fun ensureAtLeastOneTrue(mask: BooleanArray, n: Int, rng: JMetalRandom) {
+        var anyTrue = false
+        var i = 0
+        while (i < n) {
+            if (mask[i]) {
+                anyTrue = true; break
+            }; i++
+        }
+        if (!anyTrue) {
+            val idx = if (n <= 1) 0 else rng.nextInt(0, n - 1)
+            mask[idx] = true
+        }
+    }
 }

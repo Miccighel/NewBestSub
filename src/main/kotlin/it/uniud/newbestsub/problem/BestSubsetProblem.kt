@@ -20,10 +20,17 @@ import org.uma.jmetal.solution.binarysolution.BinarySolution
  * and map lookups on the hot path. It preserves the previous semantics and
  * public API usage via a secondary constructor that bridges legacy types.
  *
- * Step 1 goals (this file):
+ * Step 1 goals (this file originally):
  *  - Move to primitive DoubleArray matrices (no more Array<Double> in the loop)
  *  - Keep the same create/evaluate behavior and targetStrategy wiring
- *  - Prepare for Step 2 (fixed-K swap mutation) and Step 3 (delta evaluation)
+ *
+ * Step 3 (this revision):
+ *  - Introduce per-solution incremental evaluation with O(S) delta updates:
+ *      • Cold start: build sums from scratch (selected topics only)
+ *      • Warm path: update cached sums using either:
+ *          - Fixed-K swap hints (two columns ±) if provided by the operator
+ *          - Generic diff between last mask and current mask
+ *    Then compute means and correlation as before.
  */
 class BestSubsetProblem(
 
@@ -119,8 +126,8 @@ class BestSubsetProblem(
      *  1) Deterministic sweep of exact cardinalities K = 1..(n-1)
      *  2) Random subsets (ensuring at least one bit set)
      *
-     * This is unchanged; Step 2 will introduce a fixed-K swap mutation operator,
-     * not changes here.
+     * This is unchanged; Step 2 introduced a fixed-K swap mutation operator,
+     * Step 3 adds incremental evaluation in evaluate().
      */
     override fun createSolution(): BinarySolution {
         return if (cardinalityToGenerate < numberOfTopics) {
@@ -151,9 +158,13 @@ class BestSubsetProblem(
      *  - Per-system mean AP **restricted to selected topics** (subset means)
      *  - Precomputed per-system mean AP **over the full set** (full means)
      *
-     * Step 1 implementation uses primitive arrays and a cache-friendly
-     * column-sum pass. Step 3 will replace the O(S * K) mean computation
-     * with O(S) delta updates (using topicColumnViewByTopic) after swaps.
+     * Step 3 incremental path:
+     *  - If the solution already has `cachedSumsBySystem` and `lastEvaluatedMask`:
+     *       • Use swap hints (if present) to apply ± one/two topic columns
+     *         OR do a generic diff scan between masks to update sums.
+     *  - Else (cold start):
+     *       • Build sums from scratch by scanning selected topics only.
+     *  - Convert sums to means and compute correlation as before.
      */
     override fun evaluate(solution: BinarySolution): BinarySolution {
         solution as BestSubsetSolution
@@ -165,7 +176,6 @@ class BestSubsetProblem(
             parameters.numberOfIterations >= loggingEvery &&
             iterationCounter <= parameters.numberOfIterations
         ) {
-
             logger.info(
                 "Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) " +
                     "for evaluations on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
@@ -173,73 +183,128 @@ class BestSubsetProblem(
             progressCounter += Constants.LOGGING_FACTOR
         }
 
-        /* --- Build subset means using primitive arrays --- */
-        val selectedMask: BooleanArray = solution.retrieveTopicStatus()
+        /* ----------------------------- Incremental Sums ----------------------------- */
+        val currentMask: BooleanArray = solution.retrieveTopicStatus()
         val selectedTopicCount = solution.numberOfSelectedTopics
+        val numSystems = precomputedData.numberOfSystems
 
-        // Sums over selected topics for each system (size = #systems)
-        val sumsOfAPOverSelectedTopicsBySystem = DoubleArray(precomputedData.numberOfSystems)
+        // Ensure we have a sums buffer to work with
+        var sumsBySystem = solution.cachedSumsBySystem
+        val lastMask = solution.lastEvaluatedMask
 
-        // Cache-friendly pass: iterate selected topics, add their AP column to the running sums
-        var topicIndex = 0
-        while (topicIndex < numberOfTopics) {
-            if (selectedMask[topicIndex]) {
-                val columnView = precomputedData.topicColumnViewByTopic[topicIndex] // [system]
-                var systemIndex = 0
-                while (systemIndex < precomputedData.numberOfSystems) {
-                    sumsOfAPOverSelectedTopicsBySystem[systemIndex] += columnView[systemIndex]
-                    systemIndex++
+        if (sumsBySystem == null || lastMask == null) {
+            /* Cold start: build sums from scratch (selected topics only). */
+            val freshSums = DoubleArray(numSystems)
+            var topicIndex = 0
+            while (topicIndex < numberOfTopics) {
+                if (currentMask[topicIndex]) {
+                    val column = precomputedData.topicColumnViewByTopic[topicIndex]
+                    var systemIndex = 0
+                    while (systemIndex < numSystems) {
+                        freshSums[systemIndex] += column[systemIndex]
+                        systemIndex++
+                    }
+                }
+                topicIndex++
+            }
+            sumsBySystem = freshSums
+        } else {
+            /* Warm path: update cached sums using swap hints or a generic diff. */
+
+            // Try to use Fixed-K swap hints if they look valid.
+            val usedSwapHints =
+                solution.lastMutationWasFixedKSwap &&
+                (solution.lastSwapOutIndex != null || solution.lastSwapInIndex != null)
+
+            if (usedSwapHints) {
+                val outIdx = solution.lastSwapOutIndex
+                val inIdx  = solution.lastSwapInIndex
+
+                // Apply 1→0 (subtract column)
+                if (outIdx != null) {
+                    val column = precomputedData.topicColumnViewByTopic[outIdx]
+                    var s = 0
+                    while (s < numSystems) {
+                        sumsBySystem[s] -= column[s]; s++
+                    }
+                }
+                // Apply 0→1 (add column)
+                if (inIdx != null) {
+                    val column = precomputedData.topicColumnViewByTopic[inIdx]
+                    var s = 0
+                    while (s < numSystems) {
+                        sumsBySystem[s] += column[s]; s++
+                    }
+                }
+            } else {
+                /* Generic diff: scan the mask once and apply ± columns where bits changed. */
+                var topicIndex = 0
+                while (topicIndex < numberOfTopics) {
+                    val wasSelected = lastMask[topicIndex]
+                    val isSelected = currentMask[topicIndex]
+                    if (wasSelected != isSelected) {
+                        val column = precomputedData.topicColumnViewByTopic[topicIndex]
+                        val sign = if (isSelected) +1.0 else -1.0
+                        var s = 0
+                        while (s < numSystems) {
+                            sumsBySystem[s] += sign * column[s]
+                            s++
+                        }
+                    }
+                    topicIndex++
                 }
             }
-            topicIndex++
         }
 
-        // Convert sums to means for the left-hand vector of the correlation
-        val subsetMeanAPBySystem = DoubleArray(precomputedData.numberOfSystems)
+        // Persist incremental state back to the solution (and clear flags for next round).
+        solution.cachedSumsBySystem = sumsBySystem
+        solution.lastEvaluatedMask = currentMask.copyOf()
+        solution.clearLastMutationFlags()
+
+        /* ----------------------------- Means & Correlation -------------------------- */
+        val subsetMeanAPBySystem = DoubleArray(numSystems)
         if (selectedTopicCount > 0) {
-            var systemIndex = 0
-            while (systemIndex < precomputedData.numberOfSystems) {
-                subsetMeanAPBySystem[systemIndex] =
-                    sumsOfAPOverSelectedTopicsBySystem[systemIndex] / selectedTopicCount
-                systemIndex++
+            var s = 0
+            while (s < numSystems) {
+                subsetMeanAPBySystem[s] = sumsBySystem[s] / selectedTopicCount
+                s++
             }
         } // else remains zeros
 
-        // Right-hand vector: full-set means from PrecomputedData
         val fullSetMeanAPBySystem = precomputedData.fullSetMeanAPBySystem
-
-        // Compute correlation using the provided primitive correlation function
         val correlation = correlationFunction.invoke(subsetMeanAPBySystem, fullSetMeanAPBySystem)
 
         // Keep topic status mirrored for downstream consumers (unchanged external behavior)
-        solution.topicStatus = selectedMask.toTypedArray()
+        solution.topicStatus = currentMask.toTypedArray()
 
         /* objective[0] = cardinality (or -cardinality), objective[1] = correlation (possibly negated) */
         targetStrategy(solution, correlation)  // side-effect: writes objectives()
+
+        /* ----------------------------- Streaming Book-keeping ----------------------- */
 
         /* Maintain per-K dominated representative (best or worst) */
         val existingRepresentative = dominatedSolutions[solution.numberOfSelectedTopics.toDouble()]
         val candidateCopy = solution.copy()
 
         if (existingRepresentative != null) {
-            // Re-evaluate the existing representative's correlation using the same primitive path
+            // Re-evaluate the existing representative's correlation (simple full pass for robustness)
             val oldMask = (existingRepresentative as BestSubsetSolution).retrieveTopicStatus()
-            val oldSums = DoubleArray(precomputedData.numberOfSystems)
+            val oldSums = DoubleArray(numSystems)
             var t = 0
             while (t < numberOfTopics) {
                 if (oldMask[t]) {
                     val col = precomputedData.topicColumnViewByTopic[t]
                     var s = 0
-                    while (s < precomputedData.numberOfSystems) {
+                    while (s < numSystems) {
                         oldSums[s] += col[s]; s++
                     }
                 }
                 t++
             }
-            val oldMeans = DoubleArray(precomputedData.numberOfSystems)
+            val oldMeans = DoubleArray(numSystems)
             if (existingRepresentative.numberOfSelectedTopics > 0) {
                 var s = 0
-                while (s < precomputedData.numberOfSystems) {
+                while (s < numSystems) {
                     oldMeans[s] = oldSums[s] / existingRepresentative.numberOfSelectedTopics
                     s++
                 }

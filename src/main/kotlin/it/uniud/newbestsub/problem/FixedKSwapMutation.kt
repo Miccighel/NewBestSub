@@ -1,48 +1,122 @@
 package it.uniud.newbestsub.problem
 
+import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.mutation.MutationOperator
 import org.uma.jmetal.solution.binarysolution.BinarySolution
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
-/**
+/* --------------------------------------------------------------------------------------------------------------------
  * FixedKSwapMutation
- * ------------------
- * Preserves cardinality K by swapping one 1 -> 0 and one 0 -> 1.
- * Does a single swap with probability p; no-ops if K in {0, N}.
- */
-class FixedKSwapMutation(private val mutationProbability: Double) : MutationOperator<BinarySolution> {
-    private val rng = JMetalRandom.getInstance()
+ * --------------------------------------------------------------------------------------------------------------------
+ * Intent
+ * ------
+ * Preserve cardinality K during mutation by swapping:
+ *   • pick one index with bit = 1  → set it to 0   (swap OUT)
+ *   • pick one index with bit = 0  → set it to 1   (swap IN)
+ *
+ * Guarantees
+ * ----------
+ *   • If both 1-pool and 0-pool are non-empty → K is preserved exactly.
+ *   • Degenerate cases (all-zeros / all-ones) are handled safely:
+ *       - all-zeros  → flip one random bit to true (K = 1)
+ *       - all-ones   → flip one random bit to false (K = N - 1)
+ *   • Operates in-place on the given solution; no private fields are accessed.
+ *
+ * Step 3 hook (delta evaluation)
+ * ------------------------------
+ *   • On a true swap, we set:
+ *       solution.lastSwapOutIndex = index turned 1→0
+ *       solution.lastSwapInIndex  = index turned 0→1
+ *       solution.lastMutationWasFixedKSwap = true
+ *     BestSubsetProblem.evaluate(...) can then update cached per-system sums in O(S).
+ *
+ * Determinism
+ * -----------
+ * All randomness goes through jMetal’s singleton RNG, so external seeding works.
+ *
+ * Complexity
+ * ----------
+ * O(N) to collect indices + O(1) updates.
+ * ------------------------------------------------------------------------------------------------------------------ */
+class FixedKSwapMutation(private var probability: Double) : MutationOperator<BinarySolution> {
 
-    override fun execute(solution: BinarySolution): BinarySolution {
-        if (rng.nextDouble() >= mutationProbability) return solution
+    private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
-        val s = solution as BestSubsetSolution
-        val mask = s.retrieveTopicStatus()
-        val n = mask.size
-        val k = s.numberOfSelectedTopics
+    /* jMetal 6.x mutation API */
+    override fun mutationProbability(): Double = probability
 
-        // Nothing to swap if all-zeros or all-ones (shouldn't happen often)
-        if (k !in 1..<n) return solution
+    override fun execute(candidate: BinarySolution): BinarySolution {
+        val solution = candidate as BestSubsetSolution
+        val numBits = solution.numberOfBitsPerVariable()[0]
+        val rng = JMetalRandom.getInstance()
 
-        val ones = mutableListOf<Int>()
-        val zeros = mutableListOf<Int>()
-        for (i in 0 until n) if (mask[i]) ones += i else zeros += i
-        if (ones.isEmpty() || zeros.isEmpty()) return solution
+        /* No-op branch if mutation does not trigger or N == 0. */
+        if (rng.nextDouble() >= probability || numBits == 0) {
+            return solution
+        }
 
-        val i1 = ones[rng.nextInt(0, ones.size - 1)]
-        val i0 = zeros[rng.nextInt(0, zeros.size - 1)]
+        /* Snapshot current mask (exactly N bits by construction). */
+        val topicMask: BooleanArray = solution.retrieveTopicStatus()
 
-        mask[i1] = false
-        mask[i0] = true
+        /* Collect indices for 1-bits and 0-bits. */
+        val oneBitIndices = ArrayList<Int>()
+        val zeroBitIndices = ArrayList<Int>()
+        var bitIndex = 0
+        while (bitIndex < numBits) {
+            if (topicMask[bitIndex]) oneBitIndices.add(bitIndex) else zeroBitIndices.add(bitIndex)
+            bitIndex++
+        }
 
-        // Push back via BestSubsetSolution helpers (keeps internal counters consistent)
-        s.setVariableValue(0, s.createNewBitSet(n, mask.toTypedArray()))
-        return s
+        when {
+            /* Typical path: both pools available → true swap, K preserved. */
+            oneBitIndices.isNotEmpty() && zeroBitIndices.isNotEmpty() -> {
+                val indexToTurnOff = oneBitIndices[rng.nextInt(0, oneBitIndices.size - 1)]
+                val indexToTurnOn  = zeroBitIndices[rng.nextInt(0, zeroBitIndices.size - 1)]
+
+                /* Apply swap in-place. */
+                solution.setBitValue(indexToTurnOff, false)  /* 1 → 0 */
+                solution.setBitValue(indexToTurnOn,  true)   /* 0 → 1 */
+
+                /* Record swap for delta evaluation. */
+                solution.lastSwapOutIndex = indexToTurnOff
+                solution.lastSwapInIndex  = indexToTurnOn
+                solution.lastMutationWasFixedKSwap = true
+
+                logger.debug(
+                    "FixedKSwapMutation: swap(1→0 at $indexToTurnOff, 0→1 at $indexToTurnOn), " +
+                    "K=${solution.numberOfSelectedTopics}"
+                )
+            }
+
+            /* Degenerate: all-zeros → ensure at least one true. (K grows to 1) */
+            oneBitIndices.isEmpty() && zeroBitIndices.isNotEmpty() -> {
+                val turnedOnIndex = zeroBitIndices[rng.nextInt(0, zeroBitIndices.size - 1)]
+                solution.setBitValue(turnedOnIndex, true)
+
+                /* Mark only IN-side; OUT is null to signal a non-swap repair. */
+                solution.lastSwapOutIndex = null
+                solution.lastSwapInIndex  = turnedOnIndex
+                solution.lastMutationWasFixedKSwap = true
+
+                logger.debug("FixedKSwapMutation: repaired all-zeros by setting index $turnedOnIndex = true")
+            }
+
+            /* Degenerate: all-ones → ensure at least one false. (K drops to N-1) */
+            zeroBitIndices.isEmpty() && oneBitIndices.isNotEmpty() -> {
+                val turnedOffIndex = oneBitIndices[rng.nextInt(0, oneBitIndices.size - 1)]
+                solution.setBitValue(turnedOffIndex, false)
+
+                /* Mark only OUT-side; IN is null to signal a non-swap repair. */
+                solution.lastSwapOutIndex = turnedOffIndex
+                solution.lastSwapInIndex  = null
+                solution.lastMutationWasFixedKSwap = true
+
+                logger.debug("FixedKSwapMutation: repaired all-ones by setting index $turnedOffIndex = false")
+            }
+
+            /* numBits == 0 was handled by the early return. */
+        }
+
+        return solution
     }
-
-    override fun mutationProbability(): Double {
-        return mutationProbability
-    }
-
-    override fun toString(): String = "FixedKSwapMutation(p=$mutationProbability)"
 }

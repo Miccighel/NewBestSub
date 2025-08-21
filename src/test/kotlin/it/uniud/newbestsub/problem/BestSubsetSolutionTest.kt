@@ -95,25 +95,20 @@ class BestSubsetSolutionTest {
     fun getTotalNumberOfBitsTest() {
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test begins.")
 
-        var sum = 0
-        // jMetal 6.x: property-style accessors
-        (0 until testSol.variables().size).forEach { index ->
-            sum += testSol.variables()[index].length()
-        }
+        // jMetal 6.x: use the per-variable capacity list, not BinarySet.length()
+        val computed = testSol.numberOfBitsPerVariable().sum()   // <- capacity
+        val expected = testSol.totalNumberOfBits()               // <- sum of capacities
 
-        println(
-            "[BestSubsetSolutionTest getTotalNumberOfBits] - Testing: " +
-            "<Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits()}>."
-        )
+        println("[BestSubsetSolutionTest getTotalNumberOfBits] - Testing: " + "<Computed Num Bits: $computed, Expected Num Bits: $expected>.")
 
         assertEquals(
-            true,
-            sum == testSol.totalNumberOfBits(),
-            "<Computed Num Diff. Val.: $sum, Expected Num Diff. Val.: ${testSol.totalNumberOfBits()}>."
+            expected, computed,
+            "<Computed Num Bits: $computed, Expected Num Bits: $expected>."
         )
 
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test ends.")
     }
+
 
     @Test
     @DisplayName("Copy")

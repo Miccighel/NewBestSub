@@ -425,7 +425,10 @@ class ParquetView {
         /* FUN */
         runCatching {
             val rows = funVarBuffers[viewKey]?.sortedWith(
-                compareBy<FunVarRow>({ it.k }, { it.corrExternal })
+                if (model.targetToAchieve == Constants.TARGET_WORST)
+                    compareBy<FunVarRow>({ it.k }).thenByDescending { it.corrExternal }
+                else
+                    compareBy<FunVarRow>({ it.k }).thenBy { it.corrExternal }
             ).orEmpty()
 
             val schema = schemaFun()
@@ -443,7 +446,10 @@ class ParquetView {
         /* VAR */
         runCatching {
             val rows = funVarBuffers[viewKey]?.sortedWith(
-                compareBy<FunVarRow>({ it.k }, { it.corrExternal })
+                if (model.targetToAchieve == Constants.TARGET_WORST)
+                    compareBy<FunVarRow>({ it.k }).thenByDescending { it.corrExternal }
+                else
+                    compareBy<FunVarRow>({ it.k }).thenBy { it.corrExternal }
             ).orEmpty()
 
             val schema = schemaVar()

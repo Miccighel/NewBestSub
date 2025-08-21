@@ -215,7 +215,10 @@ class DatasetView {
      * No CSV ↔ Parquet coupling: both maintain their own state.
      */
     fun closeStreams(model: DatasetModel) {
+        // 1) finalize CSV files
         csvView.closeStreams(model)
+
+        // 3) finalize Parquet independently
         parquetView.closeStreams(model)
     }
 
