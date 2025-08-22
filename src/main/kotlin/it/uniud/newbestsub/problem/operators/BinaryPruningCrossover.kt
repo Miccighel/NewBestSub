@@ -1,9 +1,11 @@
-package it.uniud.newbestsub.problem
+package it.uniud.newbestsub.problem.operators
 
+import it.uniud.newbestsub.problem.BestSubsetSolution
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.crossover.CrossoverOperator
 import org.uma.jmetal.solution.binarysolution.BinarySolution
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
+import kotlin.math.min
 
 /* --------------------------------------------------------------------------------------------------------------------
  * BinaryPruningCrossover
@@ -115,7 +117,7 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
     private fun normalizeToLength(mask: BooleanArray, n: Int): BooleanArray {
         if (mask.size == n) return mask
         val resized = BooleanArray(n)
-        val copyLen = kotlin.math.min(mask.size, n)
+        val copyLen = min(mask.size, n)
         if (copyLen > 0) System.arraycopy(mask, 0, resized, 0, copyLen)
         return resized
     }

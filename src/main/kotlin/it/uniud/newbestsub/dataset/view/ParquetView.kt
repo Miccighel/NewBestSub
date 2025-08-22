@@ -1,7 +1,7 @@
 package it.uniud.newbestsub.dataset.view
 
 import it.uniud.newbestsub.dataset.DatasetModel
-import it.uniud.newbestsub.dataset.CardinalityResult
+import it.uniud.newbestsub.dataset.model.CardinalityResult
 import it.uniud.newbestsub.problem.BestSubsetSolution
 import it.uniud.newbestsub.problem.getCardinality
 import it.uniud.newbestsub.problem.getCorrelation
@@ -34,6 +34,9 @@ import org.apache.parquet.io.PositionOutputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
+import java.util.Base64
 
 class ParquetView {
 
@@ -76,19 +79,16 @@ class ParquetView {
 
     /* ---------------- Schemas (annotate all string-like as UTF‑8) ---------------- */
 
-    /** Parquet schema for FUN: K:int32, Correlation:double */
     private val SCHEMA_FUN: MessageType = Types.buildMessage()
         .required(INT32).named("K")
         .required(DOUBLE).named("Correlation")
         .named("Fun")
 
-    /** Parquet schema for VAR: K:int32, TopicsB64:utf8 (Base64-packed mask) */
     private val SCHEMA_VAR: MessageType = Types.buildMessage()
         .required(INT32).named("K")
         .required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named("TopicsB64")
         .named("Var")
 
-    /** Parquet schema for TOP: K:int32, Correlation:double, TopicsB64:utf8 */
     private val SCHEMA_TOP: MessageType = Types.buildMessage()
         .required(INT32).named("K")
         .required(DOUBLE).named("Correlation")
@@ -116,7 +116,6 @@ class ParquetView {
         return if (isWindows()) CompressionCodecName.GZIP else CompressionCodecName.SNAPPY
     }
 
-    /** Ensure a writable temp dir for snappy-java when using SNAPPY (helps on Windows). */
     private fun ensureSnappyTemp(outPathStr: String) {
         if (System.getProperty("org.xerial.snappy.tempdir") != null) return
         val candidates = listOfNotNull(
@@ -129,8 +128,7 @@ class ParquetView {
                 Files.createDirectories(p)
                 System.setProperty("org.xerial.snappy.tempdir", p.toString())
                 return
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) { /* ignore */ }
         }
     }
 
@@ -150,8 +148,7 @@ class ParquetView {
                 path,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE
             )
-            // allocate the 1-byte buffer ONCE per stream instance
-            val singleByte = ByteBuffer.allocate(1)
+            val singleByte = ByteBuffer.allocate(1) // reused per stream instance
             return object : PositionOutputStream() {
                 private var pos = 0L
                 override fun getPos(): Long = pos
@@ -196,8 +193,8 @@ class ParquetView {
             .withWriteMode(ParquetFileWriter.Mode.OVERWRITE)
             .withCompressionCodec(codec)
             .withPageSize(128 * 1024)
-            .withRowGroupSize(8 * 1024 * 1024)
-            .withDictionaryEncoding(true) // good for string-like columns (TopicsB64)
+            .withRowGroupSize(8 * 1024 * 1024L)
+            .withDictionaryEncoding(true)
             .withType(schema)
             .build()
     }
@@ -206,19 +203,25 @@ class ParquetView {
 
     private fun round6(x: Double): Double = round(x * 1_000_000.0) / 1_000_000.0
 
+    private val DEC_FMT = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
+    private fun fmt6(x: Double): String = DEC_FMT.format(x)
+
+    private val NON_ALNUM_UNDERSCORE = Regex("[^A-Za-z0-9_]")
+    private val TOKEN_SPLIT = Regex("[,;\\s|]+")
+
     private fun normalizeCell(cellText: String): String {
         val t = cellText.trim()
         if (t.isEmpty()) return ""
-        val looksDecimal = t.contains('.') || t.contains('e') || t.contains('E')
+        val looksDecimal = t.indexOfAny(charArrayOf('.', 'e', 'E')) >= 0
         if (!looksDecimal) return t
         val v = t.toDoubleOrNull() ?: return t
-        return String.format(Locale.ROOT, "%.6f", v)
+        return fmt6(v)
     }
 
     private fun sanitizeAndUniq(rawNames: List<String>): List<String> {
         val used = mutableSetOf<String>()
         return rawNames.map { raw ->
-            var base = raw.trim().ifEmpty { "col" }.replace(Regex("[^A-Za-z0-9_]"), "_")
+            var base = raw.trim().ifEmpty { "col" }.replace(NON_ALNUM_UNDERSCORE, "_")
             if (base.firstOrNull()?.isDigit() == true) base = "_$base"
             var name = base
             var idx = 2
@@ -227,23 +230,32 @@ class ParquetView {
         }
     }
 
+    /* ------------- Encode helpers (shared encoder + cached labels map) ------------- */
+
+    private val b64Encoder = Base64.getEncoder().withoutPadding()
+
+    private data class LabelsKey(val ptr: Int, val size: Int, val first: String?)
+    private val indexCache = mutableMapOf<LabelsKey, Map<String, Int>>()
+    private fun indexByLabel(labels: Array<String>): Map<String, Int> {
+        val key = LabelsKey(System.identityHashCode(labels), labels.size, labels.firstOrNull())
+        return indexCache.getOrPut(key) { labels.withIndex().associate { it.value to it.index } }
+    }
+
     /** Convert any incoming topics field (labels/indices/bits/B64) → "B64:<...>" */
     private fun fieldToB64(raw: String, labels: Array<String>): String {
         val t = raw.trim()
         if (t.startsWith("B64:")) return t
         return try {
             if (t.any { it == '|' || it == ';' || it == ',' || it == ' ' || it == '[' }) {
-                val tokens = t.removePrefix("[").removeSuffix("]").split(Regex("[,;\\s|]+")).filter { it.isNotBlank() }
-                val indexByLabel = labels.withIndex().associate { it.value to it.index }
+                val tokens = t.removePrefix("[").removeSuffix("]").split(TOKEN_SPLIT).filter { it.isNotBlank() }
+                val byLabel = indexByLabel(labels)
                 val mask = BooleanArray(labels.size)
                 var matched = 0
                 for (tk in tokens) {
-                    val idx = indexByLabel[tk] ?: tk.toIntOrNull()?.let { v ->
-                        indexByLabel.keys.indexOfFirst { it == v.toString() }.takeIf { it >= 0 }
+                    val idx = byLabel[tk] ?: tk.toIntOrNull()?.let { v ->
+                        if (v in 0 until mask.size) v else null
                     }
-                    if (idx is Int && idx >= 0 && idx < mask.size) {
-                        mask[idx] = true; matched++
-                    }
+                    if (idx != null) { mask[idx] = true; matched++ }
                 }
                 if (matched == 0) logger.warn("ParquetView fieldToB64] TOP topics field did not match labels/indices; emitting empty mask. raw='{}'", raw)
                 "B64:" + toBase64(mask)
@@ -282,7 +294,7 @@ class ParquetView {
             }
             off += java.lang.Long.BYTES
         }
-        return java.util.Base64.getEncoder().withoutPadding().encodeToString(out)
+        return b64Encoder.encodeToString(out)
     }
 
     /* ---------------- Streaming state ---------------- */
@@ -307,7 +319,6 @@ class ParquetView {
             return
         }
 
-        /* FUN + VAR in a single pass (avoid looping twice over allSolutions) */
         runCatching {
             val funFactory = SimpleGroupFactory(SCHEMA_FUN)
             val varFactory = SimpleGroupFactory(SCHEMA_VAR)
@@ -317,27 +328,25 @@ class ParquetView {
                         val k = s.getCardinality().toInt()
                         val corr = round6(s.getCorrelation())
                         val mask = (s as BestSubsetSolution).retrieveTopicStatus()
-                        val funRow = funFactory.newGroup().append("K", k).append("Correlation", corr)
-                        val varRow = varFactory.newGroup().append("K", k).append("TopicsB64", "B64:" + toBase64(mask))
-                        funW.write(funRow)
-                        varW.write(varRow)
+                        funW.write(funFactory.newGroup().append("K", k).append("Correlation", corr))
+                        varW.write(varFactory.newGroup().append("K", k).append("TopicsB64", "B64:" + toBase64(mask)))
                     }
                 }
             }
         }.onFailure { logger.warn("FUN/VAR Parquet write (snapshot) failed", it) }
 
-        /* TOP (Best/Worst only) */
         if (actualTarget != Constants.TARGET_AVERAGE) {
             runCatching {
                 val factory = SimpleGroupFactory(SCHEMA_TOP)
                 openWriter(topParquetPath(model), SCHEMA_TOP).use { w ->
                     for (s in topSolutions) {
                         val bss = s as BestSubsetSolution
-                        val g = factory.newGroup()
-                            .append("K", bss.getCardinality().toInt())
-                            .append("Correlation", round6(bss.getCorrelation()))
-                            .append("TopicsB64", "B64:" + toBase64(bss.retrieveTopicStatus()))
-                        w.write(g)
+                        w.write(
+                            factory.newGroup()
+                                .append("K", bss.getCardinality().toInt())
+                                .append("Correlation", round6(bss.getCorrelation()))
+                                .append("TopicsB64", "B64:" + toBase64(bss.retrieveTopicStatus()))
+                        )
                     }
                 }
             }.onFailure { logger.warn("TOP Parquet write (snapshot) failed", it) }
@@ -350,10 +359,8 @@ class ParquetView {
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
         val buf = funVarBuffers.getOrPut(viewKey) { mutableListOf() }
 
-        val corrExternal = when (model.targetToAchieve) {
-            Constants.TARGET_BEST -> -ev.correlation
-            else -> ev.correlation
-        }
+        // IMPORTANT: ev.correlation is already on the natural scale. Do NOT flip again.
+        val corrExternal = ev.correlation
         val topicsB64 = fieldToB64(ev.variableValuesCsvLine, model.topicLabels)
 
         buf += FunVarRow(k = ev.cardinality, corrExternal = corrExternal, topicsB64 = topicsB64)
@@ -378,7 +385,7 @@ class ParquetView {
     fun closeStreams(model: DatasetModel) {
         if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) {
             val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
-            funVarBuffers.remove(viewKey); topBlocks.remove(viewKey)
+            funVarBuffers.remove(viewKey); topBlocks.remove(viewKey); indexCache.clear()
             logger.info("[ParquetView.closeStreams] skipped (disabled).")
             return
         }
@@ -386,7 +393,6 @@ class ParquetView {
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
         val totStart = System.nanoTime()
 
-        /* Compute ordered FUN/VAR rows ONCE (shared by both writers) */
         val sortStart = System.nanoTime()
         val orderedRows: List<FunVarRow> = run {
             val rows = funVarBuffers[viewKey].orEmpty()
@@ -402,7 +408,6 @@ class ParquetView {
         }
         val sortEnd = System.nanoTime()
 
-        /* FUN + VAR: dual-writer pass (avoid duplicating sort + loops) */
         val funVarStart = System.nanoTime()
         runCatching {
             val funFactory = SimpleGroupFactory(SCHEMA_FUN)
@@ -421,11 +426,10 @@ class ParquetView {
         }.onFailure { logger.warn("FUN/VAR Parquet write (streamed) failed", it) }
         val funVarEnd = System.nanoTime()
 
-        /* TOP */
         val topStart = System.nanoTime()
         if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
             runCatching {
-                val cache = topBlocks[viewKey].orEmpty().toSortedMap() // K asc
+                val cache = topBlocks[viewKey].orEmpty().toSortedMap()
                 val factory = SimpleGroupFactory(SCHEMA_TOP)
                 var count = 0
                 openWriter(topParquetPath(model), SCHEMA_TOP).use { w ->
@@ -449,6 +453,7 @@ class ParquetView {
         // Clean up state
         funVarBuffers.remove(viewKey)
         topBlocks.remove(viewKey)
+        indexCache.clear()
 
         val totEnd = System.nanoTime()
         logger.info(

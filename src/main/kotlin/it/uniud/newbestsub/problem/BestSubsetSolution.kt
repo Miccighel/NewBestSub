@@ -62,28 +62,50 @@ class BestSubsetSolution(
 
     /* ------------------------------ Mask Builders ---------------------------------- */
 
-    /** Build a BinarySet with exactly K bits set (K clamped to [1, numberOfTopics]). */
-    private fun buildMaskWithExactCardinality(desiredK: Int): BinarySet {
-        val clampedK = desiredK.coerceIn(1, numberOfTopics)
-        val mask = BinarySet(numberOfTopics)
+    /**
+     * Build a BinarySet with exactly K bits set.
+     *
+     * - K is clamped to [0, numberOfTopics].
+     * - K == 0  → all false.
+     * - K == N  → all true (fast path; avoids sampling edge-cases).
+     * - 0 < K < N → partial Fisher–Yates with a correct [i, N-1] pick.
+     */
+    private fun buildMaskWithExactCardinality(kRequested: Int): BinarySet {
+        val n = numberOfTopics
+        val k = kRequested.coerceIn(0, n)
+        val mask = BinarySet(n)
 
-        val rng = JMetalRandom.getInstance()
-        val pool = IntArray(numberOfTopics) { it }  /* 0..n-1 */
+        if (k == 0) return mask
+        if (k == n) {
+            var i = 0
+            while (i < n) {
+                mask.set(i, true); i++
+            }   // set all bits via API
+            return mask
+        }
+
+        // Use the same RNG source to preserve determinism.
+        val rng = JMetalRandom.getInstance().randomGenerator
+
+        // Index pool: 0..n-1; fix the first k slots via partial Fisher–Yates.
+        val pool = IntArray(n) { it }
+
         var i = 0
-        while (i < clampedK) {
-            // jMetalRandom.nextInt(low, high) is [low, high) (upper bound EXCLUSIVE)
-            val swapWith = i + rng.nextInt(0, numberOfTopics - i)
-            val tmp = pool[i]; pool[i] = pool[swapWith]; pool[swapWith] = tmp
+        while (i < k) {
+            // Pick j in [i, n-1]. IMPORTANT: bound is (n - i), not n.
+            val j = i + (rng.nextDouble() * (n - i)).toInt()
+            val tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp
             mask.set(pool[i], true)
             i++
         }
         return mask
     }
 
+
     /** Build a BinarySet with random bits and ensure it's not empty (flip 1 if needed). */
     private fun buildRandomNonEmptyMask(): BinarySet {
         val mask = BinarySet(numberOfTopics)
-        val rng = JMetalRandom.getInstance()
+        val rng = JMetalRandom.getInstance().randomGenerator
 
         var anySelected = false
         var bitIndex = 0
@@ -95,8 +117,8 @@ class BestSubsetSolution(
         }
 
         if (!anySelected) {
-            // nextInt(0, numberOfTopics) chooses in [0, n) → all indices reachable
-            val flipIndex = if (numberOfTopics == 1) 0 else rng.nextInt(0, numberOfTopics)
+            // Choose one random bit in [0, n) and set it.
+            val flipIndex = if (numberOfTopics == 1) 0 else (rng.nextDouble() * numberOfTopics).toInt()
             mask.set(flipIndex, true)
         }
         return mask
@@ -161,20 +183,6 @@ class BestSubsetSolution(
         return bs
     }
 
-    /** Join labels of selected topics for -Top CSV (use ';' to avoid CSV commas). */
-    fun getTopicLabelsFromTopicStatus(): String {
-        val bits: BinarySet = variables()[0]
-        val names = ArrayList<String>()
-        var i = 0
-        while (i < numberOfTopics) {
-            if (bits.get(i)) names.add(topicLabels[i])
-            i++
-        }
-        return names.joinToString(separator = ";")
-    }
-
-    /** Expose a single topic label safely (for operator logs). */
-    fun topicLabelAt(index: Int): String = topicLabels[index]
 
     /** Clear delta-eval caches (subset sums). */
     fun resetIncrementalEvaluationState() {

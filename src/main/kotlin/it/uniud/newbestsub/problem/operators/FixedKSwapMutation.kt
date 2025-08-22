@@ -1,5 +1,6 @@
-package it.uniud.newbestsub.problem
+package it.uniud.newbestsub.problem.operators
 
+import it.uniud.newbestsub.problem.BestSubsetSolution
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.mutation.MutationOperator
 import org.uma.jmetal.solution.binarysolution.BinarySolution

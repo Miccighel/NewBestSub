@@ -1,4 +1,4 @@
-package it.uniud.newbestsub.dataset
+package it.uniud.newbestsub.dataset.model
 
 /**
  * ProgressEvent family

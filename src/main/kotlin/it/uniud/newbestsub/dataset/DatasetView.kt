@@ -1,5 +1,6 @@
 package it.uniud.newbestsub.dataset
 
+import it.uniud.newbestsub.dataset.model.CardinalityResult
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.dataset.view.CSVView
 import it.uniud.newbestsub.dataset.view.ParquetView

@@ -4,11 +4,10 @@ import it.uniud.newbestsub.dataset.DatasetController
 import it.uniud.newbestsub.dataset.Parameters
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools
-import it.uniud.newbestsub.utils.Tools.updateLogger
+import it.uniud.newbestsub.utils.LogManager
 import it.uniud.newbestsub.utils.RandomBridge
 import org.apache.commons.cli.*
 import org.apache.logging.log4j.Level
-import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.uma.jmetal.util.errorchecking.JMetalException
 import java.io.File
@@ -44,9 +43,9 @@ object Program {
         var logger: Logger
 
         /* -------- Bootstrap logging to a timestamped file (no params yet) -------- */
-        val bootstrapLogPath = Tools.getBootstrapLogFilePath()
+        val bootstrapLogPath = LogManager.getBootstrapLogFilePath()
         System.setProperty("baseLogFileName", bootstrapLogPath)
-        logger = updateLogger(LogManager.getLogger(LogManager.ROOT_LOGGER_NAME), Level.INFO)
+        logger = LogManager.updateRootLoggerLevel(Level.INFO)
 
         try {
             parser = DefaultParser()
@@ -56,7 +55,7 @@ object Program {
 
             if (!File(datasetPath).exists()) throw FileNotFoundException("Dataset file does not exists Path: \"$datasetPath\"") else {
 
-                /* Logging level */
+                /* LogManager level */
                 loggingLevel = when (commandLine.getOptionValue("l")) {
                     "Verbose" -> Level.DEBUG
                     "Limited" -> Level.INFO
@@ -115,7 +114,7 @@ object Program {
                 }
 
                 /* Apply requested logging level (still pointing to bootstrap file) */
-                logger = updateLogger(LogManager.getLogger(LogManager.ROOT_LOGGER_NAME), loggingLevel)
+                logger = LogManager.updateRootLoggerLevel(loggingLevel)
 
                 /* Controller + dataset load (to know topics/systems/etc.) */
                 datasetController = DatasetController(targetToAchieve)
@@ -136,7 +135,7 @@ object Program {
                         includePercentiles = (targetToAchieve == Constants.TARGET_AVERAGE),
                         percentiles = percentiles
                     )
-                    Tools.promoteBootstrapLogToParamNamedFile(paramsToken, loggingLevel)
+                    LogManager.promoteBootstrapToParameterizedLog(paramsToken, loggingLevel)
                 }
 
                 logger.info("${Constants.NEWBESTSUB_NAME} execution started.")
@@ -403,7 +402,7 @@ object Program {
 
         source = Option.builder("l").longOpt("log")
             .desc("Required level of logging. Available levels: Verbose, Limited, Off. [REQUIRED]")
-            .required().hasArg().argName("Logging Level").get()
+            .required().hasArg().argName("LogManager Level").get()
         options.addOption(source)
 
         source = Option.builder("i").longOpt("iter")

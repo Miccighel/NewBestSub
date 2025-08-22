@@ -1,9 +1,10 @@
 package it.uniud.newbestsub.problem
 
 import it.uniud.newbestsub.dataset.Parameters
-import it.uniud.newbestsub.dataset.PrecomputedData
-import it.uniud.newbestsub.dataset.buildPrecomputedData
-import it.uniud.newbestsub.dataset.toPrimitiveAPRows
+import it.uniud.newbestsub.dataset.model.PrecomputedData
+import it.uniud.newbestsub.dataset.model.buildPrecomputedData
+import it.uniud.newbestsub.dataset.model.toPrimitiveAPRows
+import it.uniud.newbestsub.math.Correlations
 import it.uniud.newbestsub.utils.Constants
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.problem.binaryproblem.BinaryProblem
@@ -14,8 +15,8 @@ class BestSubsetProblem(
     private val numberOfTopics: Int,
     private val precomputedData: PrecomputedData,
     val topicLabels: Array<String>,
-    @Suppress("unused")
-    private val correlationFunction: (DoubleArray, DoubleArray) -> Double,
+    @Suppress("unused") /* kept for ctor API compatibility (old boxed path) */
+    private val legacyBoxedCorrelation: (DoubleArray, DoubleArray) -> Double,
     private val targetStrategy: (BinarySolution, Double) -> BinarySolution
 ) : BinaryProblem {
 
@@ -23,7 +24,7 @@ class BestSubsetProblem(
         parameters: Parameters,
         numberOfTopics: Int,
         averagePrecisions: MutableMap<String, Array<Double>>,
-        meanAveragePrecisions: Array<Double>,
+        meanAveragePrecisions: Array<Double>, /* kept for API compat only */
         topicLabels: Array<String>,
         correlationStrategy: (Array<Double>, Array<Double>) -> Double,
         targetStrategy: (BinarySolution, Double) -> BinarySolution
@@ -32,41 +33,83 @@ class BestSubsetProblem(
         numberOfTopics = numberOfTopics,
         precomputedData = buildPrecomputedData(toPrimitiveAPRows(averagePrecisions)),
         topicLabels = topicLabels,
-        correlationFunction = { left: DoubleArray, right: DoubleArray ->
-            val leftBoxed = Array(left.size) { i -> left[i] }
-            val rightBoxed = Array(right.size) { i -> right[i] }
-            correlationStrategy.invoke(leftBoxed, rightBoxed)
+        legacyBoxedCorrelation = { l, r ->
+            val lb = Array(l.size) { i -> l[i] }
+            val rb = Array(r.size) { i -> r[i] }
+            correlationStrategy.invoke(lb, rb)
         },
         targetStrategy = targetStrategy
-    )
+    ) {
+        /* meanAveragePrecisions may differ from the precomputed bundle; rely on PrecomputedData instead. */
+        val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
+        if (meanAveragePrecisions.size != precomputedData.numberOfSystems) {
+            logger.warn(
+                "meanAveragePrecisions length (${meanAveragePrecisions.size}) differs from numberOfSystems " +
+                    "(${precomputedData.numberOfSystems}). Using PrecomputedData.fullSetMeanAPBySystem instead."
+            )
+        }
+    }
 
-    /* --- Pearson precomputation (Y vector = full mean APs) --- */
-    private lateinit var y: DoubleArray
-    private var yMean = 0.0
-    private var yVarTerm = 0.0
-    private var systemsCount = 0
+    /* ====================================================================================
+     * Correlation strategy (delegated to Correlations)
+     *  - We fill a reusable buffer with subset MEANS from per-system SUMS, then call
+     *    Correlations.fastPearsonPrimitive or Correlations.kendallTauBPrimitive.
+     * ==================================================================================== */
 
-    /* --- Streaming / bookkeeping --- */
+    /** Compute corr(X_means, Y_means) from subset SUMS and K. */
+    private interface CorrelationFromSums {
+        fun correlationFromSums(sumsBySystem: DoubleArray, kSelected: Int): Double
+    }
+
+    /** Pearson: fill X means buffer, then Correlations.fastPearsonPrimitive(). */
+    private inner class PearsonCorr : CorrelationFromSums {
+        private val systemsCount = precomputedData.numberOfSystems
+        private val yMeans: DoubleArray = precomputedData.fullSetMeanAPBySystem
+        private val xMeansBuffer = DoubleArray(systemsCount)
+        override fun correlationFromSums(sumsBySystem: DoubleArray, kSelected: Int): Double {
+            if (kSelected <= 0) return 0.0
+            val invK = 1.0 / kSelected
+            var s = 0
+            while (s < systemsCount) {
+                xMeansBuffer[s] = sumsBySystem[s] * invK
+                s++
+            }
+            return Correlations.fastPearsonPrimitive(xMeansBuffer, yMeans)
+        }
+    }
+
+    /** Kendall τ-b: fill X means buffer, then Correlations.kendallTauBPrimitive(). */
+    private inner class KendallCorr : CorrelationFromSums {
+        private val systemsCount = precomputedData.numberOfSystems
+        private val yMeans: DoubleArray = precomputedData.fullSetMeanAPBySystem
+        private val xMeansBuffer = DoubleArray(systemsCount)
+        override fun correlationFromSums(sumsBySystem: DoubleArray, kSelected: Int): Double {
+            if (kSelected <= 0) return 0.0
+            val invK = 1.0 / kSelected
+            var s = 0
+            while (s < systemsCount) {
+                xMeansBuffer[s] = sumsBySystem[s] * invK
+                s++
+            }
+            return Correlations.kendallTauBPrimitive(xMeansBuffer, yMeans)
+        }
+    }
+
+    /** Concrete strategy chosen once per run via parameter (Pearson by default). */
+    private val correlationFromSums: CorrelationFromSums =
+        if (parameters.correlationMethod == Constants.CORRELATION_KENDALL) KendallCorr() else PearsonCorr()
+
+    /* --------------------- Streaming / bookkeeping & ctor-calculated values --------------------- */
+
     val dominatedSolutions = linkedMapOf<Double, BinarySolution>()
     val topSolutions = linkedMapOf<Double, MutableList<BinarySolution>>()
     private var iterationCounter = 0
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
     private var progressCounter = 0
     private var cardinalityToGenerate = 1
+    private val systemsCount = precomputedData.numberOfSystems
 
-    init {
-        systemsCount = precomputedData.numberOfSystems
-        y = precomputedData.fullSetMeanAPBySystem
-        var sumY = 0.0
-        var sumY2 = 0.0
-        for (v in y) {
-            sumY += v
-            sumY2 += v * v
-        }
-        yMean = sumY / systemsCount
-        yVarTerm = sumY2 - systemsCount * yMean * yMean
-    }
-
+    /* -------- BinaryProblem / Problem API -------- */
     override fun name(): String = "BestSubsetProblem"
     override fun numberOfVariables(): Int = 1
     override fun numberOfObjectives(): Int = 2
@@ -85,7 +128,7 @@ class BestSubsetProblem(
     override fun evaluate(solution: BinarySolution): BinarySolution {
         solution as BestSubsetSolution
 
-        /* ---------- Progress logging with debounce msg ---------- */
+        /* ---------- Progress logging with debounce message ---------- */
         val loggingEvery = (parameters.numberOfIterations * Constants.LOGGING_FACTOR) / 100
         if (loggingEvery > 0 &&
             (iterationCounter % loggingEvery) == 0 &&
@@ -94,32 +137,37 @@ class BestSubsetProblem(
         ) {
             logger.info(
                 "Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) " +
-                "for evaluations on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
+                    "for evaluations on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
             )
             logger.debug(
-                "[debounce] Log messages are throttled to every $loggingEvery iterations " +
-                "(${Constants.LOGGING_FACTOR}% of total)."
+                "/* debounce */ log messages throttled every $loggingEvery iterations " +
+                    "(${Constants.LOGGING_FACTOR}% of total)."
             )
             progressCounter += Constants.LOGGING_FACTOR
         }
 
-        /* ----------------------------- Incremental sums ----------------------------- */
-        val currentMask: BooleanArray = solution.retrieveTopicStatus()
+        /* ----------------------------- Incremental per-system SUMS ----------------------------- */
+        val currentTopicMask: BooleanArray = solution.retrieveTopicStatus()
         val selectedTopicCount = solution.numberOfSelectedTopics
 
         var sumsBySystem = solution.cachedSumsBySystem
         val lastMask = solution.lastEvaluatedMask
 
         if (sumsBySystem == null || lastMask == null) {
+            /* Cold start: compute SUMS from scratch for selected topics only. */
             val fresh = DoubleArray(systemsCount)
-            for (t in 0 until numberOfTopics) {
-                if (currentMask[t]) {
+            var t = 0
+            while (t < numberOfTopics) {
+                if (currentTopicMask[t]) {
                     val col = precomputedData.topicColumnViewByTopic[t]
-                    for (s in 0 until systemsCount) fresh[s] += col[s]
+                    var s = 0
+                    while (s < systemsCount) { fresh[s] += col[s]; s++ }
                 }
+                t++
             }
             sumsBySystem = fresh
         } else {
+            /* Warm path: apply swap hints or generic diff. */
             val usedSwapHints =
                 solution.lastMutationWasFixedKSwap &&
                 (solution.lastSwapOutIndex != null || solution.lastSwapInIndex != null)
@@ -127,72 +175,62 @@ class BestSubsetProblem(
             if (usedSwapHints) {
                 solution.lastSwapOutIndex?.let { outIdx ->
                     val col = precomputedData.topicColumnViewByTopic[outIdx]
-                    for (s in 0 until systemsCount) sumsBySystem[s] -= col[s]
+                    var s = 0
+                    while (s < systemsCount) { sumsBySystem[s] -= col[s]; s++ }
                 }
                 solution.lastSwapInIndex?.let { inIdx ->
                     val col = precomputedData.topicColumnViewByTopic[inIdx]
-                    for (s in 0 until systemsCount) sumsBySystem[s] += col[s]
+                    var s = 0
+                    while (s < systemsCount) { sumsBySystem[s] += col[s]; s++ }
                 }
             } else {
-                for (t in 0 until numberOfTopics) {
+                var t = 0
+                while (t < numberOfTopics) {
                     val was = lastMask[t]
-                    val isSel = currentMask[t]
+                    val isSel = currentTopicMask[t]
                     if (was != isSel) {
                         val col = precomputedData.topicColumnViewByTopic[t]
                         val sign = if (isSel) +1.0 else -1.0
-                        for (s in 0 until systemsCount) sumsBySystem[s] += sign * col[s]
+                        var s = 0
+                        while (s < systemsCount) { sumsBySystem[s] += sign * col[s]; s++ }
                     }
+                    t++
                 }
             }
         }
 
+        /* Persist incremental state for the next evaluation. */
         solution.cachedSumsBySystem = sumsBySystem
-        solution.lastEvaluatedMask = currentMask.copyOf()
+        solution.lastEvaluatedMask = currentTopicMask.copyOf()
         solution.clearLastMutationFlags()
 
-        /* ----------------------------- Inline Pearson ----------------------------- */
-        val k = selectedTopicCount
-        val corr = if (k <= 0 || yVarTerm == 0.0) {
-            0.0
-        } else {
-            var sumX = 0.0
-            var sumX2 = 0.0
-            var sumXY = 0.0
-            val invK = 1.0 / k
-            for (s in 0 until systemsCount) {
-                val x = sumsBySystem[s] * invK
-                sumX += x
-                sumX2 += x * x
-                sumXY += x * y[s]
-            }
-            val meanX = sumX / systemsCount
-            val num = sumXY - systemsCount * meanX * yMean
-            val denLeft = sumX2 - systemsCount * meanX * meanX
-            val den = kotlin.math.sqrt(denLeft * yVarTerm)
-            if (den == 0.0) 0.0 else num / den
-        }
+        /* ----------------------------- Correlation from SUMS (single call site) ----------------------------- */
+        val naturalCorrelation = correlationFromSums.correlationFromSums(sumsBySystem, selectedTopicCount)
 
-        solution.topicStatus = currentMask.toTypedArray()
-        targetStrategy(solution, corr)
+        /* Mirror topic status for downstream consumers. */
+        solution.topicStatus = currentTopicMask.toTypedArray()
+
+        /* objective[0] = ±K, objective[1] = ±corr (branch-dependent) */
+        targetStrategy(solution, naturalCorrelation)
 
         /* ----------------------------- Streaming book-keeping ----------------------------- */
-        val kKeyRep = solution.numberOfSelectedTopics.toDouble()
+        val kKey = solution.numberOfSelectedTopics.toDouble()
         val candidateCopy = solution.copy()
 
         fun naturalCorr(sln: BinarySolution): Double =
             if (parameters.targetToAchieve == Constants.TARGET_BEST) -sln.getCorrelation() else sln.getCorrelation()
 
-        val prev = dominatedSolutions[kKeyRep]
+        val prev = dominatedSolutions[kKey]
         if (prev == null ||
             (if (parameters.targetToAchieve == Constants.TARGET_BEST)
                 naturalCorr(candidateCopy) > naturalCorr(prev)
             else
                 naturalCorr(candidateCopy) < naturalCorr(prev))
         ) {
-            dominatedSolutions[kKeyRep] = candidateCopy
+            dominatedSolutions[kKey] = candidateCopy
         }
 
-        val entriesForK = topSolutions.getOrPut(kKeyRep) { mutableListOf() }
+        val entriesForK = topSolutions.getOrPut(kKey) { mutableListOf() }
         entriesForK += solution.copy()
         val genotypeString: (BinarySolution) -> String = { (it as BestSubsetSolution).getVariableValueString(0) }
 
@@ -208,7 +246,7 @@ class BestSubsetProblem(
             val key = genotypeString(sln)
             if (seen.add(key)) deduped += sln
         }
-        topSolutions[kKeyRep] = deduped.take(Constants.TOP_SOLUTIONS_NUMBER).toMutableList()
+        topSolutions[kKey] = deduped.take(Constants.TOP_SOLUTIONS_NUMBER).toMutableList()
 
         iterationCounter++
         return solution

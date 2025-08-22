@@ -1,6 +1,10 @@
 package it.uniud.newbestsub.dataset
 
 import com.opencsv.CSVReader
+import it.uniud.newbestsub.dataset.model.CardinalityResult
+import it.uniud.newbestsub.dataset.model.ProgressEvent
+import it.uniud.newbestsub.dataset.model.RunCompleted
+import it.uniud.newbestsub.dataset.model.TopKReplaceBatch
 import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.RandomBridge
 import kotlinx.coroutines.*
@@ -13,7 +17,6 @@ import java.nio.file.StandardCopyOption
 import java.util.*
 import java.util.SplittableRandom
 import kotlin.collections.LinkedHashMap
-import kotlin.time.Clock
 
 /*
  * DatasetController
@@ -224,10 +227,12 @@ class DatasetController(
                                         view.appendCardinality(model, ev)
                                         cnt[0]++
                                     }
+
                                     is TopKReplaceBatch -> {
                                         view.replaceTopBatch(model, ev.blocks)
                                         cnt[1]++
                                     }
+
                                     is RunCompleted -> {
                                         cnt[2]++
                                         logger.info(
@@ -392,116 +397,105 @@ class DatasetController(
 
     /* ------------------------ Aggregation and info (unchanged) ------------------------ */
 
-    private fun aggregate(models: List<DatasetModel>): List<Array<String>> {
-        /* --------- locals & column layout --------- */
-        val firstModel = models[0]
-        val topicLabels = firstModel.topicLabels
-        val topicsCount = topicLabels.size
-        val cardsCount = firstModel.numberOfTopics
+    private fun aggregate(datasetModels: List<DatasetModel>): List<Array<String>> {
+        /* ---------- validate input ---------- */
+        require(datasetModels.isNotEmpty()) { "aggregate(datasetModels): input list must not be empty" }
 
-        // Find (optional) AVERAGE model percentiles once; iterate keys in ascending order for stable columns.
-        var percentiles = linkedMapOf<Int, List<Double>>()
-        models.forEach { m -> if (m.targetToAchieve == Constants.TARGET_AVERAGE) percentiles = m.percentiles }
-        val percentileKeysOrdered: List<Int> = percentiles.keys.sorted()
+        /* ---------- locals & column layout ---------- */
+        val referenceModel = datasetModels.first()
+        val topicLabelList = referenceModel.topicLabels
+        val totalNumberOfTopics = topicLabelList.size
+        val maximumCardinality = referenceModel.numberOfTopics
 
-        // Header: [Cardinality] + one col per model target + one col per percentile + one col per topic label
-        val modelTargetCount = models.size
-        val headerCols = 1 + modelTargetCount + percentileKeysOrdered.size + topicsCount
+        /* Extract percentiles from the AVERAGE model if present */
+        val averageModelPercentiles: Map<Int, List<Double>> =
+            datasetModels.firstOrNull { it.targetToAchieve == Constants.TARGET_AVERAGE }?.percentiles ?: emptyMap()
+        val sortedPercentileKeys: List<Int> = averageModelPercentiles.keys.sorted()
 
-        val aggregatedData = ArrayList<Array<String>>(/* header + N rows */ 1 + cardsCount)
+        /* Header layout: [Cardinality] + one col per model target + one col per percentile + compact presence strings */
+        val numberOfTargets = datasetModels.size
+        val totalHeaderColumns = 1 + numberOfTargets + sortedPercentileKeys.size + 2  /* +2: BestTopicsB64, WorstTopicsB64 */
 
-        /* --------- header row (single pass, no realloc) --------- */
+        /* Stable decimal formatter with six digits after the decimal point */
+        val decimalFormatter = java.text.DecimalFormat("0.000000", java.text.DecimalFormatSymbols(java.util.Locale.ROOT))
+        fun formatSixDecimals(value: Double?): String =
+            if (value == null) Constants.CARDINALITY_NOT_AVAILABLE else decimalFormatter.format(value)
+
+        /* ---------- build result container ---------- */
+        val aggregatedRows = ArrayList<Array<String>>(1 + maximumCardinality)
+
+        /* ---------- header row ---------- */
         run {
-            val hdr = Array(headerCols) { "" }
-            var col = 0
-            hdr[col++] = "Cardinality"
-            models.forEach { hdr[col++] = it.targetToAchieve }
-            percentileKeysOrdered.forEach { p -> hdr[col++] = "${p}%" }
-            topicLabels.forEach { lbl -> hdr[col++] = lbl }
-            aggregatedData += hdr
+            val headerRow = Array(totalHeaderColumns) { "" }
+            var headerColumnIndex = 0
+            headerRow[headerColumnIndex++] = "Cardinality"
+            datasetModels.forEach { headerRow[headerColumnIndex++] = it.targetToAchieve }
+            sortedPercentileKeys.forEach { percentile -> headerRow[headerColumnIndex++] = "${percentile}%" }
+            headerRow[headerColumnIndex++] = "BestTopicsB64"
+            headerRow[headerColumnIndex++] = "WorstTopicsB64"
+            aggregatedRows += headerRow
         }
 
-        logger.info("Starting to print common data between models.")
-        logger.info("Topics number: ${firstModel.numberOfTopics}")
-        logger.info("Systems number: ${firstModel.numberOfSystems}")
-        logger.info("Print completed.")
-
-        /* --------- cardinality coverage counters --------- */
-        val computedCardinality = mutableMapOf(
+        /* ---------- coverage counters ---------- */
+        val computedCardinalityByTarget = mutableMapOf(
             Constants.TARGET_BEST to 0,
             Constants.TARGET_WORST to 0,
             Constants.TARGET_AVERAGE to 0
         )
 
-        /* --------- main rows: one per cardinality (1..N) --------- */
-        for (kIndex in 0 until cardsCount) {
-            val k = kIndex + 1
-            val kAsDouble = k.toDouble()
+        /* ---------- cached model refs for compact masks ---------- */
+        val bestModel = datasetModels.firstOrNull { it.targetToAchieve == Constants.TARGET_BEST }
+        val worstModel = datasetModels.firstOrNull { it.targetToAchieve == Constants.TARGET_WORST }
 
-            val row = Array(headerCols) { "" }
-            var col = 0
-            row[col++] = k.toString()
+        /* ---------- main rows: one per cardinality (1..N) ---------- */
+        for (cardinalityIndex in 0 until maximumCardinality) {
+            val cardinality = cardinalityIndex + 1
+            val cardinalityAsDouble = cardinality.toDouble()
 
-            /* -- per-model correlations (aligned with header order) -- */
-            models.forEach { model ->
-                val c = model.findCorrelationForCardinality(kAsDouble)
-                if (c != null) {
-                    row[col] = c.toString()
-                    computedCardinality[model.targetToAchieve] = (computedCardinality[model.targetToAchieve] ?: 0) + 1
-                } else {
-                    row[col] = Constants.CARDINALITY_NOT_AVAILABLE
+            val row = Array(totalHeaderColumns) { "" }
+            var columnIndex = 0
+            row[columnIndex++] = cardinality.toString()
+
+            /* per-model correlations */
+            datasetModels.forEach { model ->
+                val correlation = model.findCorrelationForCardinality(cardinalityAsDouble)
+                row[columnIndex] = formatSixDecimals(correlation)
+                if (correlation != null) {
+                    computedCardinalityByTarget[model.targetToAchieve] =
+                        (computedCardinalityByTarget[model.targetToAchieve] ?: 0) + 1
                 }
-                col++
+                columnIndex++
             }
 
-            /* -- percentiles (if AVERAGE present) -- */
-            if (percentileKeysOrdered.isNotEmpty()) {
-                percentileKeysOrdered.forEach { p ->
-                    // guard against short arrays, although model builds them at full length
-                    val vals = percentiles[p] ?: emptyList()
-                    row[col++] = vals.getOrNull(kIndex)?.toString() ?: Constants.CARDINALITY_NOT_AVAILABLE
-                }
+            /* percentiles (from AVERAGE model) */
+            sortedPercentileKeys.forEach { percentile ->
+                val valuesForPercentile = averageModelPercentiles[percentile] ?: emptyList()
+                val percentileValue = valuesForPercentile.getOrNull(cardinalityIndex)
+                row[columnIndex++] = formatSixDecimals(percentileValue)
             }
 
-            /* -- per-topic presence code at this K: "B", "W", "BW", or "N" -- */
-            // build against the models list once; avoid when-branches in inner loop
-            val hasBest = models.find { it.targetToAchieve == Constants.TARGET_BEST }
-            val hasWorst = models.find { it.targetToAchieve == Constants.TARGET_WORST }
-            for (t in 0 until topicsCount) {
-                val topic = topicLabels[t]
-                var f0 = false;
-                var f1 = false
-                if (hasBest != null) f0 = hasBest.isTopicInASolutionOfCardinality(topic, kAsDouble)
-                if (hasWorst != null) f1 = worst@ {
-                    hasWorst.isTopicInASolutionOfCardinality(topic, kAsDouble)
-                }.invoke()
-                // Compact build without allocations: expect length <= 2
-                if (f0 || f1) {
-                    val sb = StringBuilder(2)
-                    if (f0) sb.append('B')
-                    if (f1) sb.append('W')
-                    row[col++] = sb.toString()
-                } else {
-                    row[col++] = "N"
-                }
-            }
+            /* compact masks: BEST and WORST, using DatasetModel helpers */
+            row[columnIndex++] = bestModel?.retrieveMaskB64ForCardinality(cardinalityAsDouble) ?: "B64:"
+            row[columnIndex++] = worstModel?.retrieveMaskB64ForCardinality(cardinalityAsDouble) ?: "B64:"
 
-            aggregatedData += row
+            aggregatedRows += row
         }
 
-        /* --------- logging summary --------- */
+        /* ---------- logging summary ---------- */
         if (parameters.targetToAchieve != Constants.TARGET_ALL) {
             logger.info(
                 "Total cardinality computed for target \"${parameters.targetToAchieve}\": " +
-                        "${computedCardinality[parameters.targetToAchieve]}/${firstModel.numberOfTopics}."
+                        "${computedCardinalityByTarget[parameters.targetToAchieve]}/${referenceModel.numberOfTopics}."
             )
         } else {
-            logger.info("Total cardinality computed for target \"${Constants.TARGET_BEST}\": ${computedCardinality[Constants.TARGET_BEST]}/${firstModel.numberOfTopics}.")
-            logger.info("Total cardinality computed for target \"${Constants.TARGET_WORST}\": ${computedCardinality[Constants.TARGET_WORST]}/${firstModel.numberOfTopics}.")
-            logger.info("Total cardinality computed for target \"${Constants.TARGET_AVERAGE}\": ${computedCardinality[Constants.TARGET_AVERAGE]}/${firstModel.numberOfTopics}.")
+            logger.info(
+                "Total cardinality computed — BEST: ${computedCardinalityByTarget[Constants.TARGET_BEST]}/${referenceModel.numberOfTopics}, " +
+                        "WORST: ${computedCardinalityByTarget[Constants.TARGET_WORST]}/${referenceModel.numberOfTopics}, " +
+                        "AVERAGE: ${computedCardinalityByTarget[Constants.TARGET_AVERAGE]}/${referenceModel.numberOfTopics}."
+            )
         }
 
-        return aggregatedData
+        return aggregatedRows
     }
 
 

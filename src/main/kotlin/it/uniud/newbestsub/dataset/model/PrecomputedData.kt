@@ -1,4 +1,6 @@
-package it.uniud.newbestsub.dataset
+package it.uniud.newbestsub.dataset.model
+
+import kotlin.collections.iterator
 
 /**
  * PrecomputedData

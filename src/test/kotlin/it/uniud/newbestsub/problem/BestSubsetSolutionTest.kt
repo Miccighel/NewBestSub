@@ -6,115 +6,135 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.uma.jmetal.solution.binarysolution.BinarySolution
-import java.util.*
+import java.util.Random
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
+@DisplayName("BestSubsetSolution – core operations")
 class BestSubsetSolutionTest {
 
-    private lateinit var testProb: BestSubsetProblem
-    private lateinit var testSol: BestSubsetSolution
-    private lateinit var testCorr: (Array<Double>, Array<Double>) -> Double
-    private lateinit var testTarg: (BinarySolution, Double) -> BinarySolution
-    private var testAvgPrec: MutableMap<String, Array<Double>> = LinkedHashMap()
+    /* ----------------------------------------------------------------------------------------------------------------
+     * Test fixtures
+     * ---------------------------------------------------------------------------------------------------------------- */
+    private lateinit var testProblem: BestSubsetProblem
+    private lateinit var testSolution: BestSubsetSolution
+    private lateinit var dummyCorrelationFunc: (Array<Double>, Array<Double>) -> Double
+    private lateinit var dummyTargetEncoder: (BinarySolution, Double) -> BinarySolution
+    private var fakeAveragePrecisions: MutableMap<String, Array<Double>> = LinkedHashMap()
 
     @BeforeEach
-    @DisplayName("BestSubsetSolution - Initialize Tests")
+    @DisplayName("BestSubsetSolution – initialize fixtures")
     fun initTest() {
-        val numTopics = 10
-        val numSystems = numTopics + 1
+        val numberOfTopics = 10
+        val numberOfSystems = numberOfTopics + 1
 
-        for (index in 0 until numSystems) {
-            val fakeAvgPrec = Array(numTopics) { 0.0 }
-            val random = Random()
-            for (aIndex in 0 until fakeAvgPrec.size) {
-                fakeAvgPrec[aIndex] = (1 + (100 - 1) * random.nextDouble()) / 100
+        /* Build deterministic fake AP rows for systems */
+        val rng = Random(12345)
+        for (systemIndex in 0 until numberOfSystems) {
+            val apRow = Array(numberOfTopics) { 0.0 }
+            for (topicIdx in 0 until numberOfTopics) {
+                // values in (0.01 .. 1.00], deterministic
+                apRow[topicIdx] = (1 + (100 - 1) * rng.nextDouble()) / 100.0
             }
-            testAvgPrec["Test $index"] = fakeAvgPrec
+            fakeAveragePrecisions["System $systemIndex"] = apRow
         }
 
-        testCorr = { _, _ -> 0.0 }
-        testTarg = { sol, _ -> sol }
+        dummyCorrelationFunc = { _, _ -> 0.0 }
+        dummyTargetEncoder = { sol, _ -> sol }
 
         val parameters = Parameters(
-            "AH99",
-            Constants.CORRELATION_PEARSON,
-            Constants.TARGET_BEST,
-            10000, 1000, 1000, 0,
-            listOf(50)
+            datasetName = "AH99",
+            correlationMethod = Constants.CORRELATION_PEARSON,
+            targetToAchieve = Constants.TARGET_BEST,
+            numberOfIterations = 10_000,
+            numberOfRepetitions = 1_000,
+            populationSize = 1_000,
+            currentExecution = 0,
+            percentiles = listOf(50)
         )
 
-        val meanAP = Array(numSystems) { 0.0 }
-        val topicLabels = Array(numTopics) { "Test" }
+        val dummyMeanAP = Array(numberOfSystems) { 0.0 }
+        val topicLabels = Array(numberOfTopics) { i -> "Topic-$i" }
 
-        testProb = BestSubsetProblem(
-            parameters,
-            numTopics,
-            testAvgPrec,
-            meanAP,
-            topicLabels,
-            testCorr,
-            testTarg
+        testProblem = BestSubsetProblem(
+            parameters = parameters,
+            numberOfTopics = numberOfTopics,
+            averagePrecisions = fakeAveragePrecisions,
+            meanAveragePrecisions = dummyMeanAP,
+            topicLabels = topicLabels,
+            correlationStrategy = dummyCorrelationFunc,
+            targetStrategy = dummyTargetEncoder
         )
 
-        // New constructor: the problem instance is not passed here
-        testSol = BestSubsetSolution(
+        /* BestSubsetSolution instances are independent of the problem instance */
+        testSolution = BestSubsetSolution(
             numberOfVariables = 1,
             numberOfObjectives = 2,
-            numberOfTopics = numTopics,
+            numberOfTopics = numberOfTopics,
             topicLabels = topicLabels,
             forcedCardinality = null
         )
     }
 
+    /* ----------------------------------------------------------------------------------------------------------------
+     * Tests
+     * ---------------------------------------------------------------------------------------------------------------- */
+
     @Test
-    @DisplayName("SetBitValue")
+    @DisplayName("setBitValue toggles selection and updates counts consistently")
     fun setBitValueTest() {
         println("[BestSubsetSolutionTest setBitValue] - Test begins.")
 
-        val oldSelTop = testSol.numberOfSelectedTopics
-        val oldTopStat = testSol.retrieveTopicStatus()
-        var oldSum = 0; oldTopStat.forEach { value -> oldSum += if (value) 1 else 0 }
-        val valueToSet = !oldTopStat[0]
-        testSol.setBitValue(0, valueToSet)
-        val newSelTop = testSol.numberOfSelectedTopics
-        val newTopStat = testSol.retrieveTopicStatus()
-        var newSum = 0; newTopStat.forEach { value -> newSum += if (value) 1 else 0 }
-        if (!valueToSet) {
-            println("[BestSubsetSolutionTest setBitValue] - Testing: <Old Sum Topic Stat. Val.: $oldSum, New Sum Topic Stat. Val: $newSum>.")
-            assertEquals(true, oldSum != newSum, "<Old Sum Topic Stat. Val.: $oldSum, New Sum Topic Stat. Val: $newSum>")
-        } else {
-            println("[BestSubsetSolutionTest setBitValue] - Testing: <Old Sum Topic Stat. Val.: $oldSum, New Sum Topic Stat. Val: $newSum>.")
-            assertEquals(oldSelTop + 1, newSelTop, "<Old Num. Sel. Topics: $oldSelTop, New Num. Sel. Topics: $newSelTop>.")
-        }
+        val oldSelectedCount = testSolution.numberOfSelectedTopics
+        val oldMask = testSolution.retrieveTopicStatus()
+        val wasSelected = oldMask[0]
+
+        // flip bit 0
+        testSolution.setBitValue(0, !wasSelected)
+
+        val newSelectedCount = testSolution.numberOfSelectedTopics
+        val newMask = testSolution.retrieveTopicStatus()
+        val isSelected = newMask[0]
+
+        println("[BestSubsetSolutionTest setBitValue] - Before bit0=$wasSelected, After bit0=$isSelected, " +
+                "SelectedCount: $oldSelectedCount -> $newSelectedCount")
+
+        // The bit must reflect the set value
+        assertEquals(!wasSelected, isSelected, "bit 0 should be toggled")
+
+        // Count must increase by 1 on select, decrease by 1 on deselect
+        val expectedDelta = if (!wasSelected) +1 else -1
+        assertEquals(oldSelectedCount + expectedDelta, newSelectedCount, "selected topics count should be updated")
 
         println("[BestSubsetSolutionTest setBitValue] - Test ends.")
     }
 
     @Test
-    @DisplayName("GetTotalNumberOfBits")
+    @DisplayName("totalNumberOfBits equals sum(numberOfBitsPerVariable)")
     fun getTotalNumberOfBitsTest() {
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test begins.")
 
-        // jMetal 6.x: use the per-variable capacity list, not BinarySet.length()
-        val computed = testSol.numberOfBitsPerVariable().sum()   // <- capacity
-        val expected = testSol.totalNumberOfBits()               // <- sum of capacities
+        // jMetal 6.x: capacity is reported via numberOfBitsPerVariable(); total is the sum
+        val capacitySum = testSolution.numberOfBitsPerVariable().sum()
+        val totalBits = testSolution.totalNumberOfBits()
 
-        println("[BestSubsetSolutionTest getTotalNumberOfBits] - Testing: " + "<Computed Num Bits: $computed, Expected Num Bits: $expected>.")
+        println("[BestSubsetSolutionTest getTotalNumberOfBits] - capacitySum=$capacitySum, totalBits=$totalBits")
 
-        assertEquals(
-            expected, computed,
-            "<Computed Num Bits: $computed, Expected Num Bits: $expected>."
-        )
+        assertEquals(totalBits, capacitySum, "total bits must equal sum of per-variable capacities")
 
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test ends.")
     }
 
-
     @Test
-    @DisplayName("Copy")
+    @DisplayName("copy produces an equal solution (value semantics)")
     fun copyTest() {
         println("[BestSubsetSolutionTest copy] - Test begins.")
-        assertEquals(true, testSol.copy() == testSol)
+
+        val cloned = testSolution.copy()
+        // jMetal's BinarySolution implements equals with value semantics; ensure reflexivity and copy equality
+        assertTrue(cloned == testSolution, "copy must be value-equal to the original")
+        assertTrue(testSolution == testSolution, "solution must be equal to itself (sanity)")
+
         println("[BestSubsetSolutionTest copy] - Test ends.")
     }
 }

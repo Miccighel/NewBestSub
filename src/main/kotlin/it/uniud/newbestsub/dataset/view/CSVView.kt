@@ -2,6 +2,7 @@ package it.uniud.newbestsub.dataset.view
 
 import com.opencsv.CSVWriter
 import it.uniud.newbestsub.dataset.*
+import it.uniud.newbestsub.dataset.model.CardinalityResult
 import it.uniud.newbestsub.problem.BestSubsetSolution
 import it.uniud.newbestsub.problem.getCardinality
 import it.uniud.newbestsub.problem.getCorrelation
@@ -13,6 +14,8 @@ import java.io.BufferedWriter
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.util.Base64
 import java.util.Locale
 
@@ -40,15 +43,24 @@ class CSVView {
 
     fun getFunctionValuesFilePath(model: DatasetModel): String =
         ViewPaths.ensureCsvDir(model) +
-            ViewPaths.csvNameNoTs(ViewPaths.fileBaseParts(model, model.targetToAchieve), Constants.FUNCTION_VALUES_FILE_SUFFIX)
+            ViewPaths.csvNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.FUNCTION_VALUES_FILE_SUFFIX
+            )
 
     fun getVariableValuesFilePath(model: DatasetModel): String =
         ViewPaths.ensureCsvDir(model) +
-            ViewPaths.csvNameNoTs(ViewPaths.fileBaseParts(model, model.targetToAchieve), Constants.VARIABLE_VALUES_FILE_SUFFIX)
+            ViewPaths.csvNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.VARIABLE_VALUES_FILE_SUFFIX
+            )
 
     fun getTopSolutionsFilePath(model: DatasetModel): String =
         ViewPaths.ensureCsvDir(model) +
-            ViewPaths.csvNameNoTs(ViewPaths.fileBaseParts(model, model.targetToAchieve), Constants.TOP_SOLUTIONS_FILE_SUFFIX)
+            ViewPaths.csvNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.TOP_SOLUTIONS_FILE_SUFFIX
+            )
 
     fun getInfoFilePath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
@@ -98,8 +110,14 @@ class CSVView {
     private data class FunVarRow(val k: Int, val corr: Double, val funLine: String, val varLine: String)
     private val funVarBuffers: MutableMap<TopKey, MutableList<FunVarRow>> = mutableMapOf()
 
+    /* --------- Lightweight formatting & parsing --------- */
+
+    /** Precompiled splitter for "K corr" / "K,corr" / any mix of commas/whitespace. */
+    private val FUN_SPLIT = Regex("[,\\s]+")
+
     /** Locale-stable double format (dot decimal, 6 digits). */
-    private fun fmt(x: Double): String = String.format(Locale.ROOT, "%.6f", x)
+    private val DF = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
+    private fun fmt(x: Double): String = DF.format(x)
 
     /** Throttle streaming flushes to reduce I/O overhead. (configurable) */
     private val flushEvery: Int = System.getProperty("nbs.csv.flushEvery", "256").toIntOrNull()?.coerceAtLeast(1) ?: 256
@@ -114,6 +132,16 @@ class CSVView {
     /** Writer buffer size (bytes). */
     private val writerBufferSize: Int = System.getProperty("nbs.csv.buffer", "262144").toIntOrNull()?.coerceAtLeast(8192) ?: 262_144
 
+    /* --------- Cached label→index maps for fieldToB64 --------- */
+
+    private data class LabelsKey(val ptr: Int, val size: Int, val first: String?)
+    private val indexCache = mutableMapOf<LabelsKey, Map<String, Int>>()
+
+    private fun indexByLabel(labels: Array<String>): Map<String, Int> {
+        val key = LabelsKey(System.identityHashCode(labels), labels.size, labels.firstOrNull())
+        return indexCache.getOrPut(key) { labels.withIndex().associate { it.value to it.index } }
+    }
+
     /** Normalize topics text already in "B64:..." form or legacy label/bits. Always return "B64:..." */
     private fun fieldToB64(raw: String, labels: Array<String>): String {
         val t = raw.trim()
@@ -121,7 +149,7 @@ class CSVView {
         return try {
             if (t.any { it == '|' || it == ';' || it == ',' || it == ' ' || it == '[' }) {
                 val tokens = t.removePrefix("[").removeSuffix("]").split(Regex("[,;\\s|]+")).filter { it.isNotBlank() }
-                val indexByLabel = labels.withIndex().associate { it.value to it.index }
+                val indexByLabel = indexByLabel(labels)
                 val mask = BooleanArray(labels.size)
                 var matched = 0
                 for (tk in tokens) {
@@ -146,7 +174,7 @@ class CSVView {
         }
     }
 
-    /** BooleanArray -> little-endian bytes via 64-bit words (matches model packing) */
+    /** BooleanArray -> little-endian bytes via 64-bit words (matches model packing). */
     private fun packMaskToLEBytes(mask: BooleanArray): ByteArray {
         val words = (mask.size + 63) ushr 6
         val packed = LongArray(words)
@@ -186,7 +214,7 @@ class CSVView {
             val funPath = getFunctionValuesFilePath(model)
             val varPath = getVariableValuesFilePath(model)
 
-            // Ensure clean files, then open large-buffer appenders
+            /* Ensure clean files, then open large-buffer appenders */
             openFresh(funPath).use { }
             openFresh(varPath).use { }
             val funWriter = openAppend(funPath).buffered(writerBufferSize)
@@ -196,8 +224,11 @@ class CSVView {
         }
     }
 
+    /*
+     * Robust FUN line parser: accepts "K corr" or "K,corr" or any mix of commas and whitespace.
+     */
     private fun parseFunLine(line: String): Pair<Int, Double>? {
-        val parts = line.trim().split(Regex("\\s+"))
+        val parts = line.trim().split(FUN_SPLIT)
         if (parts.size < 2) return null
         val k = parts[0].toDoubleOrNull()?.toInt() ?: return null
         val corr = parts[1].toDoubleOrNull() ?: return null
@@ -208,14 +239,20 @@ class CSVView {
         val handles = openStreams(model)
         val key = TopKey(model.datasetName, model.currentExecution, model.targetToAchieve)
 
-        val parsed = parseFunLine(ev.functionValuesCsvLine) ?: return
-        val k = parsed.first
-        val corr = parsed.second
-        val funLine = "$k ${fmt(corr)}"
+        val (k, corr) = parseFunLine(ev.functionValuesCsvLine) ?: return
+
+        /* Canonical CSV output: comma-separated.
+         * If we'll do a final rewrite, avoid fmt() in the hot path. */
+        val funLine = if (doFinalRewrite) buildString(24) {
+            append(k); append(','); append(corr)
+        } else buildString(24) {
+            append(k); append(','); append(fmt(corr))
+        }
+
         val varLine = fieldToB64(ev.variableValuesCsvLine, model.topicLabels)
 
-        handles.funWriter.write(funLine); handles.funWriter.newLine()
-        handles.varWriter.write(varLine); handles.varWriter.newLine()
+        handles.funWriter.append(funLine).append('\n')
+        handles.varWriter.append(varLine).append('\n')
 
         val cnt = (flushCounters[key] ?: 0) + 1
         if (cnt % flushEvery == 0) {
@@ -236,7 +273,7 @@ class CSVView {
 
         if (!topLive) return  // defer write to closeStreams()
 
-        // Live write: rewrite entire file with all cached blocks (sorted by K)
+        /* Live write: rewrite entire file with all cached blocks (sorted by K) */
         val outPath = getTopSolutionsFilePath(model)
         val outFile = File(outPath)
         outFile.parentFile?.mkdirs()
@@ -275,9 +312,9 @@ class CSVView {
             val sortStart = System.nanoTime()
             val sorted = when (model.targetToAchieve) {
                 Constants.TARGET_WORST ->
-                    rows.sortedWith(compareBy<FunVarRow>({ it.k }, { -it.corr }))  // K asc, corr desc
+                    rows.sortedWith(compareBy<FunVarRow>({ it.k }, { -it.corr }))  /* K asc, corr desc */
                 else ->
-                    rows.sortedWith(compareBy<FunVarRow>({ it.k }, { it.corr }))   // K asc, corr asc
+                    rows.sortedWith(compareBy<FunVarRow>({ it.k }, { it.corr }))   /* K asc, corr asc  */
             }
             val sortEnd = System.nanoTime()
 
@@ -286,7 +323,7 @@ class CSVView {
 
             val writeStart = System.nanoTime()
             File(funPath).bufferedWriter(Charsets.UTF_8, writerBufferSize).use { fw ->
-                for (r in sorted) { fw.append(r.k.toString()).append(' ').append(fmt(r.corr)).append('\n') }
+                for (r in sorted) { fw.append(r.k.toString()).append(',').append(fmt(r.corr)).append('\n') }
             }
             File(varPath).bufferedWriter(Charsets.UTF_8, writerBufferSize).use { vw ->
                 for (r in sorted) { vw.appendLine(r.varLine) }
@@ -305,7 +342,7 @@ class CSVView {
             )
         }
 
-        // Write TOP once here if live writes were disabled
+        /* Write TOP once here if live writes were disabled */
         if (!topLive) {
             val cache = topBlocks[key].orEmpty()
             if (cache.isNotEmpty() && model.targetToAchieve != Constants.TARGET_AVERAGE) {
@@ -327,7 +364,8 @@ class CSVView {
             }
         }
 
-        // Cleanup state
+        /* Cleanup state */
+        indexCache.clear()
         topBlocks.remove(key)
         flushCounters.remove(key)
     }
@@ -340,19 +378,19 @@ class CSVView {
         topSolutions: List<BinarySolution>,
         actualTarget: String
     ) {
-        // FUN
+        /* FUN */
         runCatching {
             val path = getFunctionValuesFilePath(model)
             File(path).bufferedWriter(Charsets.UTF_8, writerBufferSize).use { fw ->
                 for (s in allSolutions) {
                     val k = s.getCardinality().toInt()
                     val corr = fmt(s.getCorrelation())
-                    fw.append(k.toString()).append(' ').append(corr).append('\n')
+                    fw.append(k.toString()).append(',').append(corr).append('\n')
                 }
             }
         }.onFailure { logger.warn("FUN CSV write failed", it) }
 
-        // VAR: packed Base64 ("B64:<...>")
+        /* VAR: packed Base64 ("B64:<...>") */
         runCatching {
             val path = getVariableValuesFilePath(model)
             File(path).bufferedWriter(Charsets.UTF_8, writerBufferSize).use { vw ->
@@ -366,7 +404,7 @@ class CSVView {
             }
         }.onFailure { logger.warn("VAR CSV write failed", it) }
 
-        // TOP (Best/Worst only): header + rows; topics as Base64
+        /* TOP (Best/Worst only): header + rows; topics as Base64 */
         if (actualTarget != Constants.TARGET_AVERAGE) {
             runCatching {
                 val path = getTopSolutionsFilePath(model)
