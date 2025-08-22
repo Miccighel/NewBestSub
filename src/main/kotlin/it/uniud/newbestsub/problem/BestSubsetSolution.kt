@@ -18,6 +18,7 @@ import org.uma.jmetal.util.pseudorandom.JMetalRandom
  *      - `lastSwapOutIndex`, `lastSwapInIndex`, `lastMutationWasFixedKSwap` (operator hook)
  *  • Performance:
  *      - Cached genotype key (bitstring) with dirty tracking to avoid rebuilding strings.
+ *      - Reusable boolean buffer for `lastEvaluatedMask` to avoid per-eval allocations.
  *
  * Notes:
  *  - jMetal 6.x API: use variables() / objectives() lists.
@@ -46,6 +47,10 @@ class BestSubsetSolution(
     /* Genotype cache (avoids repeated 0/1 string builds in ranking/dedup). */
     private var cachedGenotypeKey: String? = null
     private var genotypeDirty: Boolean = true
+
+    /* -------------------------------- Perf: reusable buffers -------------------------------- */
+    /* Reusable mask buffer to avoid allocating a new BooleanArray at every evaluation. */
+    private val reusableMaskBuffer: BooleanArray = BooleanArray(numberOfTopics)
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
@@ -101,7 +106,6 @@ class BestSubsetSolution(
         return mask
     }
 
-
     /** Build a BinarySet with random bits and ensure it's not empty (flip 1 if needed). */
     private fun buildRandomNonEmptyMask(): BinarySet {
         val mask = BinarySet(numberOfTopics)
@@ -137,6 +141,9 @@ class BestSubsetSolution(
         }
         return status
     }
+
+    /** Ensure and return the reusable last-mask buffer (no allocation when persisting state). */
+    fun ensureReusableLastMaskBuffer(): BooleanArray = reusableMaskBuffer
 
     /** Count of selected topics (cardinality of the bitset). */
     val numberOfSelectedTopics: Int
@@ -182,7 +189,6 @@ class BestSubsetSolution(
         genotypeDirty = true
         return bs
     }
-
 
     /** Clear delta-eval caches (subset sums). */
     fun resetIncrementalEvaluationState() {
@@ -231,7 +237,14 @@ class BestSubsetSolution(
 
         /* Mirrors & caches */
         clone.topicStatus = this.topicStatus.copyOf()
-        clone.lastEvaluatedMask = this.lastEvaluatedMask?.copyOf()
+
+        /* If we held an evaluated mask, copy its content into clone's reusable buffer. */
+        this.lastEvaluatedMask?.let { src ->
+            val dst = clone.reusableMaskBuffer
+            System.arraycopy(src, 0, dst, 0, src.size)
+            clone.lastEvaluatedMask = dst
+        }
+
         clone.cachedSumsBySystem = this.cachedSumsBySystem?.copyOf()
 
         /* Operator flags */

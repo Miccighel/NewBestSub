@@ -259,33 +259,25 @@ class DatasetModel {
 
             val corrFuncPrimitive = Correlations.makePrimitiveCorrelation(parameters.correlationMethod)
 
-            /* ---- adaptive logging (AVERAGE): percent milestones + wall interval ---- */
-            val minWallIntervalMs = 1500L
-            var nextWallLogAtMs = System.currentTimeMillis() + minWallIntervalMs
-            var nextPercentMilestone = Constants.LOGGING_FACTOR
+            /* ---- unified logging cadence (AVERAGE): same as Best/Worst (debounced every LOGGING_FACTOR%) ---- */
+            val totalAvgIterations = numberOfTopics
+            val loggingEveryAvg = ((totalAvgIterations * Constants.LOGGING_FACTOR) / 100).coerceAtLeast(1)
+            var progressCounterAvg = 0
 
             /* ----------------------------------------------------------------------------------------------------------------
              * Iterate cardinalities K = 1..N
              * ---------------------------------------------------------------------------------------------------------------- */
             for (cardinalityIndex in 0 until numberOfTopics) {
 
-                /* ---- progress logging (AVERAGE) ----
-                 * Conditions for emitting a log message:
-                 *  - percent milestone reached (every LOGGING_FACTOR%)
-                 *  - minimum wall-clock interval elapsed (default ~1.5s)
-                 *  - edge cases: very first or very last iteration
-                 */
-                val percentCompleted = ((cardinalityIndex.toLong() * 100) / numberOfTopics).toInt()
-                val reachedPercentMilestone = percentCompleted >= nextPercentMilestone
-                val reachedWallInterval = System.currentTimeMillis() >= nextWallLogAtMs
-                val isEdgeCase = (cardinalityIndex == 0 || cardinalityIndex + 1 == numberOfTopics)
-
-                if (reachedPercentMilestone || reachedWallInterval || isEdgeCase) {
+                /* ---- progress logging (AVERAGE; unified with Best/Worst) ---- */
+                if ((cardinalityIndex % loggingEveryAvg) == 0 && cardinalityIndex <= totalAvgIterations) {
                     logger.info(
-                        "Completed iterations: $cardinalityIndex/$numberOfTopics ($percentCompleted%) on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
+                        "Completed iterations: $cardinalityIndex/$totalAvgIterations ($progressCounterAvg%) on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
                     )
-                    while (nextPercentMilestone <= percentCompleted) nextPercentMilestone += Constants.LOGGING_FACTOR
-                    nextWallLogAtMs = System.currentTimeMillis() + minWallIntervalMs
+                    logger.debug(
+                        "/* debounce */ log messages throttled every $loggingEveryAvg iterations (${Constants.LOGGING_FACTOR}% of total)."
+                    )
+                    progressCounterAvg += Constants.LOGGING_FACTOR
                 }
 
                 val currentCardinality = cardinalityIndex + 1
@@ -376,6 +368,11 @@ class DatasetModel {
                     )
                 )
             }
+
+            /* Optional final 100% marker (mirrors cadence end-state) */
+            logger.info(
+                "Completed iterations: $totalAvgIterations/$totalAvgIterations (100%) on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
+            )
 
             /* ----------------------------------------------------------------------------------------------------------------
              * Construct problem + build solutions (unchanged; correlationFunction kept for ctor compat)

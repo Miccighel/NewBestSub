@@ -54,6 +54,7 @@ class BestSubsetProblem(
      * Correlation strategy (delegated to Correlations)
      *  - We fill a reusable buffer with subset MEANS from per-system SUMS, then call
      *    Correlations.fastPearsonPrimitive or Correlations.kendallTauBPrimitive.
+     *  - Buffers are kept in ThreadLocal to be parallel-eval safe without GC churn.
      * ==================================================================================== */
 
     /** Compute corr(X_means, Y_means) from subset SUMS and K. */
@@ -61,20 +62,23 @@ class BestSubsetProblem(
         fun correlationFromSums(sumsBySystem: DoubleArray, kSelected: Int): Double
     }
 
+    /* ---- Thread-safe buffer store (one DoubleArray per worker thread) ---- */
+    private val xMeansBufferTL = ThreadLocal.withInitial { DoubleArray(precomputedData.numberOfSystems) }
+
     /** Pearson: fill X means buffer, then Correlations.fastPearsonPrimitive(). */
     private inner class PearsonCorr : CorrelationFromSums {
         private val systemsCount = precomputedData.numberOfSystems
         private val yMeans: DoubleArray = precomputedData.fullSetMeanAPBySystem
-        private val xMeansBuffer = DoubleArray(systemsCount)
         override fun correlationFromSums(sumsBySystem: DoubleArray, kSelected: Int): Double {
             if (kSelected <= 0) return 0.0
+            val xMeans = xMeansBufferTL.get()
             val invK = 1.0 / kSelected
             var s = 0
             while (s < systemsCount) {
-                xMeansBuffer[s] = sumsBySystem[s] * invK
+                xMeans[s] = sumsBySystem[s] * invK
                 s++
             }
-            return Correlations.fastPearsonPrimitive(xMeansBuffer, yMeans)
+            return Correlations.fastPearsonPrimitive(xMeans, yMeans)
         }
     }
 
@@ -82,16 +86,16 @@ class BestSubsetProblem(
     private inner class KendallCorr : CorrelationFromSums {
         private val systemsCount = precomputedData.numberOfSystems
         private val yMeans: DoubleArray = precomputedData.fullSetMeanAPBySystem
-        private val xMeansBuffer = DoubleArray(systemsCount)
         override fun correlationFromSums(sumsBySystem: DoubleArray, kSelected: Int): Double {
             if (kSelected <= 0) return 0.0
+            val xMeans = xMeansBufferTL.get()
             val invK = 1.0 / kSelected
             var s = 0
             while (s < systemsCount) {
-                xMeansBuffer[s] = sumsBySystem[s] * invK
+                xMeans[s] = sumsBySystem[s] * invK
                 s++
             }
-            return Correlations.kendallTauBPrimitive(xMeansBuffer, yMeans)
+            return Correlations.kendallTauBPrimitive(xMeans, yMeans)
         }
     }
 
@@ -101,13 +105,32 @@ class BestSubsetProblem(
 
     /* --------------------- Streaming / bookkeeping & ctor-calculated values --------------------- */
 
-    val dominatedSolutions = linkedMapOf<Double, BinarySolution>()
-    val topSolutions = linkedMapOf<Double, MutableList<BinarySolution>>()
+    /* Use Int keys for K to simplify hashing and avoid Double quirks. */
+    val dominatedSolutions = linkedMapOf<Int, BinarySolution>()
+
+    /* Keep only the lists in the public map for compatibility with existing writers. */
+    val topSolutions = linkedMapOf<Int, MutableList<BinarySolution>>()
+
+    /* Per-K small bin (bounded Top-N and fast duplicate checks). */
+    private data class TopBin(
+        val bestGenotypes: HashSet<String>,        /* dedupe by genotype string */
+        val topList: MutableList<BinarySolution>   /* kept sorted by naturalCorr */
+    )
+
+    /* K → bin */
+    private val topBins = HashMap<Int, TopBin>()
+
     private var iterationCounter = 0
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
     private var progressCounter = 0
     private var cardinalityToGenerate = 1
     private val systemsCount = precomputedData.numberOfSystems
+
+    /* Precompute cadence once (avoid math in hot path). */
+    private val loggingEvery: Int = run {
+        val step = (parameters.numberOfIterations * Constants.LOGGING_FACTOR) / 100
+        if (step <= 0) Int.MAX_VALUE else step
+    }
 
     /* -------- BinaryProblem / Problem API -------- */
     override fun name(): String = "BestSubsetProblem"
@@ -129,19 +152,15 @@ class BestSubsetProblem(
         solution as BestSubsetSolution
 
         /* ---------- Progress logging with debounce message ---------- */
-        val loggingEvery = (parameters.numberOfIterations * Constants.LOGGING_FACTOR) / 100
-        if (loggingEvery > 0 &&
-            (iterationCounter % loggingEvery) == 0 &&
-            parameters.numberOfIterations >= loggingEvery &&
-            iterationCounter <= parameters.numberOfIterations
-        ) {
+        if ((iterationCounter % loggingEvery) == 0 && iterationCounter <= parameters.numberOfIterations) {
             logger.info(
-                "Completed iterations: $iterationCounter/${parameters.numberOfIterations} ($progressCounter%) " +
-                    "for evaluations on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
+                "Completed iterations: {}/{} ({}%) for evaluations on \"{}\" with target {}.",
+                iterationCounter, parameters.numberOfIterations, progressCounter,
+                Thread.currentThread().name, parameters.targetToAchieve
             )
             logger.debug(
-                "/* debounce */ log messages throttled every $loggingEvery iterations " +
-                    "(${Constants.LOGGING_FACTOR}% of total)."
+                "/* debounce */ log messages throttled every {} iterations ({}% of total).",
+                loggingEvery, Constants.LOGGING_FACTOR
             )
             progressCounter += Constants.LOGGING_FACTOR
         }
@@ -199,27 +218,31 @@ class BestSubsetProblem(
             }
         }
 
-        /* Persist incremental state for the next evaluation. */
+        /* Persist incremental state for the next evaluation without allocating new arrays. */
         solution.cachedSumsBySystem = sumsBySystem
-        solution.lastEvaluatedMask = currentTopicMask.copyOf()
+        val targetMaskBuffer = solution.ensureReusableLastMaskBuffer()
+        System.arraycopy(currentTopicMask, 0, targetMaskBuffer, 0, numberOfTopics)
+        solution.lastEvaluatedMask = targetMaskBuffer
         solution.clearLastMutationFlags()
 
         /* ----------------------------- Correlation from SUMS (single call site) ----------------------------- */
         val naturalCorrelation = correlationFromSums.correlationFromSums(sumsBySystem, selectedTopicCount)
 
-        /* Mirror topic status for downstream consumers. */
-        solution.topicStatus = currentTopicMask.toTypedArray()
+        /* Mirror topic status for downstream consumers (kept for compatibility). */
+        solution.topicStatus = Array(numberOfTopics) { idx -> currentTopicMask[idx] }
 
         /* objective[0] = ±K, objective[1] = ±corr (branch-dependent) */
         targetStrategy(solution, naturalCorrelation)
 
         /* ----------------------------- Streaming book-keeping ----------------------------- */
-        val kKey = solution.numberOfSelectedTopics.toDouble()
-        val candidateCopy = solution.copy()
+        val kKey: Int = solution.numberOfSelectedTopics /* Int key */
 
+        /* Maintain “dominatedSolutions” best/worst per K (naturalCorr comparable). */
         fun naturalCorr(sln: BinarySolution): Double =
-            if (parameters.targetToAchieve == Constants.TARGET_BEST) -sln.getCorrelation() else sln.getCorrelation()
+            if (parameters.targetToAchieve == Constants.TARGET_BEST) -(sln as BestSubsetSolution).getCorrelation()
+            else (sln as BestSubsetSolution).getCorrelation()
 
+        val candidateCopy = solution.copy()
         val prev = dominatedSolutions[kKey]
         if (prev == null ||
             (if (parameters.targetToAchieve == Constants.TARGET_BEST)
@@ -230,23 +253,39 @@ class BestSubsetProblem(
             dominatedSolutions[kKey] = candidateCopy
         }
 
-        val entriesForK = topSolutions.getOrPut(kKey) { mutableListOf() }
-        entriesForK += solution.copy()
+        /* Bounded Top-N maintenance without full sort/dedupe on each eval. */
+        val bin = topBins.getOrPut(kKey) { TopBin(HashSet(), mutableListOf()) }
         val genotypeString: (BinarySolution) -> String = { (it as BestSubsetSolution).getVariableValueString(0) }
+        val geno = genotypeString(candidateCopy)
 
-        if (parameters.targetToAchieve == Constants.TARGET_BEST) {
-            entriesForK.sortWith(compareByDescending<BinarySolution> { naturalCorr(it) }.thenBy { genotypeString(it) })
-        } else {
-            entriesForK.sortWith(compareBy<BinarySolution> { naturalCorr(it) }.thenBy { genotypeString(it) })
-        }
+        if (bin.bestGenotypes.add(geno)) {
+            val list = bin.topList
+            val score = naturalCorr(candidateCopy)
 
-        val seen = LinkedHashSet<String>(entriesForK.size)
-        val deduped = mutableListOf<BinarySolution>()
-        for (sln in entriesForK) {
-            val key = genotypeString(sln)
-            if (seen.add(key)) deduped += sln
+            /* binary insert to keep list sorted (desc for BEST, asc for WORST) */
+            var lo = 0
+            var hi = list.size
+            while (lo < hi) {
+                val mid = (lo + hi).ushr(1)
+                val midScore = naturalCorr(list[mid])
+                val cmp = if (parameters.targetToAchieve == Constants.TARGET_BEST) {
+                    -java.lang.Double.compare(score, midScore) /* descending */
+                } else {
+                    java.lang.Double.compare(score, midScore)  /* ascending */
+                }
+                if (cmp < 0) lo = mid + 1 else hi = mid
+            }
+            list.add(lo, candidateCopy)
+
+            /* cap list and set */
+            val cap = Constants.TOP_SOLUTIONS_NUMBER
+            if (list.size > cap) {
+                val removed = list.removeAt(list.lastIndex)
+                bin.bestGenotypes.remove(genotypeString(removed))
+            }
+            /* keep public mirror map in sync (writers read from here) */
+            topSolutions[kKey] = list
         }
-        topSolutions[kKey] = deduped.take(Constants.TOP_SOLUTIONS_NUMBER).toMutableList()
 
         iterationCounter++
         return solution
