@@ -20,12 +20,12 @@ package it.uniud.newbestsub.dataset
  */
 data class PrecomputedData(
     val averagePrecisionBySystem: Array<DoubleArray>,  // [S][T]
-    val topicColumnViewByTopic:   Array<DoubleArray>,  // [T][S]
-    val fullSetMeanAPBySystem:    DoubleArray,         // [S]
-    val numberOfSystems:          Int,
-    val numberOfTopics:           Int,
-    val systemIdsInOrder:         List<String>,
-    val systemIndexById:          Map<String, Int>
+    val topicColumnViewByTopic: Array<DoubleArray>,  // [T][S]
+    val fullSetMeanAPBySystem: DoubleArray,         // [S]
+    val numberOfSystems: Int,
+    val numberOfTopics: Int,
+    val systemIdsInOrder: List<String>,
+    val systemIndexById: Map<String, Int>
 ) {
     init {
         require(numberOfSystems == averagePrecisionBySystem.size) {
@@ -95,7 +95,9 @@ fun buildPrecomputedData(
         val row = averagePrecisionBySystem[s]
         var sum = 0.0
         var t = 0
-        while (t < numberOfTopics) { sum += row[t]; t++ }
+        while (t < numberOfTopics) {
+            sum += row[t]; t++
+        }
         fullSetMeanAPBySystem[s] = sum / numberOfTopics
         s++
     }
@@ -116,12 +118,12 @@ fun buildPrecomputedData(
 
     return PrecomputedData(
         averagePrecisionBySystem = averagePrecisionBySystem,
-        topicColumnViewByTopic   = topicColumnViewByTopic,
-        fullSetMeanAPBySystem    = fullSetMeanAPBySystem,
-        numberOfSystems          = numberOfSystems,
-        numberOfTopics           = numberOfTopics,
-        systemIdsInOrder         = systemIdsInOrder,
-        systemIndexById          = systemIndexById
+        topicColumnViewByTopic = topicColumnViewByTopic,
+        fullSetMeanAPBySystem = fullSetMeanAPBySystem,
+        numberOfSystems = numberOfSystems,
+        numberOfTopics = numberOfTopics,
+        systemIdsInOrder = systemIdsInOrder,
+        systemIndexById = systemIndexById
     )
 }
 
@@ -136,59 +138,10 @@ fun toPrimitiveAPRows(
     for ((k, boxed) in legacy) {
         val row = DoubleArray(boxed.size)
         var i = 0
-        while (i < boxed.size) { row[i] = boxed[i]; i++ }
+        while (i < boxed.size) {
+            row[i] = boxed[i]; i++
+        }
         out[k] = row
     }
     return out
-}
-
-/* ---------- Correlation helpers (primitive) ---------- */
-
-/**
- * Pearson correlation between two DoubleArray vectors of equal length.
- * Returns 0.0 if any variance is zero.
- */
-fun pearsonCorrelation(left: DoubleArray, right: DoubleArray): Double {
-    require(left.size == right.size) { "Size mismatch: left=${left.size}, right=${right.size}" }
-    var sumXY = 0.0
-    var sumXX = 0.0
-    var sumYY = 0.0
-    var i = 0
-    while (i < left.size) {
-        val x = left[i]; val y = right[i]
-        sumXY += x * y
-        sumXX += x * x
-        sumYY += y * y
-        i++
-    }
-    val denom = kotlin.math.sqrt(sumXX * sumYY)
-    return if (denom == 0.0) 0.0 else sumXY / denom
-}
-
-/**
- * Pearson correlation using subset sums (later used by delta-evaluation).
- *   - sumsOfAPOverSelectedTopicsBySystem[s] = Σ_{t∈subset} AP[s][t]
- *   - selectedTopicCount = |subset|
- *   - fullSetMeanAPBySystem[s] from PrecomputedData
- */
-fun pearsonCorrelationFromSums(
-    sumsOfAPOverSelectedTopicsBySystem: DoubleArray,
-    selectedTopicCount: Int,
-    fullSetMeanAPBySystem: DoubleArray
-): Double {
-    if (selectedTopicCount == 0) return 0.0
-    var sumXY = 0.0
-    var sumXX = 0.0
-    var sumYY = 0.0
-    var i = 0
-    while (i < sumsOfAPOverSelectedTopicsBySystem.size) {
-        val subsetMean = sumsOfAPOverSelectedTopicsBySystem[i] / selectedTopicCount
-        val fullMean   = fullSetMeanAPBySystem[i]
-        sumXY += subsetMean * fullMean
-        sumXX += subsetMean * subsetMean
-        sumYY += fullMean   * fullMean
-        i++
-    }
-    val denom = kotlin.math.sqrt(sumXX * sumYY)
-    return if (denom == 0.0) 0.0 else sumXY / denom
 }

@@ -13,56 +13,51 @@ import org.uma.jmetal.util.pseudorandom.JMetalRandom
  *  • Construction helpers for either a fixed cardinality K or a random non-empty mask.
  *  • Readable accessors used across the project (retrieveTopicStatus, numberOfSelectedTopics, …).
  *  • Mirror field `topicStatus` kept for downstream writers (-Top CSV).
- *  • Step 3 (delta evaluation) scaffolding:
+ *  • Delta-eval scaffolding:
  *      - `lastEvaluatedMask`, `cachedSumsBySystem` (subset-sum cache)
  *      - `lastSwapOutIndex`, `lastSwapInIndex`, `lastMutationWasFixedKSwap` (operator hook)
+ *  • Performance:
+ *      - Cached genotype key (bitstring) with dirty tracking to avoid rebuilding strings.
  *
  * Notes:
- *  - Updated to jMetal 6.x API: use variables() / objectives() lists (no get/setVariableValue()).
+ *  - jMetal 6.x API: use variables() / objectives() lists.
  *  - All randomness uses JMetalRandom's singleton to preserve determinism when seeded.
  * ------------------------------------------------------------------------------------------------------------------ */
 class BestSubsetSolution(
-    /* Kept for call-site compatibility; only numberOfObjectives matters for parent */
     numberOfVariables: Int,
     numberOfObjectives: Int,
-
-    /* Total number of decision bits (topics). */
     private val numberOfTopics: Int,
-
-    /* Human-readable labels for each topic (private; use getters to read safely). */
     private val topicLabels: Array<String>,
-
-    /* If non-null, build an initial mask with exactly this many 1s; otherwise random non-empty. */
     private val forcedCardinality: Int?
 ) : DefaultBinarySolution(listOf(numberOfTopics), numberOfObjectives) {
 
     /* External mirror for writers (-Top CSV, etc.). */
     var topicStatus: Array<Boolean> = Array(numberOfTopics) { false }
 
-    /* Step 3 (delta evaluation) caches. */
+    /* Delta-eval caches. */
     var lastEvaluatedMask: BooleanArray? = null
     var cachedSumsBySystem: DoubleArray? = null
 
-    /* Step 3 (delta evaluation) operator flags. */
+    /* Operator flags (for Fixed-K swap hints). */
     var lastSwapOutIndex: Int? = null
     var lastSwapInIndex: Int? = null
     var lastMutationWasFixedKSwap: Boolean = false
+
+    /* Genotype cache (avoids repeated 0/1 string builds in ranking/dedup). */
+    private var cachedGenotypeKey: String? = null
+    private var genotypeDirty: Boolean = true
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     /* -------------------------------- Initialization ------------------------------- */
     init {
-        val initialMask: BinarySet = if (forcedCardinality != null) {
-            buildMaskWithExactCardinality(forcedCardinality)
-        } else {
-            buildRandomNonEmptyMask()
-        }
+        val initialMask: BinarySet =
+            if (forcedCardinality != null) buildMaskWithExactCardinality(forcedCardinality)
+            else buildRandomNonEmptyMask()
 
-        /* jMetal 6.x: variables() returns a mutable list. Put our mask in slot 0. */
         variables()[0] = initialMask
-
-        /* Keep the mirror in sync for downstream writers. */
         topicStatus = retrieveTopicStatus().toTypedArray()
+        genotypeDirty = true
     }
 
     /* ------------------------------ Mask Builders ---------------------------------- */
@@ -76,7 +71,8 @@ class BestSubsetSolution(
         val pool = IntArray(numberOfTopics) { it }  /* 0..n-1 */
         var i = 0
         while (i < clampedK) {
-            val swapWith = i + rng.nextInt(0, numberOfTopics - i - 1)
+            // jMetalRandom.nextInt(low, high) is [low, high) (upper bound EXCLUSIVE)
+            val swapWith = i + rng.nextInt(0, numberOfTopics - i)
             val tmp = pool[i]; pool[i] = pool[swapWith]; pool[swapWith] = tmp
             mask.set(pool[i], true)
             i++
@@ -99,7 +95,8 @@ class BestSubsetSolution(
         }
 
         if (!anySelected) {
-            val flipIndex = if (numberOfTopics == 1) 0 else rng.nextInt(0, numberOfTopics - 1)
+            // nextInt(0, numberOfTopics) chooses in [0, n) → all indices reachable
+            val flipIndex = if (numberOfTopics == 1) 0 else rng.nextInt(0, numberOfTopics)
             mask.set(flipIndex, true)
         }
         return mask
@@ -126,18 +123,26 @@ class BestSubsetSolution(
     /** Set a single bit in the underlying BinarySet. */
     fun setBitValue(bitIndex: Int, value: Boolean) {
         variables()[0].set(bitIndex, value)
+        genotypeDirty = true
     }
 
     /** String form of variable bits without separators (used by logging/ranking). */
     fun getVariableValueString(variableIndex: Int): String {
-        val bits: BinarySet = variables()[variableIndex]
-        val sb = StringBuilder(numberOfTopics)
-        var i = 0
-        while (i < numberOfTopics) {
-            sb.append(if (bits.get(i)) '1' else '0')
-            i++
+        // Use cached genotype key; rebuild only when dirty.
+        var key = cachedGenotypeKey
+        if (genotypeDirty || key == null) {
+            val bits: BinarySet = variables()[variableIndex]
+            val sb = StringBuilder(numberOfTopics)
+            var i = 0
+            while (i < numberOfTopics) {
+                sb.append(if (bits.get(i)) '1' else '0')
+                i++
+            }
+            key = sb.toString()
+            cachedGenotypeKey = key
+            genotypeDirty = false
         }
-        return sb.toString()
+        return key
     }
 
     /** Build a BinarySet from a genes array (used by streaming/Average paths). */
@@ -151,6 +156,8 @@ class BestSubsetSolution(
                 i++
             }
         }
+        // When external code installs this into variables()[0], that constitutes a mutation.
+        genotypeDirty = true
         return bs
     }
 
@@ -169,13 +176,13 @@ class BestSubsetSolution(
     /** Expose a single topic label safely (for operator logs). */
     fun topicLabelAt(index: Int): String = topicLabels[index]
 
-    /** Clear Step-3 caches (subset sums). */
+    /** Clear delta-eval caches (subset sums). */
     fun resetIncrementalEvaluationState() {
         lastEvaluatedMask = null
         cachedSumsBySystem = null
     }
 
-    /** Clear Step-3 operator flags (swap info). */
+    /** Clear operator flags (swap info). */
     fun clearLastMutationFlags() {
         lastMutationWasFixedKSwap = false
         lastSwapOutIndex = null
@@ -189,15 +196,16 @@ class BestSubsetSolution(
      *  - Variable bitset
      *  - Objectives
      *  - topicStatus mirror
-     *  - Step-3 caches and operator flags
+     *  - Delta-eval caches and operator flags
+     *  - Genotype cache state (safe to reuse)
      */
     override fun copy(): BestSubsetSolution {
         val clone = BestSubsetSolution(
             numberOfVariables = 1,
-            numberOfObjectives = objectives().size,  // jMetal 6.x: objectives() is a DoubleArray
+            numberOfObjectives = objectives().size,
             numberOfTopics = numberOfTopics,
             topicLabels = topicLabels.copyOf(),
-            forcedCardinality = null /* not used on clones; we copy bits instead */
+            forcedCardinality = null
         )
 
         /* Copy bitset */
@@ -205,7 +213,7 @@ class BestSubsetSolution(
         val dstBits = BinarySet(numberOfTopics).apply { this.or(srcBits) }
         clone.variables()[0] = dstBits
 
-        /* Copy objectives (jMetal 6.x: use the objectives() array) */
+        /* Copy objectives */
         val m = objectives().size
         var i = 0
         while (i < m) {
@@ -213,27 +221,31 @@ class BestSubsetSolution(
             i++
         }
 
-        /* Copy mirrors & caches */
+        /* Mirrors & caches */
         clone.topicStatus = this.topicStatus.copyOf()
         clone.lastEvaluatedMask = this.lastEvaluatedMask?.copyOf()
         clone.cachedSumsBySystem = this.cachedSumsBySystem?.copyOf()
 
-        /* Copy operator flags */
+        /* Operator flags */
         clone.lastSwapOutIndex = this.lastSwapOutIndex
         clone.lastSwapInIndex = this.lastSwapInIndex
         clone.lastMutationWasFixedKSwap = this.lastMutationWasFixedKSwap
 
+        /* Genotype cache */
+        clone.cachedGenotypeKey = this.cachedGenotypeKey
+        clone.genotypeDirty = this.genotypeDirty
+
         return clone
     }
 
-    /** External-friendly: cardinality as Double (used by writers/streams). */
+    /** Friendly cardinality accessor (Double) used by writers/streams. */
     fun getCardinality(): Double = numberOfSelectedTopics.toDouble()
 
-    /** Returns the correlation as stored in objectives()[1]:
+    /**
+     * Returns the correlation as stored in objectives()[1]:
      *  - BEST  : negative of the natural correlation (internal encoding)
      *  - WORST : natural correlation
      * External printing logic must convert to the natural view where required.
      */
     fun getCorrelation(): Double = objectives()[1]
-
 }

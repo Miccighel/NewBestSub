@@ -8,7 +8,6 @@ import org.apache.commons.cli.ParseException
 import org.apache.commons.math3.stat.correlation.KendallsCorrelation
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation
 import org.apache.logging.log4j.LogManager
-
 import org.uma.jmetal.operator.crossover.CrossoverOperator
 import org.uma.jmetal.operator.mutation.MutationOperator
 import org.uma.jmetal.operator.selection.SelectionOperator
@@ -21,11 +20,11 @@ import org.uma.jmetal.util.evaluator.impl.SequentialSolutionListEvaluator
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 import org.uma.jmetal.util.ranking.Ranking
 import org.uma.jmetal.util.ranking.impl.MergeNonDominatedSortRanking
-
 import java.io.File
 import java.io.FileReader
 import java.util.*
 import kotlinx.coroutines.channels.SendChannel
+import kotlin.math.sqrt
 
 /*
  * Model + streaming semantics
@@ -203,6 +202,60 @@ class DatasetModel {
         precomputedData = buildPrecomputedData(primitiveAP)
     }
 
+    /* --------------------------------- Fast Pearson --------------------------------- */
+
+    /** Allocation-free Pearson on primitive vectors. */
+    private fun fastPearson(left: DoubleArray, right: DoubleArray): Double {
+        val n = left.size
+        var sumX = 0.0
+        var sumY = 0.0
+        var sumXX = 0.0
+        var sumYY = 0.0
+        var sumXY = 0.0
+        var i = 0
+        while (i < n) {
+            val x = left[i]
+            val y = right[i]
+            sumX += x
+            sumY += y
+            sumXX += x * x
+            sumYY += y * y
+            sumXY += x * y
+            i++
+        }
+        val num = n * sumXY - sumX * sumY
+        val denX = n * sumXX - sumX * sumX
+        val denY = n * sumYY - sumY * sumY
+        val den = sqrt(denX) * sqrt(denY)
+        return if (den == 0.0) 0.0 else num / den
+    }
+
+    /** Boxed-array version (used by AVERAGE branch where arrays are boxed). */
+    private fun fastPearsonBoxed(left: Array<Double>, right: Array<Double>): Double {
+        val n = left.size
+        var sumX = 0.0
+        var sumY = 0.0
+        var sumXX = 0.0
+        var sumYY = 0.0
+        var sumXY = 0.0
+        var i = 0
+        while (i < n) {
+            val x = left[i]
+            val y = right[i]
+            sumX += x
+            sumY += y
+            sumXX += x * x
+            sumYY += y * y
+            sumXY += x * y
+            i++
+        }
+        val num = n * sumXY - sumX * sumY
+        val denX = n * sumXX - sumX * sumX
+        val denY = n * sumYY - sumY * sumY
+        val den = kotlin.math.sqrt(denX) * kotlin.math.sqrt(denY)
+        return if (den == 0.0) 0.0 else num / den
+    }
+
     /* ------------------------------ Solve + streaming ------------------------------ */
 
     /*
@@ -252,32 +305,97 @@ class DatasetModel {
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
 
-            /* -----------------------------
-             * AVERAGE experiment (stream once per K)
-             * ----------------------------- */
+            /* ----------------------------------------------------------------------------------------------------------------
+             * AVERAGE experiment (stream once per K) — optimized with Pearson/Kendall switch
+             * ----------------------------------------------------------------------------------------------------------------
+             *  • Inline Pearson correlation vs full-set means (precomputed Y stats).
+             *  • Optional Kendall τ-b (O(S^2)) for future use; keeps allocation minimal.
+             *  • Reuse buffers: topicIndexPool, subsetSumsBySystem, correlationSamples.
+             *  • Build Boolean mask once per K (for streaming VAR).
+             * ---------------------------------------------------------------------------------------------------------------- */
 
-            /*
-             * AVERAGE branch notes:
-             *  - For each K, a single streaming row is produced: the mean correlation over
-             *    `numberOfRepetitions` random subsets of size K (Fisher–Yates partial selection).
-             *  - Percentiles are computed from the same repetition correlations.
-             *  - -Fun and -Var are streamed exactly once per K; -Var is Base64-packed.
-             */
             val randomGenerator = JMetalRandom.getInstance().randomGenerator
+            val useKendall = (parameters.correlationMethod == Constants.CORRELATION_KENDALL)
 
-            val streamedBitsetsByK = mutableListOf<Array<Boolean>>()
-            val streamedCardinalities = mutableListOf<Int>()
-            val streamedCorrelations = mutableListOf<Double>()
+            /* --- Shared numeric bundle (primitive, read-only) --- */
+            val bundle = precomputedData ?: buildPrecomputedData(toPrimitiveAPRows(averagePrecisions))
+            val systemsCount = bundle.numberOfSystems
+            val fullSetMeans = bundle.fullSetMeanAPBySystem
 
+            /* --- Pearson(Y) pre-stats (ignored if Kendall) --- */
+            var meanFullSet = 0.0
+            var varianceTermFullSet = 0.0
+            if (!useKendall) {
+                var sumY = 0.0
+                var sumY2 = 0.0
+                var j = 0
+                while (j < systemsCount) {
+                    val v = fullSetMeans[j]
+                    sumY += v
+                    sumY2 += v * v
+                    j++
+                }
+                meanFullSet = sumY / systemsCount
+                varianceTermFullSet = sumY2 - systemsCount * meanFullSet * meanFullSet
+            }
+
+            /* --- Reusable work buffers --- */
+            val topicIndexPool = IntArray(numberOfTopics) { it }      // 0..N-1, partially shuffled per K
+            val subsetSumsBySystem = DoubleArray(systemsCount)        // Σ_t AP[s][t] over selected topics
+            val subsetMeansBySystem = if (useKendall) DoubleArray(systemsCount) else DoubleArray(0) // filled only for Kendall
+            val correlationSamples = DoubleArray(maxOf(1, numberOfRepetitions))
+
+            val streamedBitsetsByK = ArrayList<Array<Boolean>>(numberOfTopics)
+            val streamedCardinalities = ArrayList<Int>(numberOfTopics)
+            val streamedCorrelations = ArrayList<Double>(numberOfTopics)
+
+            /* --- Logging cadence --- */
             val loggingStep = (numberOfTopics * Constants.LOGGING_FACTOR) / 100
             var progressPercentage = 0
 
             parameters.percentiles.forEach { p -> percentiles[p] = LinkedList() }
 
-            for ((iterationIndex, cardinalityIndex) in (0 until numberOfTopics).withIndex()) {
+            /* --- Local helper: Kendall τ-b (handles ties) --- */
+            fun kendallTauB(x: DoubleArray, y: DoubleArray): Double {
+                val n = x.size
+                if (n <= 1) return 0.0
+                var concordant = 0L
+                var discordant = 0L
+                var tiesX = 0L
+                var tiesY = 0L
+                var i = 0
+                while (i < n - 1) {
+                    var j2 = i + 1
+                    while (j2 < n) {
+                        val dx = x[i] - x[j2]
+                        val dy = y[i] - y[j2]
+                        val sx = if (dx > 0) 1 else if (dx < 0) -1 else 0
+                        val sy = if (dy > 0) 1 else if (dy < 0) -1 else 0
+                        when {
+                            sx == 0 && sy == 0 -> { /* both tied: counts only into tie terms below */
+                            }
 
+                            sx == 0 -> tiesX++
+                            sy == 0 -> tiesY++
+                            else -> if (sx == sy) concordant++ else discordant++
+                        }
+                        j2++
+                    }
+                    i++
+                }
+                val cPlusD = concordant + discordant
+                val denom = kotlin.math.sqrt((cPlusD + tiesX).toDouble() * (cPlusD + tiesY).toDouble())
+                return if (denom == 0.0) 0.0 else (concordant - discordant).toDouble() / denom
+            }
+
+            /* ----------------------------------------------------------------------------------------------------------------
+             * Iterate cardinalities K = 1..N
+             * ---------------------------------------------------------------------------------------------------------------- */
+            for (cardinalityIndex in 0 until numberOfTopics) {
+
+                /* --- Progress logs --- */
                 if (loggingStep > 0 &&
-                    (iterationIndex % loggingStep) == 0 &&
+                    (cardinalityIndex % loggingStep) == 0 &&
                     numberOfTopics > loggingStep
                 ) {
                     logger.info(
@@ -286,94 +404,128 @@ class DatasetModel {
                     progressPercentage += Constants.LOGGING_FACTOR
                 }
 
-                var correlationsSum = 0.0
-                var lastBitString = ""
-                var selectedTopicMask = BooleanArray(numberOfTopics)
+                val currentCardinality = cardinalityIndex + 1
+                val repetitions = maxOf(1, numberOfRepetitions)
 
-                val repetitionCorrelations = Array(numberOfRepetitions) {
-                    val desiredCardinality = cardinalityIndex + 1
+                /* --- Repetition loop for this K --- */
+                var rep = 0
+                while (rep < repetitions) {
 
-                    /* Build 0..N-1 pool of topic indices. */
-                    val topicIndexPool = IntArray(numberOfTopics) { it }
-
-                    /* Partial Fisher–Yates: fix the first `desiredCardinality` positions with unique picks. */
-                    for (leftmostFixedIndex in 0 until desiredCardinality) {
-                        val remainingSpan = numberOfTopics - leftmostFixedIndex
-                        val randomOffsetWithinSpan = (randomGenerator.nextDouble() * remainingSpan).toInt()
-                        val swapWithIndex = leftmostFixedIndex + randomOffsetWithinSpan
-
-                        val tmp = topicIndexPool[leftmostFixedIndex]
-                        topicIndexPool[leftmostFixedIndex] = topicIndexPool[swapWithIndex]
-                        topicIndexPool[swapWithIndex] = tmp
+                    /* Partial Fisher–Yates: fix first `currentCardinality` slots with unique picks */
+                    var fixed = 0
+                    while (fixed < currentCardinality) {
+                        val remaining = numberOfTopics - fixed
+                        val offset = (randomGenerator.nextDouble() * remaining).toInt()
+                        val swapWith = fixed + offset
+                        val tmp = topicIndexPool[fixed]
+                        topicIndexPool[fixed] = topicIndexPool[swapWith]
+                        topicIndexPool[swapWith] = tmp
+                        fixed++
                     }
 
-                    /* Mark selected topics. */
-                    selectedTopicMask = BooleanArray(numberOfTopics)
-                    for (selectedSlot in 0 until desiredCardinality) {
-                        val selectedTopicIndex = topicIndexPool[selectedSlot]
-                        selectedTopicMask[selectedTopicIndex] = true
+                    /* Build per-system sums for selected topics */
+                    java.util.Arrays.fill(subsetSumsBySystem, 0.0)
+                    var sel = 0
+                    while (sel < currentCardinality) {
+                        val t = topicIndexPool[sel]
+                        val col = bundle.topicColumnViewByTopic[t]
+                        var s = 0
+                        while (s < systemsCount) {
+                            subsetSumsBySystem[s] += col[s]
+                            s++
+                        }
+                        sel++
                     }
 
-                    /* String form of the bitset for logs only (not streamed raw). */
-                    lastBitString = buildString(numberOfTopics) {
-                        selectedTopicMask.forEach { append(if (it) '1' else '0') }
+                    /* Correlation: Pearson (inline) OR Kendall τ-b */
+                    val corr = if (!useKendall) {
+                        // Pearson: work on sums to avoid a temp vector
+                        val invK = 1.0 / currentCardinality
+                        var sumX = 0.0
+                        var sumX2 = 0.0
+                        var sumXY = 0.0
+                        var s = 0
+                        while (s < systemsCount) {
+                            val x = subsetSumsBySystem[s] * invK
+                            sumX += x
+                            sumX2 += x * x
+                            sumXY += x * fullSetMeans[s]
+                            s++
+                        }
+                        val meanX = sumX / systemsCount
+                        val num = sumXY - systemsCount * meanX * meanFullSet
+                        val denLeft = sumX2 - systemsCount * meanX * meanX
+                        val den = kotlin.math.sqrt(denLeft * varianceTermFullSet)
+                        if (den == 0.0) 0.0 else num / den
+                    } else {
+                        // Kendall: materialize subset means vector, then τ-b vs fullSetMeans
+                        val invK = 1.0 / currentCardinality
+                        var s = 0
+                        while (s < systemsCount) {
+                            subsetMeansBySystem[s] = subsetSumsBySystem[s] * invK
+                            s++
+                        }
+                        kendallTauB(subsetMeansBySystem, fullSetMeans)
                     }
 
-                    /* Compute correlation on the reduced mean vector (boxed path by design). */
-                    val apIterator = this@DatasetModel.averagePrecisions.entries.iterator()
-                    val reducedMeanVector = Array(averagePrecisions.size) {
-                        Tools.getMean(apIterator.next().value.toDoubleArray(), selectedTopicMask)
-                    }
-
-                    correlationStrategy.invoke(reducedMeanVector, meanAveragePrecisions)
+                    correlationSamples[rep] = corr
+                    rep++
                 }
 
-                repetitionCorrelations.forEach { c -> correlationsSum += c }
-                repetitionCorrelations.sort()
-                val meanCorrelation = correlationsSum / numberOfRepetitions
+                /* Aggregate stats for this K */
+                var sumCorr = 0.0
+                var i = 0
+                while (i < repetitions) {
+                    sumCorr += correlationSamples[i]; i++
+                }
+                val meanCorrelation = sumCorr / repetitions
 
-                percentiles.entries.forEach { (percentile, collected) ->
-                    val position = kotlin.math.ceil((percentile / 100.0) * repetitionCorrelations.size).toInt()
-                    val percentileValue = repetitionCorrelations[position - 1]
-                    percentiles[percentile] = collected.plus(percentileValue)
-                    logger.debug("<Cardinality: $cardinalityIndex, Percentile: $percentile, Value: $percentileValue>")
+                java.util.Arrays.sort(correlationSamples, 0, repetitions)
+                for ((percentile, collected) in percentiles.entries) {
+                    val pos = kotlin.math.ceil((percentile / 100.0) * repetitions).toInt().coerceIn(1, repetitions)
+                    val pVal = correlationSamples[pos - 1]
+                    percentiles[percentile] = collected.plus(pVal)
                 }
 
-                logger.debug(
-                    "<Correlation: $meanCorrelation, Number of selected topics: $cardinalityIndex, Last gene evaluated: $lastBitString>"
-                )
+                /* Build Boolean mask once (for streaming VAR row) */
+                val maskForStreaming = BooleanArray(numberOfTopics)
+                i = 0
+                while (i < currentCardinality) {
+                    maskForStreaming[topicIndexPool[i]] = true
+                    i++
+                }
 
-                streamedCardinalities.add(cardinalityIndex + 1)
+                streamedCardinalities.add(currentCardinality)
                 streamedCorrelations.add(meanCorrelation)
-                streamedBitsetsByK.add(selectedTopicMask.toTypedArray())
+                streamedBitsetsByK.add(maskForStreaming.toTypedArray())
 
-                /* Stream AVERAGE row now — FUN and VAR (packed), exactly once per K. */
+                /* Stream AVERAGE row (FUN + VAR) */
                 sendProgress(
                     out, CardinalityResult(
                         target = targetToAchieve,
                         threadName = workerThreadName,
-                        cardinality = cardinalityIndex + 1,
+                        cardinality = currentCardinality,
                         correlation = meanCorrelation,
-                        functionValuesCsvLine = "${cardinalityIndex + 1} $meanCorrelation",
-                        variableValuesCsvLine = packTopicMaskToVarLineBase64(selectedTopicMask)
+                        functionValuesCsvLine = "$currentCardinality $meanCorrelation",
+                        variableValuesCsvLine = packTopicMaskToVarLineBase64(maskForStreaming)
                     )
                 )
             }
 
-            /* Construct the problem with the primitive path (keeps types uniform). */
+            /* ----------------------------------------------------------------------------------------------------------------
+             * Construct problem + build solutions (unchanged)
+             * ---------------------------------------------------------------------------------------------------------------- */
             problem = BestSubsetProblem(
                 parameters = parameters,
                 numberOfTopics = numberOfTopics,
-                precomputedData = precomputedData
-                    ?: buildPrecomputedData(toPrimitiveAPRows(averagePrecisions)),
+                precomputedData = bundle,
                 topicLabels = topicLabels,
                 correlationFunction = loadPrimitiveCorrelationMethod(parameters.correlationMethod),
                 targetStrategy = objectiveEncodingStrategy
             )
 
-            /* Build solutions from precomputed gene vectors to keep topicDistribution consistent. */
             for (index in 0 until numberOfTopics) {
-                val solution = BestSubsetSolution(
+                val s = BestSubsetSolution(
                     numberOfVariables = 1,
                     numberOfObjectives = 2,
                     numberOfTopics = numberOfTopics,
@@ -381,14 +533,12 @@ class DatasetModel {
                     forcedCardinality = null
                 )
                 val genes = streamedBitsetsByK[index]
-                solution.variables()[0] = solution.createNewBitSet(numberOfTopics, genes)
-                solution.objectives()[0] = streamedCardinalities[index].toDouble()
-                solution.objectives()[1] = streamedCorrelations[index]
-
-                notDominatedSolutions.add(solution)
-                allSolutions.add(solution)
+                s.variables()[0] = s.createNewBitSet(numberOfTopics, genes)
+                s.objectives()[0] = streamedCardinalities[index].toDouble()
+                s.objectives()[1] = streamedCorrelations[index]
+                notDominatedSolutions.add(s)
+                allSolutions.add(s)
             }
-
         } else {
 
             /* ---------------------------------
@@ -425,20 +575,6 @@ class DatasetModel {
             /* (2) Track last sent 10-row signature for -Top replacement semantics. */
             val lastSentTopSignatureByK = mutableMapOf<Int, Int>()
 
-            /*
-             * Per-generation streaming policy:
-             *
-             * (A) Representative selection per K:
-             *   - Scan the whole generation and keep, for each K, the candidate with the best
-             *     natural correlation for BEST (max) or WORST (min).
-             *
-             * (B) Improvement check vs best-so-far per K (monotone):
-             *   - Append to -Fun/-Var only when the representative's natural correlation improves
-             *     beyond the stored best for that K (epsilon = 1e-12).
-             *   - Appends are ordered by (K asc, corr asc|desc) to keep files ordered as they grow.
-             *
-             * (C) -Top batch replace on content change only.
-             */
             val onGeneration: (Int, List<BinarySolution>) -> Unit = { _, generationPopulation ->
 
                 /* Natural correlation reader:
@@ -619,12 +755,13 @@ class DatasetModel {
         kotlinx.coroutines.runBlocking { out.send(event) } /* preserve ordering / back-pressure */
     }
 
-    /* ------------------------- Helpers ------------------------- */
+    /* ------------------------- Correlations ------------------------- */
 
     private fun loadCorrelationMethod(correlationMethod: String): (Array<Double>, Array<Double>) -> Double {
 
         val pearson: (Array<Double>, Array<Double>) -> Double = { first, second ->
-            PearsonsCorrelation().correlation(first.toDoubleArray(), second.toDoubleArray())
+            // Fast, boxed Pearson
+            fastPearsonBoxed(first, second)
         }
         val kendall: (Array<Double>, Array<Double>) -> Double = { first, second ->
             KendallsCorrelation().correlation(first.toDoubleArray(), second.toDoubleArray())
@@ -644,7 +781,7 @@ class DatasetModel {
         correlationMethod: String
     ): (DoubleArray, DoubleArray) -> Double {
         val pearson: (DoubleArray, DoubleArray) -> Double = { left, right ->
-            PearsonsCorrelation().correlation(left, right)
+            fastPearson(left, right)
         }
         val kendall: (DoubleArray, DoubleArray) -> Double = { left, right ->
             KendallsCorrelation().correlation(left, right)
@@ -653,35 +790,6 @@ class DatasetModel {
             Constants.CORRELATION_PEARSON -> pearson
             Constants.CORRELATION_KENDALL -> kendall
             else -> pearson
-        }
-    }
-
-    /*
-     * Objective encoding used internally by NSGA-II.
-     * BEST  stores correlation as negative to turn maximization into minimization.
-     * WORST stores cardinality as negative to prioritize smaller K when correlations tie.
-     * External writers must present the natural signs; see toFunLineFor(), top10CsvLinesForK(),
-     * and fixObjectiveFunctionValues().
-     */
-    private fun loadTargetToAchieve(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
-
-        val encodeForBest: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
-            solution.objectives()[0] = (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble()
-            solution.objectives()[1] = -correlation
-            solution
-        }
-        val encodeForWorst: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
-            solution.objectives()[0] = -(solution as BestSubsetSolution).numberOfSelectedTopics.toDouble()
-            solution.objectives()[1] = correlation
-            solution
-        }
-
-        this.targetToAchieve = targetToAchieve
-
-        return when (targetToAchieve) {
-            Constants.TARGET_BEST -> encodeForBest
-            Constants.TARGET_WORST -> encodeForWorst
-            else -> encodeForBest
         }
     }
 
@@ -718,6 +826,29 @@ class DatasetModel {
         return solutionsToFix
     }
 
+    // Put this inside class DatasetModel (e.g., near the other loaders)
+    private fun loadTargetToAchieve(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
+        val encodeForBest: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
+            // BEST: obj[0] = +K, obj[1] = -corr (maximize corr)
+            solution.objectives()[0] = (solution as BestSubsetSolution).numberOfSelectedTopics.toDouble()
+            solution.objectives()[1] = -correlation
+            solution
+        }
+        val encodeForWorst: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
+            // WORST: obj[0] = -K, obj[1] = +corr (minimize corr)
+            solution.objectives()[0] = -(solution as BestSubsetSolution).numberOfSelectedTopics.toDouble()
+            solution.objectives()[1] = correlation
+            solution
+        }
+
+        this.targetToAchieve = targetToAchieve
+        return when (targetToAchieve) {
+            Constants.TARGET_BEST -> encodeForBest
+            Constants.TARGET_WORST -> encodeForWorst
+            else -> encodeForBest
+        }
+    }
+
     fun findCorrelationForCardinality(cardinality: Double): Double? {
         allSolutions.forEach { s -> if (s.getCardinality() == cardinality) return s.getCorrelation() }
         return null
@@ -747,24 +878,9 @@ class DatasetModel {
 
     /* --------------------- VAR streaming: compact Base64 payload --------------------- */
 
-    /*
-     * VAR streaming (compact form)
-     * ----------------------------
-     * We avoid writing a giant 0/1 string (one char per topic). Instead we:
-     *   1) Pack the Boolean topic mask into 64-bit words (LSB-first within each word).
-     *   2) Serialize those words to a little-endian ByteArray (8 bytes per word).
-     *   3) Encode the bytes as Base64 (without padding) to keep the VAR line textual.
-     *
-     * Size intuition:
-     *   - Raw bitstring: N characters (one per topic).
-     *   - Packed bytes:  ceil(N/8) bytes.
-     *   - Base64 text:   ~ceil( (ceil(N/8) * 4) / 3 ) chars  ≈  N/6  (≈ 6× smaller than raw).
-     */
-
     /** Pack a BooleanArray into LongArray words (LSB-first within each 64-bit word). */
     private fun packTopicMaskToLongWords(topicPresenceMask: BooleanArray): LongArray {
         val totalBits = topicPresenceMask.size
-        the@ run { } // keep Kotlin imports tidy (no-op)
         val numberOfWords = (totalBits + 63) ushr 6  /* ceil(totalBits / 64) */
         val packedWords = LongArray(numberOfWords)
 
@@ -831,7 +947,7 @@ class DatasetModel {
     private fun BestSubsetSolution.toTopCsv(): String {
         val natural = getCorrelation()
         val mask = retrieveTopicStatus()
-        val b64 = booleanMaskToBase64(mask)           /* already defined below (unpadded Base64) */
+        val b64 = booleanMaskToBase64(mask)
         return "${getCardinality()},$natural,B64:$b64"
     }
 

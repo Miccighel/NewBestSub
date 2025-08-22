@@ -13,6 +13,7 @@ import java.nio.file.StandardCopyOption
 import java.util.*
 import java.util.SplittableRandom
 import kotlin.collections.LinkedHashMap
+import kotlin.time.Clock
 
 /*
  * DatasetController
@@ -169,10 +170,9 @@ class DatasetController(
             val worstParameters = parameters.copy(targetToAchieve = Constants.TARGET_WORST)
             val averageParameters = parameters.copy(targetToAchieve = Constants.TARGET_AVERAGE)
 
-            val cap = when (parameters.targetToAchieve) {
-                Constants.TARGET_ALL -> (models[0].numberOfTopics * 3) + 64
-                else -> models[0].numberOfTopics + 32
-            }
+            /* Channel cap tuned for throttled onGen (stride≈3) with headroom */
+            val estPerTargetEvents = (models[0].numberOfTopics / 3) + 64
+            val cap = (estPerTargetEvents * 3).coerceAtLeast(64)
             val progress: Channel<ProgressEvent> = Channel(cap)
 
             if (parameters.deterministic) {
@@ -213,16 +213,39 @@ class DatasetController(
                 /* ---------------- Non-deterministic: parallel solves as before ---------------- */
                 runBlocking {
                     supervisorScope {
+                        val cnt = intArrayOf(0, 0, 0) // funVar, top, done
+                        val t0 = System.nanoTime()
                         val printer = launch(Dispatchers.IO) {
                             for (ev in progress) {
-                                val model = models.first { it.targetToAchieve == ev.target }
+                                val model = if (parameters.targetToAchieve == Constants.TARGET_ALL)
+                                    models.first { it.targetToAchieve == ev.target } else models[0]
                                 when (ev) {
-                                    is CardinalityResult -> view.appendCardinality(model, ev)
-                                    is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
-                                    is RunCompleted -> view.closeStreams(model)
+                                    is CardinalityResult -> {
+                                        view.appendCardinality(model, ev)
+                                        cnt[0]++
+                                    }
+                                    is TopKReplaceBatch -> {
+                                        view.replaceTopBatch(model, ev.blocks)
+                                        cnt[1]++
+                                    }
+                                    is RunCompleted -> {
+                                        cnt[2]++
+                                        logger.info(
+                                            "[printer] RunCompleted received for target {} → closing streams ({} fun/var appends, {} top batches, {} ms).",
+                                            ev.target, cnt[0], cnt[1], (System.nanoTime() - t0) / 1_000_000
+                                        )
+                                        view.closeStreams(model) // <-- Parquet write happens here
+                                    }
+                                }
+
+                                // very light heartbeat each ~10k events
+                                val total = cnt[0] + cnt[1] + cnt[2]
+                                if (total % 10_000 == 0 && total > 0) {
+                                    logger.info("[printer] heartbeat events: funVar={}, top={}, done={}", cnt[0], cnt[1], cnt[2])
                                 }
                             }
                         }
+
 
                         val jobs = listOf(
                             launch(Dispatchers.Default) { models[0].solve(bestParameters, progress) },
@@ -276,10 +299,9 @@ class DatasetController(
 
         } else {
             /* ---------------- Single target ---------------- */
-            val cap = when (parameters.targetToAchieve) {
-                Constants.TARGET_ALL -> (models[0].numberOfTopics * 3) + 64
-                else -> models[0].numberOfTopics + 32
-            }
+            /* Channel cap tuned for throttled onGen (stride≈3) with headroom */
+            val estPerTargetEvents = (models[0].numberOfTopics / 3) + 64
+            val cap = estPerTargetEvents.coerceAtLeast(64)
             val progress: Channel<ProgressEvent> = Channel(cap)
 
             if (parameters.deterministic) {
@@ -371,78 +393,117 @@ class DatasetController(
     /* ------------------------ Aggregation and info (unchanged) ------------------------ */
 
     private fun aggregate(models: List<DatasetModel>): List<Array<String>> {
-        val header = mutableListOf<String>()
-        val incompleteData = mutableListOf<Array<String>>()
-        val aggregatedData = mutableListOf<Array<String>>()
-        val topicLabels = models[0].topicLabels
-        var percentiles = linkedMapOf<Int, List<Double>>()
+        /* --------- locals & column layout --------- */
+        val firstModel = models[0]
+        val topicLabels = firstModel.topicLabels
+        val topicsCount = topicLabels.size
+        val cardsCount = firstModel.numberOfTopics
 
-        header.add("Cardinality")
-        models.forEach { model ->
-            header.add(model.targetToAchieve)
-            if (model.targetToAchieve == Constants.TARGET_AVERAGE) percentiles = model.percentiles
+        // Find (optional) AVERAGE model percentiles once; iterate keys in ascending order for stable columns.
+        var percentiles = linkedMapOf<Int, List<Double>>()
+        models.forEach { m -> if (m.targetToAchieve == Constants.TARGET_AVERAGE) percentiles = m.percentiles }
+        val percentileKeysOrdered: List<Int> = percentiles.keys.sorted()
+
+        // Header: [Cardinality] + one col per model target + one col per percentile + one col per topic label
+        val modelTargetCount = models.size
+        val headerCols = 1 + modelTargetCount + percentileKeysOrdered.size + topicsCount
+
+        val aggregatedData = ArrayList<Array<String>>(/* header + N rows */ 1 + cardsCount)
+
+        /* --------- header row (single pass, no realloc) --------- */
+        run {
+            val hdr = Array(headerCols) { "" }
+            var col = 0
+            hdr[col++] = "Cardinality"
+            models.forEach { hdr[col++] = it.targetToAchieve }
+            percentileKeysOrdered.forEach { p -> hdr[col++] = "${p}%" }
+            topicLabels.forEach { lbl -> hdr[col++] = lbl }
+            aggregatedData += hdr
         }
-        percentiles.keys.forEach { percentile -> header.add("$percentile%") }
-        topicLabels.forEach { topicLabel -> header.add(topicLabel) }
-        aggregatedData.add(header.toTypedArray())
 
         logger.info("Starting to print common data between models.")
-        logger.info("Topics number: ${models[0].numberOfTopics}")
-        logger.info("Systems number: ${models[0].numberOfSystems}")
+        logger.info("Topics number: ${firstModel.numberOfTopics}")
+        logger.info("Systems number: ${firstModel.numberOfSystems}")
         logger.info("Print completed.")
 
-        val computedCardinality =
-            mutableMapOf(Constants.TARGET_BEST to 0, Constants.TARGET_WORST to 0, Constants.TARGET_AVERAGE to 0)
+        /* --------- cardinality coverage counters --------- */
+        val computedCardinality = mutableMapOf(
+            Constants.TARGET_BEST to 0,
+            Constants.TARGET_WORST to 0,
+            Constants.TARGET_AVERAGE to 0
+        )
 
-        (0..models[0].numberOfTopics - 1).forEach { index ->
-            val currentCardinality = (index + 1).toDouble()
-            val currentLine = LinkedList<String>()
-            currentLine.add(currentCardinality.toString())
+        /* --------- main rows: one per cardinality (1..N) --------- */
+        for (kIndex in 0 until cardsCount) {
+            val k = kIndex + 1
+            val kAsDouble = k.toDouble()
+
+            val row = Array(headerCols) { "" }
+            var col = 0
+            row[col++] = k.toString()
+
+            /* -- per-model correlations (aligned with header order) -- */
             models.forEach { model ->
-                val correlationValueForCurrentCardinality = model.findCorrelationForCardinality(currentCardinality)
-                if (correlationValueForCurrentCardinality != null) {
-                    currentLine.add(correlationValueForCurrentCardinality.toString())
-                    computedCardinality[model.targetToAchieve] =
-                        computedCardinality[model.targetToAchieve]?.plus(1) ?: 0
-                } else currentLine.add(Constants.CARDINALITY_NOT_AVAILABLE)
-            }
-            incompleteData.add(currentLine.toTypedArray())
-        }
-
-        if (parameters.targetToAchieve != Constants.TARGET_ALL) {
-            logger.info("Total cardinality computed for target \"${parameters.targetToAchieve}\": ${computedCardinality[parameters.targetToAchieve]}/${models[0].numberOfTopics}.")
-        } else {
-            logger.info("Total cardinality computed for target \"${Constants.TARGET_BEST}\": ${computedCardinality[Constants.TARGET_BEST]}/${models[0].numberOfTopics}.")
-            logger.info("Total cardinality computed for target \"${Constants.TARGET_WORST}\": ${computedCardinality[Constants.TARGET_WORST]}/${models[0].numberOfTopics}.")
-            logger.info("Total cardinality computed for target \"${Constants.TARGET_AVERAGE}\": ${computedCardinality[Constants.TARGET_AVERAGE]}/${models[0].numberOfTopics}.")
-        }
-
-        incompleteData.forEach { aLine ->
-            var newDataEntry = aLine
-            val currentCardinality = newDataEntry[0].toDouble()
-            percentiles.entries.forEach { (_, percentileValues) ->
-                newDataEntry = newDataEntry.plus(percentileValues[currentCardinality.toInt() - 1].toString())
-            }
-            topicLabels.forEach { label ->
-                /* Build a compact presence code for this topic at the current cardinality:
-                 * "B" if present in BEST, "W" if present in WORST, "BW" if both, or "N" if in none. */
-                val flags = StringBuilder()
-                models.forEach { model ->
-                    val present = model.isTopicInASolutionOfCardinality(label, currentCardinality)
-                    when (model.targetToAchieve) {
-                        Constants.TARGET_BEST -> if (present) flags.append('B')
-                        Constants.TARGET_WORST -> if (present) flags.append('W')
-                    }
+                val c = model.findCorrelationForCardinality(kAsDouble)
+                if (c != null) {
+                    row[col] = c.toString()
+                    computedCardinality[model.targetToAchieve] = (computedCardinality[model.targetToAchieve] ?: 0) + 1
+                } else {
+                    row[col] = Constants.CARDINALITY_NOT_AVAILABLE
                 }
-                if (flags.isEmpty()) flags.append('N')
-                newDataEntry = newDataEntry.plus(flags.toString())
+                col++
             }
-            aggregatedData.add(newDataEntry)
+
+            /* -- percentiles (if AVERAGE present) -- */
+            if (percentileKeysOrdered.isNotEmpty()) {
+                percentileKeysOrdered.forEach { p ->
+                    // guard against short arrays, although model builds them at full length
+                    val vals = percentiles[p] ?: emptyList()
+                    row[col++] = vals.getOrNull(kIndex)?.toString() ?: Constants.CARDINALITY_NOT_AVAILABLE
+                }
+            }
+
+            /* -- per-topic presence code at this K: "B", "W", "BW", or "N" -- */
+            // build against the models list once; avoid when-branches in inner loop
+            val hasBest = models.find { it.targetToAchieve == Constants.TARGET_BEST }
+            val hasWorst = models.find { it.targetToAchieve == Constants.TARGET_WORST }
+            for (t in 0 until topicsCount) {
+                val topic = topicLabels[t]
+                var f0 = false;
+                var f1 = false
+                if (hasBest != null) f0 = hasBest.isTopicInASolutionOfCardinality(topic, kAsDouble)
+                if (hasWorst != null) f1 = worst@ {
+                    hasWorst.isTopicInASolutionOfCardinality(topic, kAsDouble)
+                }.invoke()
+                // Compact build without allocations: expect length <= 2
+                if (f0 || f1) {
+                    val sb = StringBuilder(2)
+                    if (f0) sb.append('B')
+                    if (f1) sb.append('W')
+                    row[col++] = sb.toString()
+                } else {
+                    row[col++] = "N"
+                }
+            }
+
+            aggregatedData += row
         }
 
-        incompleteData.clear()
+        /* --------- logging summary --------- */
+        if (parameters.targetToAchieve != Constants.TARGET_ALL) {
+            logger.info(
+                "Total cardinality computed for target \"${parameters.targetToAchieve}\": " +
+                        "${computedCardinality[parameters.targetToAchieve]}/${firstModel.numberOfTopics}."
+            )
+        } else {
+            logger.info("Total cardinality computed for target \"${Constants.TARGET_BEST}\": ${computedCardinality[Constants.TARGET_BEST]}/${firstModel.numberOfTopics}.")
+            logger.info("Total cardinality computed for target \"${Constants.TARGET_WORST}\": ${computedCardinality[Constants.TARGET_WORST]}/${firstModel.numberOfTopics}.")
+            logger.info("Total cardinality computed for target \"${Constants.TARGET_AVERAGE}\": ${computedCardinality[Constants.TARGET_AVERAGE]}/${firstModel.numberOfTopics}.")
+        }
+
         return aggregatedData
     }
+
 
     private fun info(models: List<DatasetModel>): List<Array<String>> {
         val header = mutableListOf<String>()
@@ -878,7 +939,7 @@ class DatasetController(
             if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
                 val topMergedCsv = view.getTopSolutionsMergedFilePath(model)
                 Files.newBufferedWriter(Paths.get(topMergedCsv)).use { w ->
-                    w.appendLine("Cardinality,Correlation,Topics")
+                    w.appendLine("Cardinality,Correlation,TopicsB64")
                     val lines = if (model.targetToAchieve == Constants.TARGET_BEST) mergedBestTopSolutions else mergedWorstTopSolutions
                     lines.forEach { ln -> w.appendLine(ln) }
                 }
@@ -923,10 +984,10 @@ class DatasetController(
                 view.writeParquet(rows, out)
             }
 
-            /* TOP Parquet (header: K,Correlation,Topics) */
+            /* TOP Parquet (header: K,Correlation,TopicsB64) */
             if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
                 val rows = ArrayList<Array<String>>()
-                rows += arrayOf("K", "Correlation", "Topics")
+                rows += arrayOf("K", "Correlation", "TopicsB64")
                 val src = if (model.targetToAchieve == Constants.TARGET_BEST) mergedBestTopSolutions else mergedWorstTopSolutions
                 src.forEach { ln ->
                     val parts = ln.split(',', limit = 3)

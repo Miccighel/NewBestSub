@@ -4,6 +4,7 @@ import it.uniud.newbestsub.utils.Constants
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.io.File
@@ -25,8 +26,7 @@ class DatasetViewTest {
 
     /*
      * Build a minimal model that satisfies DatasetView path computation.
-     * We also provide topic labels so VAR’s final rewrite (labels set to 1)
-     * produces non-blank lines.
+     * We also provide topic labels so conversions have a label universe.
      */
     private fun stubModel(
         dataset: String = "TEST_DS",
@@ -45,7 +45,7 @@ class DatasetViewTest {
             currentExecution = exec
             expansionCoefficient = 0
             percentiles = linkedMapOf()
-            // Provide labels so "1 1 0 0" -> "401 402", etc.
+            // Provide labels like 401..450
             topicLabels = Array(50) { (401 + it).toString() }
         }
 
@@ -88,6 +88,9 @@ class DatasetViewTest {
          * Intentionally emit out-of-order:
          *  Expected final order by (K asc, corr asc):
          *    (1, 0.80), (1, 0.90), (2, 0.60), (2, 0.70)
+         *
+         * For VAR we pass simple bit-like strings; the CSV view will normalize them
+         * into compact B64 on close.
          */
         emit(2, 0.70, "1 1 0 0")
         emit(1, 0.90, "1 0 0 0")
@@ -96,6 +99,7 @@ class DatasetViewTest {
 
         /*
          * Helper to create a 10-row TOP block for a given K with ascending correlations.
+         * We deliberately give label-like payloads; the view will convert to Base64.
          */
         fun topBlock(k: Int, base: Double): List<String> =
             (0 until 10).map { i -> "$k,${base + i * 0.01},topicA|topicB|topicC" }
@@ -152,6 +156,13 @@ class DatasetViewTest {
         println("[DatasetViewTest] - VAR line count -> expected=${funLines.size}, computed=${varLines.size}")
         assertEquals(funLines.size, varLines.size)
 
+        // Sanity: each VAR line should be "B64:<payload>" and decodable
+        varLines.forEachIndexed { idx, line ->
+            assertTrue(line.startsWith("B64:"), "VAR line #$idx must start with B64:")
+            val payload = line.removePrefix("B64:")
+            java.util.Base64.getDecoder().decode(payload)  // throws if invalid
+        }
+
         /* ===== Assertions: TOP =====
          * Header + 20 data rows (10 for K=1, 10 for K=2).
          * K=1 block must reflect the SECOND batch (first corr = 0.30).
@@ -162,7 +173,7 @@ class DatasetViewTest {
 
         val header = topLines.first()
         println("[DatasetViewTest] - TOP header: $header")
-        assertEquals("Cardinality,Correlation,Topics", header)
+        assertEquals("Cardinality,Correlation,TopicsB64", header)
 
         val data = topLines.drop(1)
         val kColumn = data.map { it.substringBefore(',').toInt() }
@@ -172,9 +183,16 @@ class DatasetViewTest {
         for (i in 0 until 10) assertEquals(1, kColumn[i])
         for (i in 10 until 20) assertEquals(2, kColumn[i])
 
-        val firstK1Corr = data.first().split(',')[1].toDouble()
+        val firstK1 = data.first().split(',', limit = 3)
+        val firstK1Corr = firstK1[1].toDouble()
+        val firstK1Topics = firstK1[2]  // should be B64:<payload>
         println("[DatasetViewTest] - TOP K=1 first corr (expected 0.30): $firstK1Corr")
         assertEquals(0.30, firstK1Corr, 1e-12)
+
+        // Sanity: topics are Base64 (CSV uses "B64:" prefix)
+        assertTrue(firstK1Topics.startsWith("B64:"), "TOP topics must start with B64:")
+        val topicsPayload = firstK1Topics.removePrefix("B64:")
+        java.util.Base64.getDecoder().decode(topicsPayload)  // throws if invalid
 
         /* Optional cleanup so the test is repeatable without manual deletes */
         cleanup(funPath.toFile(), varPath.toFile(), topPath.toFile())
