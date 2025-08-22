@@ -10,6 +10,7 @@ import kotlin.test.assertTrue
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.io.File
+import java.util.Locale
 
 /*
  * DatasetViewTest
@@ -73,18 +74,22 @@ class DatasetViewTest {
         /*
          * Helper to emit a single improved K row (intentionally out-of-order).
          * We write to FUN/VAR and buffer internally for the final global sort.
+         * Use comma + dot-decimal (Locale.ROOT) to avoid locale issues.
          */
-        fun emit(cardinality: Int, correlation: Double, varLine: String) {
+        fun emit(cardinality: Int, correlation: Double, variableCsvRaw: String) {
+            val corrStr = String.format(Locale.ROOT, "%.6f", correlation)
             val event = CardinalityResult(
                 target = model.targetToAchieve,
                 threadName = Thread.currentThread().name,
                 cardinality = cardinality,
                 correlation = correlation,
-                functionValuesCsvLine = "$cardinality $correlation",
-                variableValuesCsvLine = varLine
+                /* FUN: "K,corr" */
+                functionValuesCsvLine = "$cardinality,$corrStr",
+                /* VAR: raw form; view will B64-normalize on close */
+                variableValuesCsvLine = variableCsvRaw
             )
             view.appendCardinality(model, event)
-            println("[DatasetViewTest] - append FUN/VAR -> K=$cardinality corr=$correlation")
+            println("[DatasetViewTest] - append FUN/VAR -> K=$cardinality corr=$corrStr")
         }
 
         /*
@@ -137,9 +142,13 @@ class DatasetViewTest {
             1 to 0.80, 1 to 0.90, 2 to 0.60, 2 to 0.70
         ).sortedWith(compareBy<Pair<Int, Double>> { it.first }.thenBy { it.second })
 
+        /* Tolerate comma/semicolon/whitespace as delimiters and parse exactly two fields */
         val computedFunctionPairs = functionLines.map { line ->
-            val parts = line.trim().split(Regex("\\s+"))
-            parts[0].toDouble().toInt() to parts[1].toDouble()
+            val parts = line.trim().split(Regex("[,;\\s]+"), limit = 2)
+            require(parts.size == 2) { "Bad FUN/VAR line: '$line'" }
+            val k = parts[0].toInt()
+            val corr = parts[1].toDouble()
+            k to corr
         }
 
         println("[DatasetViewTest] - FUN expected vs computed:")
