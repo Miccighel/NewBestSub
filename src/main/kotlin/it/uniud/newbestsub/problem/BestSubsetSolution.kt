@@ -18,6 +18,7 @@ import org.uma.jmetal.util.pseudorandom.JMetalRandom
  *      - `lastSwapOutIndex`, `lastSwapInIndex`, `lastMutationWasFixedKSwap` (operator hook)
  *  • Performance:
  *      - Cached genotype key (bitstring) with dirty tracking to avoid rebuilding strings.
+ *      - Cached Base64 mask derived directly from BinarySet (avoids BooleanArray round-trips).
  *      - Reusable boolean buffer for `lastEvaluatedMask` to avoid per-eval allocations.
  *
  * Notes:
@@ -44,8 +45,9 @@ class BestSubsetSolution(
     var lastSwapInIndex: Int? = null
     var lastMutationWasFixedKSwap: Boolean = false
 
-    /* Genotype cache (avoids repeated 0/1 string builds in ranking/dedup). */
+    /* Genotype / mask caches (avoid repeated string/materialization). */
     private var cachedGenotypeKey: String? = null
+    private var cachedMaskB64: String? = null
     private var genotypeDirty: Boolean = true
 
     /* -------------------------------- Perf: reusable buffers -------------------------------- */
@@ -63,6 +65,7 @@ class BestSubsetSolution(
         variables()[0] = initialMask
         topicStatus = retrieveTopicStatus().toTypedArray()
         genotypeDirty = true
+        cachedMaskB64 = null
     }
 
     /* ------------------------------ Mask Builders ---------------------------------- */
@@ -83,9 +86,7 @@ class BestSubsetSolution(
         if (k == 0) return mask
         if (k == n) {
             var i = 0
-            while (i < n) {
-                mask.set(i, true); i++
-            }   // set all bits via API
+            while (i < n) { mask.set(i, true); i++ }   // set all bits via API
             return mask
         }
 
@@ -153,11 +154,11 @@ class BestSubsetSolution(
     fun setBitValue(bitIndex: Int, value: Boolean) {
         variables()[0].set(bitIndex, value)
         genotypeDirty = true
+        cachedMaskB64 = null
     }
 
     /** String form of variable bits without separators (used by logging/ranking). */
     fun getVariableValueString(variableIndex: Int): String {
-        // Use cached genotype key; rebuild only when dirty.
         var key = cachedGenotypeKey
         if (genotypeDirty || key == null) {
             val bits: BinarySet = variables()[variableIndex]
@@ -169,9 +170,20 @@ class BestSubsetSolution(
             }
             key = sb.toString()
             cachedGenotypeKey = key
-            genotypeDirty = false
+            // Do not clear dirty here: we also rebuild Base64 lazily.
         }
         return key
+    }
+
+    /** Base64 for current mask, computed directly from BinarySet and cached. */
+    fun maskB64Cached(): String {
+        var b64 = cachedMaskB64
+        if (genotypeDirty || b64 == null) {
+            b64 = binarySetToBase64(variables()[0], numberOfTopics)
+            cachedMaskB64 = b64
+            genotypeDirty = false
+        }
+        return b64
     }
 
     /** Build a BinarySet from a genes array (used by streaming/Average paths). */
@@ -180,13 +192,11 @@ class BestSubsetSolution(
         if (genes != null) {
             val safeLen = minOf(numBits, genes.size)
             var i = 0
-            while (i < safeLen) {
-                bs.set(i, genes[i])
-                i++
-            }
+            while (i < safeLen) { bs.set(i, genes[i]); i++ }
         }
         // When external code installs this into variables()[0], that constitutes a mutation.
         genotypeDirty = true
+        cachedMaskB64 = null
         return bs
     }
 
@@ -211,7 +221,7 @@ class BestSubsetSolution(
      *  - Objectives
      *  - topicStatus mirror
      *  - Delta-eval caches and operator flags
-     *  - Genotype cache state (safe to reuse)
+     *  - Genotype/cache state (safe to reuse)
      */
     override fun copy(): BestSubsetSolution {
         val clone = BestSubsetSolution(
@@ -252,8 +262,9 @@ class BestSubsetSolution(
         clone.lastSwapInIndex = this.lastSwapInIndex
         clone.lastMutationWasFixedKSwap = this.lastMutationWasFixedKSwap
 
-        /* Genotype cache */
+        /* Genotype/mask caches */
         clone.cachedGenotypeKey = this.cachedGenotypeKey
+        clone.cachedMaskB64 = this.cachedMaskB64
         clone.genotypeDirty = this.genotypeDirty
 
         return clone
@@ -269,4 +280,48 @@ class BestSubsetSolution(
      * External printing logic must convert to the natural view where required.
      */
     fun getCorrelation(): Double = objectives()[1]
+
+    /* --------------------------- Bitset → Base64 (no arrays) ------------------------ */
+
+    /** BinarySet → Base64 (unpadded) directly, little-endian by word, LSB-first within word. */
+    private fun binarySetToBase64(bits: BinarySet, totalBits: Int): String {
+        val numberOfWords = (totalBits + 63) ushr 6
+        val byteBuffer = ByteArray(numberOfWords * java.lang.Long.BYTES)
+
+        var bitIndexWithinWord = 0
+        var accumulator = 0L
+        var byteWriteOffset = 0
+
+        var i = 0
+        while (i < totalBits) {
+            if (bits.get(i)) accumulator = accumulator or (1L shl bitIndexWithinWord)
+            bitIndexWithinWord++
+            if (bitIndexWithinWord == 64) {
+                // Write 8 bytes, least-significant first (matches booleanMaskToBase64 convention).
+                var w = accumulator
+                var b = 0
+                while (b < 8) {
+                    byteBuffer[byteWriteOffset + b] = (w and 0xFF).toByte()
+                    w = w ushr 8
+                    b++
+                }
+                byteWriteOffset += 8
+                bitIndexWithinWord = 0
+                accumulator = 0L
+            }
+            i++
+        }
+
+        if (bitIndexWithinWord != 0) {
+            var w = accumulator
+            var b = 0
+            while (b < 8) {
+                byteBuffer[byteWriteOffset + b] = (w and 0xFF).toByte()
+                w = w ushr 8
+                b++
+            }
+        }
+
+        return java.util.Base64.getEncoder().withoutPadding().encodeToString(byteBuffer)
+    }
 }
