@@ -167,6 +167,12 @@ class DatasetController(
             logger.info("Percentiles: $pct. [Experiment: Average]")
         }
 
+        /* ------------------------------------------------------------------------------------------------
+         * RAM: seal boxed AP rows into dense primitive bundle and free the big maps BEFORE the run starts.
+         * We purposely do this here (and not at load/expand time) so callers can still chain expansions.
+         * ------------------------------------------------------------------------------------------------ */
+        models.forEach { it.sealData() }
+
         if (parameters.targetToAchieve == Constants.TARGET_ALL) {
 
             val bestParameters = parameters.copy(targetToAchieve = Constants.TARGET_BEST)
@@ -251,7 +257,6 @@ class DatasetController(
                             }
                         }
 
-
                         val jobs = listOf(
                             launch(Dispatchers.Default) { models[0].solve(bestParameters, progress) },
                             launch(Dispatchers.Default) { models[1].solve(worstParameters, progress) },
@@ -301,6 +306,16 @@ class DatasetController(
             }
             logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = true)}\" (Aggregated data CSV)")
             logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = true)}\" (Info CSV)")
+
+            /* -----------------------------------------------------------------------------------------
+             * RAM: final cleanup — drop large per-run caches now that CSV/Parquet tables exist on disk.
+             *  - clearPercentiles() : keep AVERAGE memory footprint small
+             *  - clearAfterSerialization() : delete rep masks / corr map / top pools
+             * ----------------------------------------------------------------------------------------- */
+            models.forEach { m ->
+                m.clearPercentiles()
+                m.clearAfterSerialization()
+            }
 
         } else {
             /* ---------------- Single target ---------------- */
@@ -388,12 +403,21 @@ class DatasetController(
             }
             logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = false)}\" (Aggregated data CSV)")
             logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = false)}\" (Info CSV)")
+
+            /* -----------------------------------------------------------------------------------------
+             * RAM: final cleanup for single target.
+             * ----------------------------------------------------------------------------------------- */
+            models.forEach { m ->
+                m.clearPercentiles()
+                m.clearAfterSerialization()
+            }
         }
 
         logger.info("Execution information gathering completed.")
         logger.info("Data aggregation completed.")
         logger.info("Problem resolution completed.")
     }
+
 
     /* ------------------------ Aggregation and info (unchanged) ------------------------ */
 

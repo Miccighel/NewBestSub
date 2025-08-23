@@ -63,6 +63,16 @@ import kotlinx.coroutines.channels.SendChannel
  *          (A) Choose one representative per K from the entire generation on the natural scale.
  *          (B) Append -Fun/-Var only if the representative improves the best-so-far for that K.
  *          (C) Maintain -Top from a persistent per-K pool on the natural scale; replace on change.
+ *
+ * RAM-focused changes
+ * -------------------
+ *  • After load/expansion, call sealData(): we build the dense primitive PrecomputedData and drop
+ *    the boxed AP maps to release memory early.
+ *  • During runs, we DO NOT retain large solution lists. Instead we cache only:
+ *      - per-K best correlation (corrByK)
+ *      - per-K representative mask as Base64 (repMaskB64ByK)
+ *    These answer aggregation/info queries without storing whole populations.
+ *  • Top pool entries no longer keep BestSubsetSolution references (lighter TopEntry).
  */
 class DatasetModel {
 
@@ -78,13 +88,21 @@ class DatasetModel {
     var expansionCoefficient = 0
     var systemLabels = emptyArray<String>()
     var topicLabels = emptyArray<String>()
-    var averagePrecisions = linkedMapOf<String, Array<Double>>()
-    var meanAveragePrecisions = emptyArray<Double>()
-    var percentiles = linkedMapOf<Int, List<Double>>()
-    var topicDistribution = linkedMapOf<String, MutableMap<Double, Boolean>>() /* kept for API compat */
-    var computingTime: Long = 0
 
+    /* Boxed AP rows only during load/expansion. sealData() will clear these. */
+    var averagePrecisions = linkedMapOf<String, Array<Double>>()
     private var originalAveragePrecisions = linkedMapOf<String, Array<Double>>()
+
+    /* Full-set mean AP per system (external view kept for API compat). */
+    var meanAveragePrecisions = emptyArray<Double>()
+
+    /* AVERAGE percentiles (materialized as List<Double> for the final table). */
+    var percentiles = linkedMapOf<Int, List<Double>>()
+
+    /* Kept for API compat; we no longer populate it to avoid per-topic maps. */
+    var topicDistribution = linkedMapOf<String, MutableMap<Double, Boolean>>()
+
+    var computingTime: Long = 0
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
@@ -92,21 +110,24 @@ class DatasetModel {
     private lateinit var crossover: CrossoverOperator<BinarySolution>
     private lateinit var mutation: MutationOperator<BinarySolution>
 
-    var notDominatedSolutions = mutableListOf<BinarySolution>()
-    var dominatedSolutions = mutableListOf<BinarySolution>()
-    var topSolutions = mutableListOf<BinarySolution>()
-    var allSolutions = mutableListOf<BinarySolution>()
+    /* ---------- Memory-friendly run-time state ---------- */
 
-    /* Shared, read-only numeric bundle (dense primitive matrices). Built in refreshDerivedData(). */
+    /* Shared, read-only numeric bundle (dense primitive matrices). Built in refreshDerivedData()/sealData(). */
     private var precomputedData: PrecomputedData? = null
 
-    /* One representative mask per K, cached as BooleanArray for O(1) presence lookups. */
-    private val representativeMaskByK = mutableMapOf<Int, BooleanArray>()
+    /* Per-K representative presence mask, compact textual form "B64:<...>". */
+    private val repMaskB64ByK = mutableMapOf<Int, String>()
+
+    /* Per-K correlation (natural scale), used by aggregate()/info() without scanning large lists. */
+    private val corrByK = java.util.TreeMap<Int, Double>()
+
+    /* Index for O(1) topic lookups by label */
     private var topicIndexByLabel: Map<String, Int> = emptyMap()
 
     /* ------------------------------ Persistent Top pool (BEST/WORST) ------------------------------ */
 
-    private data class TopEntry(val natural: Double, val maskB64: String, val sol: BestSubsetSolution)
+    /* Lighter TopEntry (no BestSubsetSolution reference). */
+    private data class TopEntry(val natural: Double, val maskB64: String)
 
     private val topPoolByK: MutableMap<Int, MutableMap<String, TopEntry>> = mutableMapOf()
 
@@ -122,8 +143,9 @@ class DatasetModel {
         } else {
             pool.values.sortedWith(compareBy<TopEntry> { it.natural }.thenBy { it.maskB64 })
         }
+        /* We know the cardinality from `k`, so we don't store the whole solution. */
         return ordered.take(Constants.TOP_SOLUTIONS_NUMBER).map { e ->
-            "${e.sol.getCardinality().toInt()},${e.natural},B64:${e.maskB64}"
+            "$k,${e.natural},B64:${e.maskB64}"
         }
     }
 
@@ -137,8 +159,10 @@ class DatasetModel {
 
         csvReader.readAll().forEach { row ->
             val apValues = DoubleArray(row.size - 1)
-            for (colIndex in 1 until row.size) {
+            var colIndex = 1
+            while (colIndex < row.size) {
                 apValues[colIndex - 1] = row[colIndex].toDouble()
+                colIndex++
             }
             this.averagePrecisions[row[0]] = apValues.toTypedArray()
         }
@@ -151,7 +175,7 @@ class DatasetModel {
         numberOfSystems = averagePrecisions.size
 
         topicLabels = topicLabels.sliceArray(1 until topicLabels.size)
-        refreshDerivedData()
+        refreshDerivedData() /* builds topic index + precomputedData (keeps boxed rows for now) */
     }
 
     fun expandTopics(
@@ -197,6 +221,16 @@ class DatasetModel {
         refreshDerivedData()
     }
 
+    /**
+     * refreshDerivedData
+     * ------------------
+     * Rebuild cheap derived structures after load/expansion:
+     *  - topicDistribution (kept empty for API compat)
+     *  - topicIndexByLabel
+     *  - systemLabels / numberOfSystems
+     *  - primitive PrecomputedData (dense matrices)
+     *  - meanAveragePrecisions (external view mirror, from primitive means)
+     */
     private fun refreshDerivedData() {
         /* Reset per-topic presence matrix (kept for API compat). */
         topicDistribution.clear()
@@ -210,16 +244,36 @@ class DatasetModel {
         val apEntryIterator = averagePrecisions.entries.iterator()
         systemLabels = Array(numberOfSystems) { apEntryIterator.next().key }
 
-        /* Full-set mean AP per system (boxed path kept for AVERAGE branch). */
-        val useAllTopicsMask = BooleanArray(numberOfTopics).apply { Arrays.fill(this, true) }
-        val apIteratorForMean = averagePrecisions.entries.iterator()
-        meanAveragePrecisions = Array(averagePrecisions.size) {
-            Statistics.getMean(apIteratorForMean.next().value.toDoubleArray(), useAllTopicsMask)
-        }
-
         /* Build the shared primitive bundle once per refresh (fast path for Best/Worst). */
         val primitiveAP: Map<String, DoubleArray> = toPrimitiveAPRows(averagePrecisions)
         precomputedData = buildPrecomputedData(primitiveAP)
+
+        /* Full-set mean AP per system (boxed for external API compat). */
+        val means = precomputedData!!.fullSetMeanAPBySystem
+        meanAveragePrecisions = Array(means.size) { idx -> means[idx] }
+    }
+
+    /**
+     * sealData
+     * --------
+     * Call once after the last expand*() and before solve().
+     * Converts boxed AP rows to the dense primitive bundle (if not already),
+     * then clears averagePrecisions/originalAveragePrecisions to release memory.
+     */
+    fun sealData() {
+        if (precomputedData == null) {
+            val primitiveAP = toPrimitiveAPRows(averagePrecisions)
+            precomputedData = buildPrecomputedData(primitiveAP)
+        }
+        val means = precomputedData!!.fullSetMeanAPBySystem
+        meanAveragePrecisions = Array(means.size) { i -> means[i] }
+        systemLabels = precomputedData!!.systemIdsInOrder.toTypedArray()
+        numberOfSystems = precomputedData!!.numberOfSystems
+        numberOfTopics = precomputedData!!.numberOfTopics
+
+        /* Drop boxed matrices to reclaim RAM early. */
+        averagePrecisions.clear()
+        originalAveragePrecisions.clear()
     }
 
     /* ------------------------------ Solve + streaming ------------------------------ */
@@ -245,11 +299,8 @@ class DatasetModel {
         )
 
         /* Reset state for a clean run. */
-        notDominatedSolutions = mutableListOf()
-        dominatedSolutions = mutableListOf()
-        topSolutions = mutableListOf()
-        allSolutions = mutableListOf()
-        representativeMaskByK.clear()
+        repMaskB64ByK.clear()
+        corrByK.clear()
         topPoolByK.clear()
 
         if (targetToAchieve == Constants.TARGET_AVERAGE) {
@@ -271,11 +322,9 @@ class DatasetModel {
             val subsetMeansBySystem = DoubleArray(systemsCount)       /* subset means for Pearson/Kendall   */
             val correlationSamples = DoubleArray(maxOf(1, numberOfRepetitions))
 
-            val streamedBitsetsByK = ArrayList<BooleanArray>(numberOfTopics)
-            val streamedCardinalities = ArrayList<Int>(numberOfTopics)
-            val streamedCorrelations = ArrayList<Double>(numberOfTopics)
-
-            parameters.percentiles.forEach { p -> percentiles[p] = LinkedList<Double>() }
+            /* Mutable percentile collectors (primitive first, we box only at the end). */
+            val tmpPercentiles: MutableMap<Int, MutableList<Double>> =
+                parameters.percentiles.associateWith { mutableListOf<Double>() }.toMutableMap()
 
             val corrFuncPrimitive = Correlations.makePrimitiveCorrelation(parameters.correlationMethod)
 
@@ -287,7 +336,8 @@ class DatasetModel {
             /* ----------------------------------------------------------------------------------------------------------------
              * Iterate cardinalities K = 1..N
              * ---------------------------------------------------------------------------------------------------------------- */
-            for (cardinalityIndex in 0 until numberOfTopics) {
+            var cardinalityIndex = 0
+            while (cardinalityIndex < numberOfTopics) {
 
                 if ((cardinalityIndex % loggingEveryAvg) == 0 && cardinalityIndex <= totalAvgIterations) {
                     logger.info(
@@ -354,10 +404,10 @@ class DatasetModel {
                 val meanCorrelation = sumCorr / repetitions
 
                 java.util.Arrays.sort(correlationSamples, 0, repetitions)
-                for ((percentile, collected) in percentiles.entries) {
+                for ((percentile, collected) in tmpPercentiles.entries) {
                     val pos = kotlin.math.ceil((percentile / 100.0) * repetitions).toInt().coerceIn(1, repetitions)
                     val pVal = correlationSamples[pos - 1]
-                    percentiles[percentile] = collected.plus(pVal)
+                    collected += pVal
                 }
 
                 /* Build Boolean mask once (for streaming VAR row) */
@@ -368,12 +418,9 @@ class DatasetModel {
                     j++
                 }
 
-                /* Cache representative mask for this K (BooleanArray copy) */
-                representativeMaskByK[currentCardinality] = maskForStreaming.copyOf()
-
-                streamedCardinalities.add(currentCardinality)
-                streamedCorrelations.add(meanCorrelation)
-                streamedBitsetsByK.add(maskForStreaming.copyOf())
+                /* Cache representative mask/corr for this K (compact B64 + Double). */
+                repMaskB64ByK[currentCardinality] = booleanMaskToBase64(maskForStreaming)
+                corrByK[currentCardinality] = meanCorrelation
 
                 /* Stream AVERAGE row (FUN + VAR) */
                 sendProgress(
@@ -386,6 +433,8 @@ class DatasetModel {
                         variableValuesCsvLine = packTopicMaskToVarLineBase64(maskForStreaming)
                     )
                 )
+
+                cardinalityIndex++
             }
 
             /* Optional final 100% marker */
@@ -393,32 +442,10 @@ class DatasetModel {
                 "Completed iterations: $totalAvgIterations/$totalAvgIterations (100%) on \"${Thread.currentThread().name}\" with target ${parameters.targetToAchieve}."
             )
 
-            /* Build solutions for the AVERAGE branch (natural scale) */
-            problem = BestSubsetProblem(
-                parameters = parameters,
-                numberOfTopics = numberOfTopics,
-                precomputedData = bundle,
-                topicLabels = topicLabels,
-                legacyBoxedCorrelation = Correlations.makePrimitiveCorrelation(parameters.correlationMethod),
-                targetStrategy = objectiveEncodingStrategy
-            )
+            /* Materialize external percentile view (lists) once at the end. */
+            percentiles.clear()
+            for ((p, values) in tmpPercentiles) percentiles[p] = values.toList()
 
-            for (index in 0 until numberOfTopics) {
-                val s = BestSubsetSolution(
-                    numberOfVariables = 1,
-                    numberOfObjectives = 2,
-                    numberOfTopics = numberOfTopics,
-                    topicLabels = problem.topicLabels,
-                    forcedCardinality = null
-                )
-                val mask = streamedBitsetsByK[index]
-                val genesBoxed: Array<Boolean> = Array(mask.size) { j -> mask[j] }
-                s.variables()[0] = s.createNewBitSet(numberOfTopics, genesBoxed)
-                s.objectives()[0] = streamedCardinalities[index].toDouble()
-                s.objectives()[1] = streamedCorrelations[index]
-                notDominatedSolutions.add(s)
-                allSolutions.add(s)
-            }
         } else {
 
             /* ---------------------------------
@@ -502,7 +529,7 @@ class DatasetModel {
                         Constants.TARGET_WORST -> (prev == null) || (n < prev.natural - 1e-12)
                         else -> (prev == null)
                     }
-                    if (better) pool[maskB64] = TopEntry(n, maskB64, bs)
+                    if (better) pool[maskB64] = TopEntry(n, maskB64)
                 }
 
                 /* ---- Throttling AFTER we know if there were improvements ---- */
@@ -522,9 +549,11 @@ class DatasetModel {
                     }
                 improvedRows.sortWith(appendOrder)
 
-                /* Emit -Fun and -Var (packed Base64) only on per-K improvement. Also cache mask. */
+                /* Emit -Fun and -Var (packed Base64) only on per-K improvement. Also cache compact mask/corr. */
                 for ((k, bs) in improvedRows) {
-                    representativeMaskByK[k] = bs.retrieveTopicStatus().copyOf()
+                    val mask = bs.retrieveTopicStatus()
+                    repMaskB64ByK[k] = booleanMaskToBase64(mask)
+                    corrByK[k] = nat(bs)
                     sendProgress(
                         out,
                         CardinalityResult(
@@ -574,34 +603,6 @@ class DatasetModel {
             algorithm.run()
             computingTime = (System.nanoTime() - startNsLocal) / 1_000_000
 
-            /* ---------------- Collect final solution sets ---------------- */
-
-            /* Non-dominated set (deduplicated, order preserved); fix objectives to external view. */
-            notDominatedSolutions = java.util.LinkedHashSet(algorithm.result()).toMutableList()
-            fixObjectiveFunctionValues(notDominatedSolutions)
-
-            /* Keep dominated only for cardinalities not present in non-dominated set. */
-            val nonDominatedCardinalities = notDominatedSolutions
-                .mapTo(LinkedHashSet<Double>(notDominatedSolutions.size)) { it.getCardinality() }
-
-            allSolutions.addAll(notDominatedSolutions)
-
-            dominatedSolutions = problem.dominatedSolutions.values
-                .asSequence()
-                .filter { s -> !nonDominatedCardinalities.contains(s.getCardinality()) }
-                .toMutableList()
-            fixObjectiveFunctionValues(dominatedSolutions)
-
-            allSolutions.addAll(dominatedSolutions)
-
-            /* Gather topSolutions in-memory if you need them elsewhere (optional). */
-            topSolutions.clear()
-            topPoolByK.values.forEach { pool ->
-                pool.values.forEach { entry ->
-                    topSolutions.add(entry.sol)
-                }
-            }
-
             /* Final -Top replace to ensure a complete snapshot (from persistent pool). */
             if (out != null) {
                 val finalBlocks = mutableMapOf<Int, List<String>>()
@@ -621,20 +622,14 @@ class DatasetModel {
             }
         }
 
-        /* No post-run topic presence sweep — presence answered from representativeMaskByK */
-
-        allSolutions = sortByCardinality(allSolutions)
-
         val totalRuntimeMs = (System.nanoTime() - runStartNs) / 1_000_000
         this.computingTime = totalRuntimeMs
         sendProgress(out, RunCompleted(targetToAchieve, workerThreadName, totalRuntimeMs))
 
-        logger.info("Not dominated solutions generated by execution with target \"$targetToAchieve\": ${notDominatedSolutions.size}/$numberOfTopics.")
-        logger.info("Dominated solutions generated by execution with target \"$targetToAchieve\": ${dominatedSolutions.size}/$numberOfTopics.")
-        if (targetToAchieve != Constants.TARGET_AVERAGE)
-            logger.info("Total solutions generated by execution with target \"$targetToAchieve\": ${allSolutions.size}/$numberOfTopics.")
+        logger.info("Per-K representatives cached: ${corrByK.size}/$numberOfTopics for target \"$targetToAchieve\".")
 
-        return Triple(allSolutions, topSolutions, Triple(targetToAchieve, Thread.currentThread().name, totalRuntimeMs))
+        /* We keep the signature but return empty lists to avoid retaining large populations. */
+        return Triple(emptyList(), emptyList(), Triple(targetToAchieve, Thread.currentThread().name, totalRuntimeMs))
     }
 
     private fun sendProgress(out: SendChannel<ProgressEvent>?, event: ProgressEvent) {
@@ -642,38 +637,7 @@ class DatasetModel {
         kotlinx.coroutines.runBlocking { out.send(event) } /* preserve ordering / back-pressure */
     }
 
-    /*
-     * Canonical ordering for final tables: primary key = K ascending,
-     * secondary key = correlation ascending on the stored objective scale.
-     * (Final snapshot lists have already been converted to the external view.)
-     */
-    private fun sortByCardinality(solutionsToSort: MutableList<BinarySolution>): MutableList<BinarySolution> {
-        solutionsToSort.sortWith(
-            compareBy<BinarySolution> { it.getCardinality() }
-                .thenBy { (it as BestSubsetSolution).getCorrelation() }
-        )
-        return solutionsToSort
-    }
-
-    /*
-     * Convert a list of solutions from internal objective encoding to the external view
-     * in-place, prior to final snapshot printing:
-     *  - BEST  : obj[1] becomes +corr (flips sign).
-     *  - WORST : obj[0] becomes +K     (flips sign).
-     * Streaming paths remain unaffected; they compute/print directly in the natural view.
-     */
-    private fun <T : BinarySolution> fixObjectiveFunctionValues(solutionsToFix: MutableList<T>): MutableList<T> {
-        when (targetToAchieve) {
-            Constants.TARGET_BEST -> solutionsToFix.forEach { s ->
-                s.objectives()[1] = -(s as BestSubsetSolution).getCorrelation()
-            }
-
-            Constants.TARGET_WORST -> solutionsToFix.forEach { s ->
-                s.objectives()[0] = -(s as BestSubsetSolution).getCardinality()
-            }
-        }
-        return solutionsToFix
-    }
+    /* Canonical ordering is now handled by writers; we no longer keep big lists here. */
 
     /* Target encoding loader (internal sign scheme) */
     private fun loadTargetToAchieve(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
@@ -698,18 +662,56 @@ class DatasetModel {
         }
     }
 
-    fun findCorrelationForCardinality(cardinality: Double): Double? {
-        allSolutions.forEach { s -> if (s.getCardinality() == cardinality) return s.getCorrelation() }
-        return null
-    }
+    /* -------------------- Aggregation/presence helpers (now backed by compact caches) -------------------- */
 
-    /* O(1) presence lookup using the cached representative mask per K (BooleanArray). */
+    fun findCorrelationForCardinality(cardinality: Double): Double? =
+        corrByK[cardinality.toInt()]
+
+    /* O(1) presence lookup using the cached representative mask per K (decoded on demand). */
     fun isTopicInASolutionOfCardinality(topicLabel: String, cardinality: Double): Boolean {
         val k = cardinality.toInt()
-        val mask = representativeMaskByK[k] ?: return false
+        val b64 = repMaskB64ByK[k] ?: return false
         val idx = topicIndexByLabel[topicLabel] ?: return false
+        val mask = base64ToBooleanMask(b64, numberOfTopics)
         return mask.getOrNull(idx) ?: false
     }
+
+    /**
+     * Return a COPY of the presence mask for the given cardinality K,
+     * or null if no representative was cached for that K.
+     */
+    fun retrieveMaskForCardinality(cardinality: Double): BooleanArray? {
+        val k = cardinality.toInt()
+        val b64 = repMaskB64ByK[k] ?: return null
+        return base64ToBooleanMask(b64, numberOfTopics)
+    }
+
+    /**
+     * Return a presence mask sized exactly to `expectedSize`.
+     *  - If we have a cached mask for K, decode and pad/truncate to fit.
+     *  - If not, return an all-false mask of the requested size.
+     */
+    fun retrieveMaskForCardinalitySized(cardinality: Double, expectedSize: Int): BooleanArray {
+        val k = cardinality.toInt()
+        val b64 = repMaskB64ByK[k] ?: return BooleanArray(expectedSize)
+        val decoded = base64ToBooleanMask(b64, numberOfTopics)
+        if (decoded.size == expectedSize) return decoded
+        val out = BooleanArray(expectedSize)
+        val n = kotlin.math.min(expectedSize, decoded.size)
+        java.lang.System.arraycopy(decoded, 0, out, 0, n)
+        return out
+    }
+
+    /**
+     * Return the presence mask for K encoded as "B64:<base64>".
+     * Always sized to the model's current numberOfTopics (stored that way).
+     */
+    fun retrieveMaskB64ForCardinality(cardinality: Double): String =
+        "B64:" + (repMaskB64ByK[cardinality.toInt()] ?: "")
+
+    /* Small, stable signature of a block to detect content/order changes. */
+    private fun topBlockSig(lines: List<String>): Int =
+        lines.joinToString("\n").hashCode()
 
     /* --------------------- VAR streaming: compact Base64 payload --------------------- */
 
@@ -735,7 +737,8 @@ class DatasetModel {
         var bitIndexWithinWord = 0
         var accumulator = 0L
 
-        for (absoluteBitIndex in 0 until totalBits) {
+        var absoluteBitIndex = 0
+        while (absoluteBitIndex < totalBits) {
             if (topicPresenceMask[absoluteBitIndex]) {
                 accumulator = accumulator or (1L shl bitIndexWithinWord)
             }
@@ -746,6 +749,7 @@ class DatasetModel {
                 bitIndexWithinWord = 0
                 accumulator = 0L
             }
+            absoluteBitIndex++
         }
         if (bitIndexWithinWord != 0) {
             packedWords[currentWordIndex] = accumulator
@@ -759,10 +763,11 @@ class DatasetModel {
         var writeOffset = 0
         for (word in packedWords) {
             var w = word
-            /* Write 8 bytes, least-significant first, to match the bit-ordering choice. */
-            for (i in 0 until java.lang.Long.BYTES) {
+            var i = 0
+            while (i < java.lang.Long.BYTES) {
                 byteBuffer[writeOffset + i] = (w and 0xFF).toByte()
                 w = w ushr 8
+                i++
             }
             writeOffset += java.lang.Long.BYTES
         }
@@ -776,55 +781,45 @@ class DatasetModel {
         return java.util.Base64.getEncoder().withoutPadding().encodeToString(packedBytes)
     }
 
+    /** AVERAGE branch helper: BooleanArray → VAR line (packed Base64, prefixed). */
+    private fun packTopicMaskToVarLineBase64(topicPresenceMask: BooleanArray): String =
+        "B64:" + booleanMaskToBase64(topicPresenceMask)
+
     /** BinarySolution → VAR line (packed Base64, prefixed). */
     private fun BinarySolution.toVarLinePackedBase64(): String {
         val topicPresenceMask = (this as BestSubsetSolution).retrieveTopicStatus()
         return "B64:" + booleanMaskToBase64(topicPresenceMask)
     }
 
-    /** AVERAGE branch helper: BooleanArray → VAR line (packed Base64, prefixed). */
-    private fun packTopicMaskToVarLineBase64(topicPresenceMask: BooleanArray): String =
-        "B64:" + booleanMaskToBase64(topicPresenceMask)
-
-    /**
-     * Return a COPY of the presence mask for the given cardinality K,
-     * or null if no representative was cached for that K.
-     */
-    fun retrieveMaskForCardinality(cardinality: Double): BooleanArray? {
-        val k = cardinality.toInt()
-        val mask = representativeMaskByK[k] ?: return null
-        return mask.copyOf()
-    }
-
-    /**
-     * Return a presence mask sized exactly to `expectedSize`.
-     *  - If we have a cached mask for K, copy and pad/truncate to fit.
-     *  - If not, return an all-false mask of the requested size.
-     */
-    fun retrieveMaskForCardinalitySized(cardinality: Double, expectedSize: Int): BooleanArray {
-        val k = cardinality.toInt()
-        val cached = representativeMaskByK[k] ?: return BooleanArray(expectedSize)
-
-        if (cached.size == expectedSize) return cached.copyOf()
-
+    /** Base64 (little-endian words, LSB-first bits) → BooleanArray sized to expectedSize. */
+    private fun base64ToBooleanMask(b64: String, expectedSize: Int): BooleanArray {
+        if (b64.isEmpty()) return BooleanArray(expectedSize)
+        val raw = java.util.Base64.getDecoder().decode(b64)
         val out = BooleanArray(expectedSize)
-        val n = kotlin.math.min(expectedSize, cached.size)
-        java.lang.System.arraycopy(cached, 0, out, 0, n)
+
+        /* We wrote as N * 8 bytes where each 8-byte chunk is a little-endian Long. */
+        var bitAbsolute = 0
+        var offset = 0
+        while (offset < raw.size && bitAbsolute < expectedSize) {
+            /* reconstruct long in little-endian order */
+            var w = 0L
+            var i = 0
+            while (i < 8) {
+                val b = (raw[offset + i].toLong() and 0xFF)
+                w = w or (b shl (8 * i))
+                i++
+            }
+            /* extract 64 bits from the word */
+            var bitInWord = 0
+            while (bitInWord < 64 && bitAbsolute < expectedSize) {
+                out[bitAbsolute] = ((w ushr bitInWord) and 1L) != 0L
+                bitInWord++
+                bitAbsolute++
+            }
+            offset += 8
+        }
         return out
     }
-
-    /**
-     * Return the presence mask for K encoded as "B64:<base64>".
-     * Always sized to the model's current numberOfTopics.
-     */
-    fun retrieveMaskB64ForCardinality(cardinality: Double): String {
-        val mask = retrieveMaskForCardinalitySized(cardinality, numberOfTopics)
-        return "B64:" + booleanMaskToBase64(mask)
-    }
-
-    /* Small, stable signature of a block to detect content/order changes. */
-    private fun topBlockSig(lines: List<String>): Int =
-        lines.joinToString("\n").hashCode()
 
     /* ---------------------- Streaming NSGA-II wrapper (classic API + MNDS) ---------------------- */
 
@@ -917,7 +912,8 @@ class DatasetModel {
 
             val sortIndex: MutableList<Int> = MutableList(frontSize) { it }
 
-            for (objective in 0 until objectiveCount) {
+            var objective = 0
+            while (objective < objectiveCount) {
                 sortIndex.sortBy { idx -> frontSolutions[idx].objectives()[objective] }
 
                 val minObjective = frontSolutions[sortIndex.first()].objectives()[objective]
@@ -927,9 +923,12 @@ class DatasetModel {
                 crowdingDistanceBySolution[frontSolutions[sortIndex.first()]] = Double.POSITIVE_INFINITY
                 crowdingDistanceBySolution[frontSolutions[sortIndex.last()]] = Double.POSITIVE_INFINITY
 
-                if (objectiveRange == 0.0) continue
+                if (objectiveRange == 0.0) {
+                    objective++; continue
+                }
 
-                for (position in 1 until frontSize - 1) {
+                var position = 1
+                while (position < frontSize - 1) {
                     val leftNeighbor = frontSolutions[sortIndex[position - 1]].objectives()[objective]
                     val rightNeighbor = frontSolutions[sortIndex[position + 1]].objectives()[objective]
                     val increment = (rightNeighbor - leftNeighbor) / objectiveRange
@@ -939,9 +938,28 @@ class DatasetModel {
                         crowdingDistanceBySolution[currentSolution] =
                             crowdingDistanceBySolution[currentSolution]!! + increment
                     }
+                    position++
                 }
+                objective++
             }
             return crowdingDistanceBySolution
         }
+    }
+
+    /* --------------------------- Post-write cleanup helpers --------------------------- */
+
+    /** Drop percentile lists (often large) once final CSV/Parquet tables have been written. */
+    fun clearPercentiles() {
+        percentiles.clear()
+    }
+
+    /**
+     * Drop per-run caches (rep masks, corr map, top pools).
+     * Call after closeStreams() and after aggregate/info have consumed this model.
+     */
+    fun clearAfterSerialization() {
+        repMaskB64ByK.clear()
+        corrByK.clear()
+        topPoolByK.clear()
     }
 }
