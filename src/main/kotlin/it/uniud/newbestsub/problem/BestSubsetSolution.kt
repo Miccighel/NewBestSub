@@ -86,7 +86,9 @@ class BestSubsetSolution(
         if (k == 0) return mask
         if (k == n) {
             var i = 0
-            while (i < n) { mask.set(i, true); i++ }   // set all bits via API
+            while (i < n) {
+                mask.set(i, true); i++
+            }   // set all bits via API
             return mask
         }
 
@@ -192,7 +194,9 @@ class BestSubsetSolution(
         if (genes != null) {
             val safeLen = minOf(numBits, genes.size)
             var i = 0
-            while (i < safeLen) { bs.set(i, genes[i]); i++ }
+            while (i < safeLen) {
+                bs.set(i, genes[i]); i++
+            }
         }
         // When external code installs this into variables()[0], that constitutes a mutation.
         genotypeDirty = true
@@ -211,63 +215,6 @@ class BestSubsetSolution(
         lastMutationWasFixedKSwap = false
         lastSwapOutIndex = null
         lastSwapInIndex = null
-    }
-
-    /* ---------------------------------- Copy --------------------------------------- */
-
-    /**
-     * Deep copy preserving:
-     *  - Variable bitset
-     *  - Objectives
-     *  - topicStatus mirror
-     *  - Delta-eval caches and operator flags
-     *  - Genotype/cache state (safe to reuse)
-     */
-    override fun copy(): BestSubsetSolution {
-        val clone = BestSubsetSolution(
-            numberOfVariables = 1,
-            numberOfObjectives = objectives().size,
-            numberOfTopics = numberOfTopics,
-            topicLabels = topicLabels.copyOf(),
-            forcedCardinality = null
-        )
-
-        /* Copy bitset */
-        val srcBits: BinarySet = variables()[0]
-        val dstBits = BinarySet(numberOfTopics).apply { this.or(srcBits) }
-        clone.variables()[0] = dstBits
-
-        /* Copy objectives */
-        val m = objectives().size
-        var i = 0
-        while (i < m) {
-            clone.objectives()[i] = this.objectives()[i]
-            i++
-        }
-
-        /* Mirrors & caches */
-        clone.topicStatus = this.topicStatus.copyOf()
-
-        /* If we held an evaluated mask, copy its content into clone's reusable buffer. */
-        this.lastEvaluatedMask?.let { src ->
-            val dst = clone.reusableMaskBuffer
-            System.arraycopy(src, 0, dst, 0, src.size)
-            clone.lastEvaluatedMask = dst
-        }
-
-        clone.cachedSumsBySystem = this.cachedSumsBySystem?.copyOf()
-
-        /* Operator flags */
-        clone.lastSwapOutIndex = this.lastSwapOutIndex
-        clone.lastSwapInIndex = this.lastSwapInIndex
-        clone.lastMutationWasFixedKSwap = this.lastMutationWasFixedKSwap
-
-        /* Genotype/mask caches */
-        clone.cachedGenotypeKey = this.cachedGenotypeKey
-        clone.cachedMaskB64 = this.cachedMaskB64
-        clone.genotypeDirty = this.genotypeDirty
-
-        return clone
     }
 
     /** Friendly cardinality accessor (Double) used by writers/streams. */

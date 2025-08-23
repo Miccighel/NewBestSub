@@ -352,33 +352,92 @@ object Program {
 
         } catch (exception: ParseException) {
 
-            logger.error(exception.message)
-            val formatter = HelpFormatter.builder().get()
-            formatter.printHelp(Constants.NEWBESTSUB_NAME, "", options, "", true)
-            logger.error("End of the usage section.")
-            logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
+            /* ParseException
+             * --------------
+             * Bad CLI arguments: log full error + show usage with examples.
+             */
+            logger.error("Invalid command line arguments: {}", exception.message ?: "unknown ParseException", exception)
+            printNiceHelp(options, exception.message)
+            logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to invalid arguments.")
 
         } catch (exception: FileNotFoundException) {
 
-            logger.error(exception.message)
+            /* FileNotFoundException
+             * ---------------------
+             * Missing input or required directory. Include context + stacktrace.
+             */
+            val cwd = File(".").absoluteFile.normalize().path
+            logger.error("File not found (cwd: {}): {}", cwd, exception.message ?: "unknown", exception)
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
 
         } catch (exception: FileSystemException) {
 
-            logger.error(exception.message)
+            /* FileSystemException
+             * -------------------
+             * IO/FS error: show file, other file (if any) and reason.
+             */
+            logger.error(
+                "Filesystem error (file='{}', other='{}', reason='{}').",
+                exception.file, exception.otherFile, exception.reason, exception
+            )
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
 
         } catch (exception: JMetalException) {
 
-            logger.error(exception.message)
+            /* JMetalException
+             * ---------------
+             * Algorithm/runtime error. Keep the full stacktrace and add a small hint when recognizable.
+             */
+            logger.error("jMetal error: {}", exception.message ?: "unknown JMetalException", exception)
+
+            val msg = exception.message ?: ""
+            if (msg.contains("must be greater or equal", ignoreCase = true)) {
+                logger.info("Hint: set -po (population) ≥ number of topics (current dataset topics logged above).")
+            }
+
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
 
-        } catch (_: OutOfMemoryError) {
+        } catch (e: OutOfMemoryError) {
 
-            logger.error("NewBestSub hasn't enough heap space to go further. Please, launch it with option -XX:-UseGCOverheadLimit.")
-            logger.info("Example: java -jar NewBestSub-1.0.jar -UseGCOverheadLimit -fi \"AH99-Top96\" -c \"Pearson\" -pop 2000 -r 5000 -i 1000000 -t \"All\" -pe 1,100 -l Limited")
-            logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
+            /* OutOfMemoryError
+             * -----------------
+             * Provide a targeted hint based on the error kind + full stacktrace.
+             */
+            val kindHint = when {
+                e.message?.contains("GC overhead limit exceeded", ignoreCase = true) == true ->
+                    "GC overhead limit exceeded. You can disable it with -XX:-UseGCOverheadLimit, " +
+                            "but it’s usually better to increase -Xmx and/or reduce workload size."
+
+                e.message?.contains("Metaspace", ignoreCase = true) == true ->
+                    "Metaspace exhausted. Increase -XX:MaxMetaspaceSize or reduce dynamic class generation."
+
+                e.message?.contains("Direct buffer memory", ignoreCase = true) == true ->
+                    "Direct buffer memory exhausted. Increase -XX:MaxDirectMemorySize or reduce off-heap buffers."
+
+                e.message?.contains("Requested array size exceeds VM limit", ignoreCase = true) == true ->
+                    "Requested array size exceeds VM limit. Reduce problem size or chunk processing."
+
+                else ->
+                    "Java heap space exhausted. Increase -Xmx or reduce population/iterations/repetitions."
+            }
+
+            logger.error("${Constants.NEWBESTSUB_NAME} ran out of memory. $kindHint", e)
+
+            logger.info(
+                "Try: increase heap (e.g., -Xmx32g), or reduce -po / -i / -r. " +
+                        "Also consider -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof for diagnostics."
+            )
+            logger.info(
+                "Example: java -Xms32g -Xmx32g -XX:+UseG1GC -XX:+UseStringDeduplication " +
+                        "-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof " +
+                        "-jar NewBestSub-2.0-jar-with-dependencies.jar -fi \"mmlu\" -c \"Pearson\" " +
+                        "-po 20000 -i 100000 -r 2000 -t \"All\" -pe 1,100 -log Limited"
+            )
+
+            logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to OutOfMemoryError.")
         }
+
+
     }
 
     fun loadCommandLineOptions(): Options {
@@ -463,4 +522,92 @@ object Program {
 
         return options
     }
+
+    /* ------------------------------------------------------------------------------------
+ * Pretty help/usage
+ *  - Wider layout, custom option ordering, clear header + example commands.
+ *  - Keeps your comment style and avoids noisy auto-wrapping of descriptions.
+ * ---------------------------------------------------------------------------------- */
+    private fun buildHelpFormatter(): org.apache.commons.cli.HelpFormatter {
+        val columns = System.getenv("COLUMNS")?.toIntOrNull()?.coerceIn(100, 160) ?: 120
+        return org.apache.commons.cli.HelpFormatter().apply {
+            // Layout tuning
+            width = columns
+            leftPadding = 2
+            descPadding = 4
+            syntaxPrefix = "Usage: "
+            longOptPrefix = "--"
+            optPrefix = "-"
+
+            // Order: required & core options first, then the rest (stable)
+            val priority = listOf(
+                "fi", "c", "t", "l",     // core required
+                "i", "po",             // iterations/population (Best/Worst/All)
+                "r", "pe",             // repetitions/percentiles (Average/All)
+                "det", "sd",           // deterministic flags
+                "mr", "et", "es", "mx",  // multi-run & expansions
+                "copy"                // experiments copy
+            )
+            optionComparator = Comparator { a, b ->
+                val ia = priority.indexOf(a.opt).let { if (it == -1) Int.MAX_VALUE else it }
+                val ib = priority.indexOf(b.opt).let { if (it == -1) Int.MAX_VALUE else it }
+                if (ia != ib) ia - ib else a.opt.compareTo(b.opt)
+            }
+        }
+    }
+
+    /* Print a clean, helpful usage page with a contextual cause and examples. */
+    private fun printNiceHelp(options: Options, cause: String?) {
+        val formatter = buildHelpFormatter()
+
+        val header = buildString {
+            appendLine("NewBestSub – multi-objective best-subset driver")
+            if (!cause.isNullOrBlank()) {
+                appendLine()
+                appendLine("Cause: $cause")
+            }
+            appendLine()
+            appendLine("Targets:")
+            appendLine("  Best/Worst : NSGA-II over (K, corr) with streaming FUN/VAR/TOP.")
+            appendLine("  Average    : one row per K from random subsets; percentiles computed from repeats.")
+            appendLine()
+        }
+
+        val footer = buildString {
+            appendLine()
+            appendLine("Examples")
+            appendLine("--------")
+            appendLine("Best (Pearson):")
+            appendLine("  java -Xms32g -Xmx32g -jar NewBestSub-2.0-jar-with-dependencies.jar \\")
+            appendLine("    -fi \"mmlu\" -c \"Pearson\" -t \"Best\" -po 20000 -i 100000 -l Limited --det")
+            appendLine()
+            appendLine("Average (1..100 percentiles):")
+            appendLine("  java -Xms32g -Xmx32g -jar NewBestSub-2.0-jar-with-dependencies.jar \\")
+            appendLine("    -fi \"mmlu\" -c \"Pearson\" -t \"Average\" -r 2000 -pe 1,100 -l Limited --det")
+            appendLine()
+            appendLine("All (Best/Worst + Average):")
+            appendLine("  java -Xms32g -Xmx32g -jar NewBestSub-2.0-jar-with-dependencies.jar \\")
+            appendLine("    -fi \"mmlu\" -c \"Pearson\" -t \"All\" -po 20000 -i 100000 -r 2000 -pe 1,100 -l Limited")
+            appendLine()
+            appendLine("Tips")
+            appendLine("----")
+            appendLine("• Ensure -po (population) ≥ number of topics.")
+            appendLine("• Average/All require -r and -pe; Best/Worst require -po and -i.")
+            appendLine("• Use --det / --seed for reproducible runs.")
+        }
+
+        // Wider call signature gives best layout control
+        formatter.printHelp(
+            /* pw   */ java.io.PrintWriter(System.out, true),
+            /* width*/ formatter.width,
+            /* cmd  */ "${Constants.NEWBESTSUB_NAME} [options]",
+            /* hdr  */ header,
+            /* opts */ options,
+            /* lpad */ formatter.leftPadding,
+            /* dpad */ formatter.descPadding,
+            /* ftr  */ footer,
+            /* autoUsage */ true
+        )
+    }
+
 }

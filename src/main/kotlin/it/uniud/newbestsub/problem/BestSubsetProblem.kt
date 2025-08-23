@@ -45,7 +45,7 @@ class BestSubsetProblem(
         if (meanAveragePrecisions.size != precomputedData.numberOfSystems) {
             logger.warn(
                 "meanAveragePrecisions length (${meanAveragePrecisions.size}) differs from numberOfSystems " +
-                    "(${precomputedData.numberOfSystems}). Using PrecomputedData.fullSetMeanAPBySystem instead."
+                        "(${precomputedData.numberOfSystems}). Using PrecomputedData.fullSetMeanAPBySystem instead."
             )
         }
     }
@@ -149,7 +149,7 @@ class BestSubsetProblem(
     }
 
     override fun evaluate(solution: BinarySolution): BinarySolution {
-        solution as BestSubsetSolution
+        val bs = solution as BestSubsetSolution
 
         /* ---------- Progress logging with debounce message ---------- */
         if ((iterationCounter % loggingEvery) == 0 && iterationCounter <= parameters.numberOfIterations) {
@@ -165,129 +165,97 @@ class BestSubsetProblem(
             progressCounter += Constants.LOGGING_FACTOR
         }
 
-        /* ----------------------------- Incremental per-system SUMS ----------------------------- */
-        val currentTopicMask: BooleanArray = solution.retrieveTopicStatus()
-        val selectedTopicCount = solution.numberOfSelectedTopics
+        /* ----------------------------- Incremental per-system SUMS (zero-copy) -----------------------------
+         * We do NOT materialize the current mask as a BooleanArray. We read the BinarySet directly and:
+         *  - build SUMS from scratch on cold start, or
+         *  - apply diffs (or swap hints) vs lastEvaluatedMask on warm path.
+         * -------------------------------------------------------------------------------------------------- */
+        val bits = bs.variables()[0] as org.uma.jmetal.util.binarySet.BinarySet
+        val selectedTopicCount = bs.numberOfSelectedTopics
 
-        var sumsBySystem = solution.cachedSumsBySystem
-        val lastMask = solution.lastEvaluatedMask
+        var sumsBySystem = bs.cachedSumsBySystem
+        val lastMask = bs.lastEvaluatedMask
 
         if (sumsBySystem == null || lastMask == null) {
-            /* Cold start: compute SUMS from scratch for selected topics only. */
+            /* Cold start: compute Σ_t AP[s][t] from scratch using current bitset. */
             val fresh = DoubleArray(systemsCount)
             var t = 0
             while (t < numberOfTopics) {
-                if (currentTopicMask[t]) {
+                if (bits.get(t)) {
                     val col = precomputedData.topicColumnViewByTopic[t]
                     var s = 0
-                    while (s < systemsCount) { fresh[s] += col[s]; s++ }
+                    while (s < systemsCount) {
+                        fresh[s] += col[s]; s++
+                    }
                 }
                 t++
             }
             sumsBySystem = fresh
         } else {
-            /* Warm path: apply swap hints or generic diff. */
+            /* Warm path: apply fixed-K swap hints when available, otherwise generic diff vs lastMask. */
             val usedSwapHints =
-                solution.lastMutationWasFixedKSwap &&
-                (solution.lastSwapOutIndex != null || solution.lastSwapInIndex != null)
+                bs.lastMutationWasFixedKSwap &&
+                        (bs.lastSwapOutIndex != null || bs.lastSwapInIndex != null)
 
             if (usedSwapHints) {
-                solution.lastSwapOutIndex?.let { outIdx ->
+                bs.lastSwapOutIndex?.let { outIdx ->
                     val col = precomputedData.topicColumnViewByTopic[outIdx]
                     var s = 0
-                    while (s < systemsCount) { sumsBySystem[s] -= col[s]; s++ }
+                    while (s < systemsCount) {
+                        sumsBySystem[s] -= col[s]; s++
+                    }
                 }
-                solution.lastSwapInIndex?.let { inIdx ->
+                bs.lastSwapInIndex?.let { inIdx ->
                     val col = precomputedData.topicColumnViewByTopic[inIdx]
                     var s = 0
-                    while (s < systemsCount) { sumsBySystem[s] += col[s]; s++ }
+                    while (s < systemsCount) {
+                        sumsBySystem[s] += col[s]; s++
+                    }
                 }
             } else {
                 var t = 0
                 while (t < numberOfTopics) {
+                    val isSel = bits.get(t)
                     val was = lastMask[t]
-                    val isSel = currentTopicMask[t]
                     if (was != isSel) {
                         val col = precomputedData.topicColumnViewByTopic[t]
                         val sign = if (isSel) +1.0 else -1.0
                         var s = 0
-                        while (s < systemsCount) { sumsBySystem[s] += sign * col[s]; s++ }
+                        while (s < systemsCount) {
+                            sumsBySystem[s] += sign * col[s]; s++
+                        }
                     }
                     t++
                 }
             }
         }
 
-        /* Persist incremental state for the next evaluation without allocating new arrays. */
-        solution.cachedSumsBySystem = sumsBySystem
-        val targetMaskBuffer = solution.ensureReusableLastMaskBuffer()
-        System.arraycopy(currentTopicMask, 0, targetMaskBuffer, 0, numberOfTopics)
-        solution.lastEvaluatedMask = targetMaskBuffer
-        solution.clearLastMutationFlags()
+        /* Persist incremental state for the next evaluation (no new arrays). */
+        bs.cachedSumsBySystem = sumsBySystem
+        run {
+            /* Refresh lastEvaluatedMask by filling the reusable buffer directly from the bitset. */
+            val target = bs.ensureReusableLastMaskBuffer()
+            var i = 0
+            while (i < numberOfTopics) {
+                target[i] = bits.get(i); i++
+            }
+            bs.lastEvaluatedMask = target
+            bs.clearLastMutationFlags()
+        }
 
         /* ----------------------------- Correlation from SUMS (single call site) ----------------------------- */
         val naturalCorrelation = correlationFromSums.correlationFromSums(sumsBySystem, selectedTopicCount)
 
-        /* Mirror topic status for downstream consumers (kept for compatibility). */
-        solution.topicStatus = Array(numberOfTopics) { idx -> currentTopicMask[idx] }
+        /* Internal objective encoding (BEST: +K, -corr) (WORST: -K, +corr). */
+        targetStrategy(bs, naturalCorrelation)
 
-        /* objective[0] = ±K, objective[1] = ±corr (branch-dependent) */
-        targetStrategy(solution, naturalCorrelation)
-
-        /* ----------------------------- Streaming book-keeping ----------------------------- */
-        val kKey: Int = solution.numberOfSelectedTopics /* Int key */
-
-        /* Maintain “dominatedSolutions” best/worst per K (naturalCorr comparable). */
-        fun naturalCorr(sln: BinarySolution): Double =
-            if (parameters.targetToAchieve == Constants.TARGET_BEST) -(sln as BestSubsetSolution).getCorrelation()
-            else (sln as BestSubsetSolution).getCorrelation()
-
-        val candidateCopy = solution.copy()
-        val prev = dominatedSolutions[kKey]
-        if (prev == null ||
-            (if (parameters.targetToAchieve == Constants.TARGET_BEST)
-                naturalCorr(candidateCopy) > naturalCorr(prev)
-            else
-                naturalCorr(candidateCopy) < naturalCorr(prev))
-        ) {
-            dominatedSolutions[kKey] = candidateCopy
-        }
-
-        /* Bounded Top-N maintenance without full sort/dedupe on each eval. */
-        val bin = topBins.getOrPut(kKey) { TopBin(HashSet(), mutableListOf()) }
-        val genotypeString: (BinarySolution) -> String = { (it as BestSubsetSolution).getVariableValueString(0) }
-        val geno = genotypeString(candidateCopy)
-
-        if (bin.bestGenotypes.add(geno)) {
-            val list = bin.topList
-            val score = naturalCorr(candidateCopy)
-
-            /* binary insert to keep list sorted (desc for BEST, asc for WORST) */
-            var lo = 0
-            var hi = list.size
-            while (lo < hi) {
-                val mid = (lo + hi).ushr(1)
-                val midScore = naturalCorr(list[mid])
-                val cmp = if (parameters.targetToAchieve == Constants.TARGET_BEST) {
-                    -java.lang.Double.compare(score, midScore) /* descending */
-                } else {
-                    java.lang.Double.compare(score, midScore)  /* ascending */
-                }
-                if (cmp < 0) lo = mid + 1 else hi = mid
-            }
-            list.add(lo, candidateCopy)
-
-            /* cap list and set */
-            val cap = Constants.TOP_SOLUTIONS_NUMBER
-            if (list.size > cap) {
-                val removed = list.removeAt(list.lastIndex)
-                bin.bestGenotypes.remove(genotypeString(removed))
-            }
-            /* keep public mirror map in sync (writers read from here) */
-            topSolutions[kKey] = list
-        }
+        /* -------------------------------------------------------------------------
+         * Streaming / Top-K maintenance is now handled in DatasetModel.onGeneration.
+         * We deliberately DO NOT clone or retain solutions here to save heap.
+         * ----------------------------------------------------------------------- */
 
         iterationCounter++
-        return solution
+        return bs
     }
+
 }

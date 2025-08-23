@@ -124,9 +124,9 @@ class DatasetModelTest {
      */
 
     @Test
-    @DisplayName("AVERAGE path emits exactly one solution per K = 1..N (monotone K asc)")
+    @DisplayName("AVERAGE path caches exactly one representative per K = 1..N (mask size=N, |mask|=K)")
     fun testSolveAverageEmitsOnePerCardinality() {
-        /* AVERAGE path deterministically emits one representative per K */
+        /* AVERAGE path now streams rows and caches one representative per K (no big in-memory list). */
         val controller = DatasetController(Constants.TARGET_AVERAGE)
         controller.load("src/test/resources/AP96.csv")
 
@@ -134,32 +134,48 @@ class DatasetModelTest {
             datasetName = "AH99",
             correlationMethod = Constants.CORRELATION_KENDALL,
             targetToAchieve = Constants.TARGET_AVERAGE,
-            numberOfIterations = 100_000,
+            numberOfIterations = 100_000,   // ignored in AVERAGE
             numberOfRepetitions = 1_000,
-            populationSize = 1_000,
+            populationSize = 1_000,         // ignored in AVERAGE
             currentExecution = 0,
             percentiles = listOf(1, 5, 25, 99)
         )
 
         val model = controller.models[0]
-        val solutions = model.solve(parameters).first
+
+        /* Run once: fills per-K caches (corrByK + rep mask) and percentiles. */
+        model.solve(parameters)
 
         val numberOfTopics = model.numberOfTopics
-        assertEquals(numberOfTopics, solutions.size, "Expected exactly one solution per cardinality K = 1..N.")
+        var seen = 0
+        for (k in 1..numberOfTopics) {
+            /* Correlation must exist and be finite for each K. */
+            val corr = model.findCorrelationForCardinality(k.toDouble())
+            assertTrue(corr != null && corr!!.isFinite(), "Expected a finite correlation for K=$k.")
 
-        /* Verify K sequence is exactly 1..N and strictly increasing */
-        var expectedK = 1
-        for (solution in solutions) {
-            assertEquals(expectedK, solution.getCardinality().toInt(), "Unexpected cardinality at index ${expectedK - 1}.")
-            expectedK++
+            /* Representative mask must exist, be size N, and have exactly K bits set. */
+            val mask = model.retrieveMaskForCardinality(k.toDouble())
+            assertTrue(mask != null, "Expected a representative mask for K=$k.")
+            assertEquals(numberOfTopics, mask!!.size, "Mask size mismatch for K=$k.")
+            val ones = mask.count { it }
+            assertEquals(k, ones, "Mask cardinality must equal K for K=$k.")
+
+            seen++
         }
 
-        /* Correlation values must be finite (sanity check) */
-        for (solution in solutions) {
-            val correlation = solution.getCorrelation()
-            assertTrue(correlation.isFinite(), "Correlation should be finite for K=${solution.getCardinality().toInt()}.")
+        /* One and only one representative per K = 1..N. */
+        assertEquals(numberOfTopics, seen, "Expected exactly one representative per cardinality K = 1..N.")
+
+        /* Percentiles collected from the same samples: one value per K for each requested percentile. */
+        val expectedPercentiles = setOf(1, 5, 25, 99)
+        assertTrue(model.percentiles.keys.containsAll(expectedPercentiles), "Missing requested percentiles.")
+        expectedPercentiles.forEach { p ->
+            val values = model.percentiles[p] ?: emptyList()
+            assertEquals(numberOfTopics, values.size, "Percentile $p should have one value per K (1..$numberOfTopics).")
+            assertTrue(values.all { it.isFinite() }, "Percentile $p contains non-finite values.")
         }
     }
+
 
     @Test
     @DisplayName("Packed Base64 VAR round‑trip equals original mask (CSV B64‑prefixed)")
