@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>DatasetModel</title>
+    <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
+    <script>var pathToRoot = "../../../";</script>
+    <script>document.documentElement.classList.replace("no-js","js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+    if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    } else {
+        const savedDarkMode = JSON.parse(storage)
+        if(savedDarkMode === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    }
+    </script>
+<script type="text/javascript" src="https://unpkg.com/kotlin-playground@1/dist/playground.min.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../../styles/style.css" rel="Stylesheet">
+<link href="../../../styles/main.css" rel="Stylesheet">
+<link href="../../../styles/prism.css" rel="Stylesheet">
+<link href="../../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../../styles/font-jb-sans-auto.css" rel="Stylesheet">
+<link href="../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../../scripts/clipboard.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/symbol-parameters-wrapper_deferred.js" defer="defer"></script>
+</head>
+<body>
+    <div class="root">
+    <nav class="navigation theme-dark" id="navigation-wrapper">
+            <a class="library-name--link" href="../../../index.html">
+                    NewBestSub
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <div class="filter-section filter-section_loading" id="filter-section">
+                <button class="platform-tag platform-selector jvm-like" data-active=""
+                        data-filter="NewBestSub/JVM">JVM</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox">
+                    <div class="dropdown--header"><span>Platform filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close platform filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id="NewBestSub/JVM"
+                                       data-filter="NewBestSub/JVM"/>
+                                <span class="checkbox--icon"></span>
+                                JVM
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </div>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </nav>
+        <div id="container">
+            <div class="sidebar" id="leftColumn">
+                <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                    <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                        data-role="dropdown-listbox">
+                        <div class="dropdown--header">
+                            <span>
+                                    NewBestSub
+                            </span>
+                            <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                                <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                            </button>
+                        </div>
+                        <div class="sidebar--inner" id="sideMenu"></div>
+                    </ul>
+                    <div class="dropdown--overlay"></div>
+                </div>
+            </div>
+            <div id="main">
+<div class="main-content" data-page-type="classlike" id="content" pageIds="NewBestSub::it.uniud.newbestsub.dataset/DatasetModel///PointingToDeclaration//-116316672">
+  <div class="breadcrumbs"><a href="../../../index.html">NewBestSub</a><span class="delimiter">/</span><a href="../index.html">it.uniud.newbestsub.dataset</a><span class="delimiter">/</span><span class="current">DatasetModel</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span>Dataset</span><wbr></wbr><span><span>Model</span></span></h1>
+    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">class </span><a href="index.html">DatasetModel</a></div></div></div>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">Members</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="CONSTRUCTOR">
+        <h2 class="">Constructors</h2>
+        <div class="table"><a data-name="419015109%2FConstructors%2F-116316672" anchor-label="DatasetModel" id="419015109%2FConstructors%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-togglable="CONSTRUCTOR" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-dataset-model.html"><span>Dataset</span><wbr></wbr><span><span>Model</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="419015109%2FConstructors%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">constructor</span><span class="token punctuation">(</span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="PROPERTY">
+        <h2 class="">Properties</h2>
+        <div class="table"><a data-name="1920618322%2FProperties%2F-116316672" anchor-label="averagePrecisions" id="1920618322%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="average-precisions.html"><span>average</span><wbr></wbr><span><span>Precisions</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1920618322%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="average-precisions.html">averagePrecisions</a><span class="token operator">: </span><a href="https://docs.oracle.com/javase/8/docs/api/java/util/LinkedHashMap.html">LinkedHashMap</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double-array/index.html">DoubleArray</a><span class="token operator">&gt;</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="316640067%2FProperties%2F-116316672" anchor-label="computingTime" id="316640067%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="computing-time.html"><span>computing</span><wbr></wbr><span><span>Time</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="316640067%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="computing-time.html">computingTime</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1010837793%2FProperties%2F-116316672" anchor-label="correlationMethod" id="1010837793%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="correlation-method.html"><span>correlation</span><wbr></wbr><span><span>Method</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1010837793%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="correlation-method.html">correlationMethod</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-709292777%2FProperties%2F-116316672" anchor-label="currentExecution" id="-709292777%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="current-execution.html"><span>current</span><wbr></wbr><span><span>Execution</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-709292777%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="current-execution.html">currentExecution</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1877319615%2FProperties%2F-116316672" anchor-label="datasetName" id="-1877319615%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="dataset-name.html"><span>dataset</span><wbr></wbr><span><span>Name</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1877319615%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="dataset-name.html">datasetName</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="819844896%2FProperties%2F-116316672" anchor-label="expansionCoefficient" id="819844896%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="expansion-coefficient.html"><span>expansion</span><wbr></wbr><span><span>Coefficient</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="819844896%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="expansion-coefficient.html">expansionCoefficient</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-215392905%2FProperties%2F-116316672" anchor-label="meanAveragePrecisions" id="-215392905%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="mean-average-precisions.html"><span>mean</span><wbr></wbr><span>Average</span><wbr></wbr><span><span>Precisions</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-215392905%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="mean-average-precisions.html">meanAveragePrecisions</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double-array/index.html">DoubleArray</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1262560256%2FProperties%2F-116316672" anchor-label="numberOfIterations" id="-1262560256%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="number-of-iterations.html"><span>number</span><wbr></wbr><span>Of</span><wbr></wbr><span><span>Iterations</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1262560256%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="number-of-iterations.html">numberOfIterations</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1547549118%2FProperties%2F-116316672" anchor-label="numberOfRepetitions" id="-1547549118%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="number-of-repetitions.html"><span>number</span><wbr></wbr><span>Of</span><wbr></wbr><span><span>Repetitions</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1547549118%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="number-of-repetitions.html">numberOfRepetitions</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-503650816%2FProperties%2F-116316672" anchor-label="numberOfSystems" id="-503650816%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="number-of-systems.html"><span>number</span><wbr></wbr><span>Of</span><wbr></wbr><span><span>Systems</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-503650816%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="number-of-systems.html">numberOfSystems</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1259086766%2FProperties%2F-116316672" anchor-label="numberOfTopics" id="-1259086766%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="number-of-topics.html"><span>number</span><wbr></wbr><span>Of</span><wbr></wbr><span><span>Topics</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1259086766%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="number-of-topics.html">numberOfTopics</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1831989230%2FProperties%2F-116316672" anchor-label="percentiles" id="1831989230%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="percentiles.html"><span><span>percentiles</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1831989230%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="percentiles.html">percentiles</a><span class="token operator">: </span><a href="https://docs.oracle.com/javase/8/docs/api/java/util/LinkedHashMap.html">LinkedHashMap</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-159878424%2FProperties%2F-116316672" anchor-label="populationSize" id="-159878424%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="population-size.html"><span>population</span><wbr></wbr><span><span>Size</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-159878424%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="population-size.html">populationSize</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1543017224%2FProperties%2F-116316672" anchor-label="systemLabels" id="1543017224%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="system-labels.html"><span>system</span><wbr></wbr><span><span>Labels</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1543017224%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="system-labels.html">systemLabels</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1440972449%2FProperties%2F-116316672" anchor-label="targetToAchieve" id="-1440972449%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="target-to-achieve.html"><span>target</span><wbr></wbr><span>To</span><wbr></wbr><span><span>Achieve</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1440972449%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="target-to-achieve.html">targetToAchieve</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1759794479%2FProperties%2F-116316672" anchor-label="topicDistribution" id="-1759794479%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="topic-distribution.html"><span>topic</span><wbr></wbr><span><span>Distribution</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1759794479%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="topic-distribution.html">topicDistribution</a><span class="token operator">: </span><a href="https://docs.oracle.com/javase/8/docs/api/java/util/LinkedHashMap.html">LinkedHashMap</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-mutable-map/index.html">MutableMap</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1314235466%2FProperties%2F-116316672" anchor-label="topicLabels" id="-1314235466%2FProperties%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="topic-labels.html"><span>topic</span><wbr></wbr><span><span>Labels</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1314235466%2FProperties%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">var </span><a href="topic-labels.html">topicLabels</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="FUNCTION">
+        <h2 class="">Functions</h2>
+        <div class="table"><a data-name="2073922051%2FFunctions%2F-116316672" anchor-label="clearAfterSerialization" id="2073922051%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="clear-after-serialization.html"><span>clear</span><wbr></wbr><span>After</span><wbr></wbr><span><span>Serialization</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2073922051%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="clear-after-serialization.html"><span class="token function">clearAfterSerialization</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Drop per-run caches (rep masks, corr map, top pools). Call after closeStreams() and after aggregate/info have consumed this model.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1663320147%2FFunctions%2F-116316672" anchor-label="clearPercentiles" id="-1663320147%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="clear-percentiles.html"><span>clear</span><wbr></wbr><span><span>Percentiles</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1663320147%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="clear-percentiles.html"><span class="token function">clearPercentiles</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Drop percentile lists (often large) once final CSV/Parquet tables have been written.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1289398720%2FFunctions%2F-116316672" anchor-label="expandSystems" id="1289398720%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="expand-systems.html"><span>expand</span><wbr></wbr><span><span>Systems</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1289398720%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="expand-systems.html"><span class="token function">expandSystems</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">expansionCoefficient<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter ">trueNumberOfSystems<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter ">randomizedAveragePrecisions<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-map/index.html">Map</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double-array/index.html">DoubleArray</a><span class="token operator">&gt;</span><span class="token punctuation">, </span></span><span class="parameter ">randomizedSystemLabels<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1329389807%2FFunctions%2F-116316672" anchor-label="expandTopics" id="1329389807%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="expand-topics.html"><span>expand</span><wbr></wbr><span><span>Topics</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1329389807%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="expand-topics.html"><span class="token function">expandTopics</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">expansionCoefficient<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter ">randomizedAveragePrecisions<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-map/index.html">Map</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double-array/index.html">DoubleArray</a><span class="token operator">&gt;</span><span class="token punctuation">, </span></span><span class="parameter ">randomizedTopicLabels<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-178866578%2FFunctions%2F-116316672" anchor-label="findCorrelationForCardinality" id="-178866578%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="find-correlation-for-cardinality.html"><span>find</span><wbr></wbr><span>Correlation</span><wbr></wbr><span>For</span><wbr></wbr><span><span>Cardinality</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-178866578%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="find-correlation-for-cardinality.html"><span class="token function">findCorrelationForCardinality</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">cardinality<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1019346380%2FFunctions%2F-116316672" anchor-label="isTopicInASolutionOfCardinality" id="1019346380%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="is-topic-in-a-solution-of-cardinality.html"><span>is</span><wbr></wbr><span>Topic</span><wbr></wbr><span>In</span><wbr></wbr><span>ASolution</span><wbr></wbr><span>Of</span><wbr></wbr><span><span>Cardinality</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1019346380%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="is-topic-in-a-solution-of-cardinality.html"><span class="token function">isTopicInASolutionOfCardinality</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">topicLabel<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter ">cardinality<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1505747870%2FFunctions%2F-116316672" anchor-label="loadData" id="1505747870%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="load-data.html"><span>load</span><wbr></wbr><span><span>Data</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1505747870%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="load-data.html"><span class="token function">loadData</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">datasetPath<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="754450205%2FFunctions%2F-116316672" anchor-label="retrieveMaskB64ForCardinality" id="754450205%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="retrieve-mask-b64-for-cardinality.html"><span>retrieve</span><wbr></wbr><span>Mask</span><wbr></wbr><span>B64For</span><wbr></wbr><span><span>Cardinality</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="754450205%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="retrieve-mask-b64-for-cardinality.html"><span class="token function">retrieveMaskB64ForCardinality</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">cardinality<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div><div class="brief "><p class="paragraph">Return the presence mask for K encoded as &quot;B64:<base64>&quot;. Always sized to the model's current numberOfTopics (stored that way).</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1027003109%2FFunctions%2F-116316672" anchor-label="retrieveMaskForCardinality" id="-1027003109%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="retrieve-mask-for-cardinality.html"><span>retrieve</span><wbr></wbr><span>Mask</span><wbr></wbr><span>For</span><wbr></wbr><span><span>Cardinality</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1027003109%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="retrieve-mask-for-cardinality.html"><span class="token function">retrieveMaskForCardinality</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">cardinality<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean-array/index.html">BooleanArray</a><span class="token operator">?</span></div><div class="brief "><p class="paragraph">Return a COPY of the presence mask for the given cardinality K, or null if no representative was cached for that K.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1443309767%2FFunctions%2F-116316672" anchor-label="retrieveMaskForCardinalitySized" id="1443309767%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="retrieve-mask-for-cardinality-sized.html"><span>retrieve</span><wbr></wbr><span>Mask</span><wbr></wbr><span>For</span><wbr></wbr><span>Cardinality</span><wbr></wbr><span><span>Sized</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1443309767%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="retrieve-mask-for-cardinality-sized.html"><span class="token function">retrieveMaskForCardinalitySized</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">cardinality<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-double/index.html">Double</a><span class="token punctuation">, </span></span><span class="parameter ">expectedSize<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean-array/index.html">BooleanArray</a></div><div class="brief "><p class="paragraph">Return a presence mask sized exactly to <code class="lang-kotlin">expectedSize</code>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1564410513%2FFunctions%2F-116316672" anchor-label="sealData" id="-1564410513%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="seal-data.html"><span>seal</span><wbr></wbr><span><span>Data</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1564410513%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="seal-data.html"><span class="token function">sealData</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph"><p class="paragraph">sealData</p> --------</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-814545738%2FFunctions%2F-116316672" anchor-label="solve" id="-814545738%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="solve.html"><span><span>solve</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-814545738%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="solve.html"><span class="token function">solve</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">parameters<span class="token operator">: </span><a href="../-parameters/index.html">Parameters</a><span class="token punctuation">, </span></span><span class="parameter ">out<span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines.channels/SendChannel///PointingToDeclaration/">SendChannel</span><span class="token operator">&lt;</span><a href="../../it.uniud.newbestsub.dataset.model/-progress-event/index.html">ProgressEvent</a><span class="token operator">&gt;</span><span class="token operator">?</span><span class="token operator"> = </span>null</span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-triple/index.html">Triple</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><span data-unresolved-link="org.uma.jmetal.solution.binarysolution/BinarySolution///PointingToDeclaration/">BinarySolution</span><span class="token operator">&gt;</span><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><span data-unresolved-link="org.uma.jmetal.solution.binarysolution/BinarySolution///PointingToDeclaration/">BinarySolution</span><span class="token operator">&gt;</span><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-triple/index.html">Triple</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <div class="footer--container">
+            <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+            <div class="footer--content">
+                <div>
+                    <span>Generated by </span>
+                    <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                        Dokka
+                    </a>
+                    <div>© 2025 Copyright</div>
+                </div>
+            </div>
+        </div>
+    </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
