@@ -44,6 +44,7 @@ Select small topic subsets that preserve the **system ranking** induced by the f
 - [Features](#features)
 - [Requirements](#requirements)
 - [Build](#build)
+- [Run from release](#run-from-release)
 - [Quick start](#quick-start)
 - [Dataset schema](#dataset-schema)
 - [Outputs](#outputs)
@@ -96,6 +97,34 @@ Artifacts:
 target/NewBestSub-2.0-jar-with-dependencies.jar
 target/NewBestSub-2.0-test-jar-with-dependencies.jar
 ```
+
+---
+
+## Run from release
+
+Instead of building from source, you can download a ready-to-use JAR:
+
+1. Go to the [Releases page](https://github.com/Miccighel/NewBestSub/releases).
+2. Download the asset named:
+
+   ```
+   NewBestSub-<version>-jar-with-dependencies.jar
+   ```
+
+   (e.g., `NewBestSub-2.0-jar-with-dependencies.jar`).
+
+3. Run it with Java 22:
+
+   ```bash
+   java -Xmx4g -jar NewBestSub-2.0-jar-with-dependencies.jar --help
+   ```
+
+4. Example toy run:
+
+   ```bash
+   java -Xmx1g -jar NewBestSub-2.0-jar-with-dependencies.jar -fi samples/toy -c Pearson -t Best -po 50 -i 5000 -log Limited
+   ```
+
 
 ---
 
