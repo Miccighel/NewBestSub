@@ -115,7 +115,8 @@ If you use this software in academic work, please cite:
 
 ## License
 
-© University of Udine. See [LICENSE](LICENSE).
+This project is licensed under the [MIT License](LICENSE).  
+© 2025 University of Udine and Contributors.
 
 ---
 
