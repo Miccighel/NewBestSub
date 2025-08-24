@@ -4,6 +4,8 @@ import it.uniud.newbestsub.problem.BestSubsetSolution
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.crossover.CrossoverOperator
 import org.uma.jmetal.solution.binarysolution.BinarySolution
+import org.uma.jmetal.solution.binarysolution.impl.DefaultBinarySolution
+import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 import kotlin.math.min
 
@@ -16,11 +18,16 @@ import kotlin.math.min
  *   • ChildSelective:  bit = (ParentA AND ParentB)
  *   • ChildInclusive:  bit = (ParentA OR  ParentB)
  *
+ * Robustness
+ * ----------
+ * jMetal may occasionally provide DefaultBinarySolution instances. We *lift* any BinarySolution
+ * to BestSubsetSolution before operating, cloning the bitset/objectives and synthesizing labels.
+ *
  * Guarantees
  * ----------
  *   • Both children have EXACTLY N bits (N = totalNumberOfBits()).
  *   • Each child has at least one bit set; if not, one random bit is flipped to true.
- *   • No access to private fields (e.g., topicLabels) — we rebuild bitsets on parent copies.
+ *   • No access to private fields (e.g., topicLabels) — children are copies with replaced bitsets.
  *
  * Determinism
  * -----------
@@ -45,8 +52,11 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
             "BinaryPruningCrossover requires 2 parents (got ${parents.size})"
         }
 
-        val parentA = parents[0] as BestSubsetSolution
-        val parentB = parents[1] as BestSubsetSolution
+        /* ------------------------------------------------------------------------------------
+         * Normalize inputs: operate on BestSubsetSolution (adapter handles DefaultBinarySolution).
+         * ---------------------------------------------------------------------------------- */
+        val parentA: BestSubsetSolution = ensureBestSubsetView(parents[0])
+        val parentB: BestSubsetSolution = ensureBestSubsetView(parents[1])
 
         /* Invariant: both parents must share the same N (number of topics). */
         val nBits = parentA.totalNumberOfBits()
@@ -68,7 +78,7 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
         if (performCrossover) {
             var i = 0
             while (i < nBits) {
-                val a = maskA[i];
+                val a = maskA[i]
                 val b = maskB[i]
                 childSelectiveMask[i] = a && b  /* selective (AND)   */
                 childInclusiveMask[i] = a || b  /* inclusive (OR)    */
@@ -85,22 +95,16 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
         ensureAtLeastOneTrue(childInclusiveMask, nBits, rng)
 
         /* Materialize children as COPIES of the parents, then overwrite their bitset with N-bit masks. */
-        val childSelective = parentA.copy().apply {
+        val childSelective: BestSubsetSolution = parentA.copy().apply {
             variables()[0] = createNewBitSet(nBits, childSelectiveMask.toTypedArray())
+            resetIncrementalEvaluationState()
+            clearLastMutationFlags()
         }
-        val childInclusive = parentB.copy().apply {
+        val childInclusive: BestSubsetSolution = parentB.copy().apply {
             variables()[0] = createNewBitSet(nBits, childInclusiveMask.toTypedArray())
+            resetIncrementalEvaluationState()
+            clearLastMutationFlags()
         }
-
-        // After building masks for children:
-        childSelective.variables()[0] = childSelective.createNewBitSet(nBits, childSelectiveMask.toTypedArray())
-        childInclusive.variables()[0] = childInclusive.createNewBitSet(nBits, childInclusiveMask.toTypedArray())
-
-        // New: reset step-3 state
-        childSelective.resetIncrementalEvaluationState()
-        childSelective.clearLastMutationFlags()
-        childInclusive.resetIncrementalEvaluationState()
-        childInclusive.clearLastMutationFlags()
 
         /* Debug traces (safe at DEBUG level). */
         logger.debug("<P1 sel=${parentA.numberOfSelectedTopics}> ${parentA.getVariableValueString(0)}")
@@ -127,13 +131,49 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
         var anyTrue = false
         var i = 0
         while (i < n) {
-            if (mask[i]) {
-                anyTrue = true; break
-            }; i++
+            if (mask[i]) { anyTrue = true; break }
+            i++
         }
         if (!anyTrue) {
             val idx = if (n <= 1) 0 else rng.nextInt(0, n - 1)
             mask[idx] = true
         }
+    }
+
+    /* If input is BestSubsetSolution, return it; otherwise lift DefaultBinarySolution into BestSubsetSolution. */
+    private fun ensureBestSubsetView(src: BinarySolution): BestSubsetSolution {
+        if (src is BestSubsetSolution) return src
+
+        // Synthesize labels when none are available; they’re used only for pretty-printing.
+        val nBits = src.totalNumberOfBits()
+        val labels = Array(nBits) { idx -> "t$idx" }
+
+        // Build a fresh BestSubsetSolution and copy bitset + objectives.
+        val lifted = BestSubsetSolution(
+            numberOfVariables = 1,
+            numberOfObjectives = src.objectives().size,
+            numberOfTopics = nBits,
+            topicLabels = labels,
+            forcedCardinality = null
+        )
+
+        // Copy bits
+        val srcBits = src.variables()[0] as BinarySet
+        val dstBits = BinarySet(nBits).apply { this.or(srcBits) }
+        lifted.variables()[0] = dstBits
+
+        // Copy objectives
+        val m = src.objectives().size
+        var i = 0
+        while (i < m) {
+            lifted.objectives()[i] = src.objectives()[i]
+            i++
+        }
+
+        // Reset delta-eval state for safety.
+        lifted.resetIncrementalEvaluationState()
+        lifted.clearLastMutationFlags()
+
+        return lifted
     }
 }

@@ -7,11 +7,14 @@ on:
     branches: [ master, main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
     strategy:
+      fail-fast: false
       matrix:
         java: [ '22' ]
 
@@ -22,17 +25,17 @@ jobs:
       - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: ${{ matrix.java }}
-          cache: 'maven'
+          cache: maven
 
       - name: Build with Maven
-        run: mvn -B -DskipTests=false clean verify
+        run: mvn -B -ntp -DskipTests=false clean verify
 
       - name: Upload shaded JARs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: newbestsub-artifacts
-          path: |
-            target/*-jar-with-dependencies.jar
+          path: target/*-jar-with-dependencies.jar
+          retention-days: 14

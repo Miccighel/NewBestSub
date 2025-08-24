@@ -13,7 +13,6 @@ import org.uma.jmetal.util.errorchecking.JMetalException
 import java.io.File
 import java.io.FileNotFoundException
 import java.nio.file.FileSystemException
-import org.apache.commons.cli.help.HelpFormatter
 
 object Program {
 
@@ -524,10 +523,10 @@ object Program {
     }
 
     /* ------------------------------------------------------------------------------------
- * Pretty help/usage
- *  - Wider layout, custom option ordering, clear header + example commands.
- *  - Keeps your comment style and avoids noisy auto-wrapping of descriptions.
- * ---------------------------------------------------------------------------------- */
+     * Pretty help/usage
+     *  - Wider layout, custom option ordering, clear header + example commands.
+     *  - Keeps your comment style and avoids noisy auto-wrapping of descriptions.
+     * ---------------------------------------------------------------------------------- */
     private fun buildHelpFormatter(): org.apache.commons.cli.HelpFormatter {
         val columns = System.getenv("COLUMNS")?.toIntOrNull()?.coerceIn(100, 160) ?: 120
         return org.apache.commons.cli.HelpFormatter().apply {

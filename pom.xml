@@ -75,6 +75,11 @@
             <name>Maven Central</name>
             <url>https://repo.maven.apache.org/maven2</url>
         </pluginRepository>
+        <!-- Needed for Dokka dev builds compatible with Kotlin 2.2.x -->
+        <pluginRepository>
+            <id>jetbrains-dokka-dev</id>
+            <url>https://maven.pkg.jetbrains.space/kotlin/p/dokka/dev</url>
+        </pluginRepository>
     </pluginRepositories>
 
     <properties>
@@ -96,7 +101,10 @@
         <junit.jupiter.version>5.13.4</junit.jupiter.version>
 
         <!-- Docs -->
-        <dokka.version>2.0.0</dokka.version>
+        <!-- Upgrade Dokka to dev build that understands Kotlin 2.2.x metadata -->
+        <dokka.version>2.0.20-dev-383</dokka.version>
+        <!-- Default, Windows-safe, plain path for Dokka output -->
+        <dokka.output.dir>${project.build.directory}/dokka</dokka.output.dir>
 
         <!-- Libraries -->
         <apache.commons.version>3.6.1</apache.commons.version> <!-- commons-math3 -->
@@ -116,6 +124,7 @@
         <snappy.version>1.1.10.5</snappy.version>
 
         <!-- Plugins -->
+        <maven.assembly-plugin.version>3.7.1</maven.assembly-plugin.version>
         <maven.dependency-plugin.version>3.7.0</maven.dependency-plugin.version>
         <maven.jar-plugin.version>3.4.2</maven.jar-plugin.version>
         <maven.surefire-plugin.version>3.5.3</maven.surefire-plugin.version>
@@ -125,6 +134,16 @@
         <!-- NEW: pin Yetus to silence old transitive POM warnings -->
         <yetus.audience.version>0.15.1</yetus.audience.version>
     </properties>
+
+    <profiles>
+        <profile>
+            <id>pages</id>
+            <properties>
+                <!-- When this profile is active, write docs into /docs so GitHub Pages can serve them -->
+                <dokka.output.dir>${project.basedir}/docs</dokka.output.dir>
+            </properties>
+        </profile>
+    </profiles>
 
     <dependencyManagement>
         <dependencies>
@@ -146,7 +165,6 @@
     </dependencyManagement>
 
     <dependencies>
-
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-math3</artifactId>
@@ -202,19 +220,6 @@
             <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-component</artifactId>
             <version>${jmetal.version}</version>
-        </dependency>
-
-        <!-- Kotlin stdlib setup (kept as in your structure) -->
-        <dependency>
-            <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-stdlib-jdk8</artifactId>
-            <version>${kotlin.stdlib.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.jetbrains.kotlin</groupId>
-                    <artifactId>kotlin-stdlib</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
 
         <dependency>
@@ -324,7 +329,9 @@
         <plugins>
 
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
+                <version>${maven.assembly-plugin.version}</version>
                 <configuration>
                     <archive>
                         <manifest>
@@ -391,11 +398,11 @@
                 </configuration>
             </plugin>
 
-            <!-- Kotlin (version via property, jvmTarget=22) -->
+            <!-- Kotlin (align to property, jvmTarget=22) -->
             <plugin>
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-maven-plugin</artifactId>
-                <version>${kotlin.maven.plugin.version}</version>
+                <version>${kotlin.version}</version>
                 <executions>
                     <execution>
                         <id>compile</id>
@@ -424,21 +431,27 @@
                 <version>${maven.surefire-plugin.version}</version>
             </plugin>
 
+            <!-- Dokka: Kotlin 2.2.x-compatible, Windows-safe output path -->
             <plugin>
                 <groupId>org.jetbrains.dokka</groupId>
                 <artifactId>dokka-maven-plugin</artifactId>
                 <version>${dokka.version}</version>
                 <executions>
                     <execution>
-                        <phase>none</phase>
+                        <id>dokka-site</id>
+                        <phase>site</phase>
                         <goals>
                             <goal>dokka</goal>
-                            <goal>javadoc</goal>
                         </goals>
                     </execution>
                 </executions>
                 <configuration>
-                    <outputDir>${project.basedir}/target/docs</outputDir>
+                    <!-- Use the resolved property; no ${...:...} default expression -->
+                    <outputDir>${dokka.output.dir}</outputDir>
+                    <failOnWarning>false</failOnWarning>
+                    <sourceDirectories>
+                        <dir>${project.basedir}/src/main/kotlin</dir>
+                    </sourceDirectories>
                 </configuration>
             </plugin>
 

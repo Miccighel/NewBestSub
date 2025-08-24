@@ -16,6 +16,20 @@ Select small topic subsets that preserve the **system ranking** induced by the f
 
 ---
 
+> ⚠️ **Important notice: Migration from 1.0 → 2.0**
+>
+> Starting with version **2.0**, NewBestSub has undergone major refactoring:
+> - Requires **Java 22** and **Kotlin 2.2** (was Java 8 / Kotlin 1.x in 1.0).
+> - Output format is now **streaming-based** with FUN/VAR/TOP separation and **6-digit correlation precision**.
+> - New **deterministic mode** and reproducible folder naming pattern.
+> - Updated **CLI options** (`-fi`, `-c`, `-t`, etc.) — check [CLI options](#cli-options).
+> - **Artifacts are renamed**: `NewBestSub-2.0-jar-with-dependencies.jar` instead of `NewBestSub-1.0-...`.
+>
+> If you have scripts or pipelines based on **1.0**, they will **not work unmodified**.  
+> Please adapt your datasets, CLI calls, and parsing code to the new schema.
+
+---
+
 ## Table of contents
 
 - [Features](#features)
@@ -86,20 +100,16 @@ java -Xmx4g -jar target/NewBestSub-2.0-jar-with-dependencies.jar --help
 Small toy run (adjust `-i/-po/-r` to your machine):
 ```bash
 # BEST (Pearson)
-java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar \
-  -fi samples/toy -c Pearson -t Best -po 50 -i 5000 -log Limited
+java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar   -fi samples/toy -c Pearson -t Best -po 50 -i 5000 -log Limited
 
 # WORST (Pearson)
-java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar \
-  -fi samples/toy -c Pearson -t Worst -po 50 -i 5000 -log Limited
+java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar   -fi samples/toy -c Pearson -t Worst -po 50 -i 5000 -log Limited
 
 # AVERAGE (Kendall, 5–95th percentiles, 100 reps)
-java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar \
-  -fi samples/toy -c Kendall -t Average -r 100 -pe 5,95 -log Limited
+java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar   -fi samples/toy -c Kendall -t Average -r 100 -pe 5,95 -log Limited
 
 # ALL (combine Best/Worst/Average)
-java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar \
-  -fi samples/toy -c Pearson -t All -po 50 -i 5000 -r 100 -pe 1,100 -log Limited
+java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar   -fi samples/toy -c Pearson -t All -po 50 -i 5000 -r 100 -pe 1,100 -log Limited
 ```
 
 > **Tip:** on large runs ensure `-Xmx` is sized appropriately, and keep `-po ≥ #topics`.

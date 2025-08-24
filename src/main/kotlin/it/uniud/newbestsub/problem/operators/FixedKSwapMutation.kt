@@ -4,6 +4,8 @@ import it.uniud.newbestsub.problem.BestSubsetSolution
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.mutation.MutationOperator
 import org.uma.jmetal.solution.binarysolution.BinarySolution
+import org.uma.jmetal.solution.binarysolution.impl.DefaultBinarySolution
+import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
 /* --------------------------------------------------------------------------------------------------------------------
@@ -15,13 +17,18 @@ import org.uma.jmetal.util.pseudorandom.JMetalRandom
  *   • pick one index with bit = 1  → set it to 0   (swap OUT)
  *   • pick one index with bit = 0  → set it to 1   (swap IN)
  *
+ * Robustness
+ * ----------
+ * jMetal may occasionally pass DefaultBinarySolution instances. We *lift* any BinarySolution
+ * to BestSubsetSolution before mutating, cloning bitset + objectives and synthesizing labels.
+ *
  * Guarantees
  * ----------
  *   • If both 1-pool and 0-pool are non-empty → K is preserved exactly.
  *   • Degenerate cases (all-zeros / all-ones) are handled safely:
  *       - all-zeros  → flip one random bit to true (K = 1)
  *       - all-ones   → flip one random bit to false (K = N - 1)
- *   • Operates in-place on the given solution; no private fields are accessed.
+ *   • Operates in-place on the (adapted) BestSubsetSolution; no private fields are accessed.
  *
  * Step 3 hook (delta evaluation)
  * ------------------------------
@@ -47,7 +54,14 @@ class FixedKSwapMutation(private var probability: Double) : MutationOperator<Bin
     override fun mutationProbability(): Double = probability
 
     override fun execute(candidate: BinarySolution): BinarySolution {
-        val solution = candidate as BestSubsetSolution
+        /* ------------------------------------------------------------------------------------
+         * Ensure we operate on BestSubsetSolution (adapter if jMetal hands us DefaultBinarySolution).
+         * RATIONALE:
+         *  - BestSubsetProblem.evaluate(...) relies on BestSubsetSolution (delta-eval caches etc.).
+         *  - Some components may introduce DefaultBinarySolution; we “lift” them here.
+         * ---------------------------------------------------------------------------------- */
+        val solution = ensureBestSubsetView(candidate)
+
         val numBits = solution.numberOfBitsPerVariable()[0]
         val rng = JMetalRandom.getInstance()
 
@@ -119,5 +133,44 @@ class FixedKSwapMutation(private var probability: Double) : MutationOperator<Bin
         }
 
         return solution
+    }
+
+    /* ------------------------------------- Helpers ------------------------------------- */
+
+    /* If input is BestSubsetSolution, return it; otherwise lift DefaultBinarySolution into BestSubsetSolution. */
+    private fun ensureBestSubsetView(src: BinarySolution): BestSubsetSolution {
+        if (src is BestSubsetSolution) return src
+
+        // Synthesize labels when none are available; they’re used only for pretty-printing.
+        val nBits = src.totalNumberOfBits()
+        val labels = Array(nBits) { idx -> "t$idx" }
+
+        // Build a fresh BestSubsetSolution and copy bitset + objectives.
+        val lifted = BestSubsetSolution(
+            numberOfVariables = 1,
+            numberOfObjectives = src.objectives().size,
+            numberOfTopics = nBits,
+            topicLabels = labels,
+            forcedCardinality = null
+        )
+
+        // Copy bits
+        val srcBits = src.variables()[0] as BinarySet
+        val dstBits = BinarySet(nBits).apply { this.or(srcBits) }
+        lifted.variables()[0] = dstBits
+
+        // Copy objectives
+        val m = src.objectives().size
+        var i = 0
+        while (i < m) {
+            lifted.objectives()[i] = src.objectives()[i]
+            i++
+        }
+
+        // Clear delta-eval state; this is a fresh lifted view.
+        lifted.resetIncrementalEvaluationState()
+        lifted.clearLastMutationFlags()
+
+        return lifted
     }
 }
