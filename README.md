@@ -1,17 +1,25 @@
 # NewBestSub
 
-Efficient topic-set reduction for IR evaluation using a multi-objective evolutionary algorithm (NSGA-II).
+Efficient topic-set reduction for IR evaluation using a multi-objective evolutionary algorithm (NSGA-II).  
 Select small topic subsets that preserve the **system ranking** induced by the full set.
 
 [![Docs](https://img.shields.io/badge/docs-website-blue)](https://miccighel.github.io/NewBestSub/)
 [![CI](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml/badge.svg)](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Miccighel/NewBestSub)](https://github.com/Miccighel/NewBestSub/releases)
 [![License](https://img.shields.io/github/license/Miccighel/NewBestSub)](LICENSE)
+
 ![Java 22](https://img.shields.io/badge/Java-22-007396?logo=openjdk&logoColor=white)
 ![Kotlin 2.2](https://img.shields.io/badge/Kotlin-2.2-7F52FF?logo=kotlin&logoColor=white)
 ![jMetal 6.9.1](https://img.shields.io/badge/jMetal-6.9.1-0A7BBB)
 ![Parquet 1.15.2](https://img.shields.io/badge/Parquet-1.15.2-50A9E5)
 ![Deterministic mode](https://img.shields.io/badge/Reproducible-Deterministic%20mode-brightgreen)
+
+![Last Commit](https://img.shields.io/github/last-commit/Miccighel/NewBestSub)
+![Contributors](https://img.shields.io/github/contributors/Miccighel/NewBestSub)
+![Open Issues](https://img.shields.io/github/issues/Miccighel/NewBestSub)
+![Pull Requests](https://img.shields.io/github/issues-pr/Miccighel/NewBestSub)
+![GitHub stars](https://img.shields.io/github/stars/Miccighel/NewBestSub?style=social)
+![Downloads](https://img.shields.io/github/downloads/Miccighel/NewBestSub/total)
 
 > JDIQ 2018: <https://doi.org/10.1145/3239573> • SIGIR 2018: <https://doi.org/10.1145/3209978.3210108>
 
