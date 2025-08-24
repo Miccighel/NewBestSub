@@ -446,12 +446,36 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <!-- Use the resolved property; no ${...:...} default expression -->
-                    <outputDir>${dokka.output.dir}</outputDir>
-                    <failOnWarning>false</failOnWarning>
+                    <outputDir>target/dokka</outputDir>
                     <sourceDirectories>
-                        <dir>${project.basedir}/src/main/kotlin</dir>
+                        <dir>src/main/kotlin</dir>
                     </sourceDirectories>
+                    <moduleName>NewBestSub</moduleName>
+                    <includes>
+                        <include>documentation/module.md</include>
+                        <include>documentation/packages/it.uniud.newbestsub.dataset.md</include>
+                        <include>documentation/packages/it.uniud.newbestsub.math.md</include>
+                        <include>documentation/packages/it.uniud.newbestsub.problem.md</include>
+                        <include>documentation/packages/it.uniud.newbestsub.program.md</include>
+                        <include>documentation/packages/it.uniud.newbestsub.utils.md</include>
+                    </includes>
+                    <documentedVisibilities>
+                        <visibility>PUBLIC</visibility>
+                    </documentedVisibilities>
+                    <reportUndocumented>false</reportUndocumented>
+                    <skipEmptyPackages>true</skipEmptyPackages>
+                    <sourceLinks>
+                        <link>
+                            <path>src/main/kotlin</path>
+                            <url>https://github.com/Miccighel/NewBestSub/blob/main/src/main/kotlin</url>
+                            <lineSuffix>#L</lineSuffix>
+                        </link>
+                        <link>
+                            <path>src/test/kotlin</path>
+                            <url>https://github.com/Miccighel/NewBestSub/blob/main/src/test/kotlin</url>
+                            <lineSuffix>#L</lineSuffix>
+                        </link>
+                    </sourceLinks>
                 </configuration>
             </plugin>
 
