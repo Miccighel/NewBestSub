@@ -3,6 +3,7 @@
 Efficient topic-set reduction for IR evaluation using a multi‑objective evolutionary algorithm (NSGA‑II).  
 Select small topic subsets that preserve the **system ranking** induced by the full set.
 
+[![Docs](https://img.shields.io/badge/docs-website-blue)](https://miccighel.github.io/NewBestSub/)
 [![CI](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml/badge.svg)](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Miccighel/NewBestSub)](https://github.com/Miccighel/NewBestSub/releases)
 [![License](https://img.shields.io/github/license/Miccighel/NewBestSub)](LICENSE)

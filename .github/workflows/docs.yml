@@ -21,22 +21,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '22'
+          cache: maven
 
-      - name: Cache Maven
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: maven-
+      # This writes Dokka output to /docs thanks to the POM 'pages' profile
+      - name: Build Dokka site (to /docs)
+        run: mvn -B -ntp -Ppages -DskipTests=true clean verify site
 
-      - name: Build Dokka
-        run: mvn -B -DskipTests=true dokka:dokka
-
-      - name: Publish to GitHub Pages
+      - name: Publish to GitHub Pages (gh-pages branch)
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: target/dokka
-          # optional:
-          # destination_dir: .
+          publish_dir: docs
+          # Optional first-time setup:
+          # force_orphan: true
           # cname: docs.example.org
