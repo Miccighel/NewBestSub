@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>DatasetView</title>
+    <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
+    <script>var pathToRoot = "../../../";</script>
+    <script>document.documentElement.classList.replace("no-js","js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+    if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    } else {
+        const savedDarkMode = JSON.parse(storage)
+        if(savedDarkMode === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    }
+    </script>
+<script type="text/javascript" src="https://unpkg.com/kotlin-playground@1/dist/playground.min.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../../styles/style.css" rel="Stylesheet">
+<link href="../../../styles/main.css" rel="Stylesheet">
+<link href="../../../styles/prism.css" rel="Stylesheet">
+<link href="../../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../../styles/font-jb-sans-auto.css" rel="Stylesheet">
+<link href="../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../../scripts/clipboard.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/symbol-parameters-wrapper_deferred.js" defer="defer"></script>
+</head>
+<body>
+    <div class="root">
+    <nav class="navigation theme-dark" id="navigation-wrapper">
+            <a class="library-name--link" href="../../../index.html">
+                    NewBestSub
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <div class="filter-section filter-section_loading" id="filter-section">
+                <button class="platform-tag platform-selector jvm-like" data-active=""
+                        data-filter="NewBestSub/JVM">JVM</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox">
+                    <div class="dropdown--header"><span>Platform filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close platform filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id="NewBestSub/JVM"
+                                       data-filter="NewBestSub/JVM"/>
+                                <span class="checkbox--icon"></span>
+                                JVM
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </div>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </nav>
+        <div id="container">
+            <div class="sidebar" id="leftColumn">
+                <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                    <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                        data-role="dropdown-listbox">
+                        <div class="dropdown--header">
+                            <span>
+                                    NewBestSub
+                            </span>
+                            <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                                <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                            </button>
+                        </div>
+                        <div class="sidebar--inner" id="sideMenu"></div>
+                    </ul>
+                    <div class="dropdown--overlay"></div>
+                </div>
+            </div>
+            <div id="main">
+<div class="main-content" data-page-type="classlike" id="content" pageIds="NewBestSub::it.uniud.newbestsub.dataset/DatasetView///PointingToDeclaration//-116316672">
+  <div class="breadcrumbs"><a href="../../../index.html">NewBestSub</a><span class="delimiter">/</span><a href="../index.html">it.uniud.newbestsub.dataset</a><span class="delimiter">/</span><span class="current">DatasetView</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span>Dataset</span><wbr></wbr><span><span>View</span></span></h1>
+    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">class </span><a href="index.html">DatasetView</a></div><p class="paragraph"><p class="paragraph">DatasetView</p> ===========</p><p class="paragraph">Composite façade that fans out to:</p><ul><li><p class="paragraph">CSVView     (streaming-first CSV; owns buffering + canonical sort/rewrite)</p></li><li><p class="paragraph">ParquetView (streaming-first Parquet; owns its <i>own</i> buffering and final write)</p></li></ul><p class="paragraph">Public API unchanged:</p><ul><li><p class="paragraph">print(runResult, model)</p></li><li><p class="paragraph">appendCardinality(model, event)</p></li><li><p class="paragraph">replaceTopBatch(model, blocks)</p></li><li><p class="paragraph">closeStreams(model)</p></li></ul><p class="paragraph">Path helpers:</p><ul><li><p class="paragraph">CSV helpers delegated to CSVView (same names/behavior as before).</p></li><li><p class="paragraph">Parquet helpers provided here for logging/UX convenience.</p></li><li><p class="paragraph">All <i>merged</i> artifacts now live under /CSV/ and /Parquet/ subfolders.</p></li></ul></div></div>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">Members</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="CONSTRUCTOR">
+        <h2 class="">Constructors</h2>
+        <div class="table"><a data-name="1773235497%2FConstructors%2F-116316672" anchor-label="DatasetView" id="1773235497%2FConstructors%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-togglable="CONSTRUCTOR" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-dataset-view.html"><span>Dataset</span><wbr></wbr><span><span>View</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1773235497%2FConstructors%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">constructor</span><span class="token punctuation">(</span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="FUNCTION">
+        <h2 class="">Functions</h2>
+        <div class="table"><a data-name="39153726%2FFunctions%2F-116316672" anchor-label="appendCardinality" id="39153726%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="append-cardinality.html"><span>append</span><wbr></wbr><span><span>Cardinality</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="39153726%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="append-cardinality.html"><span class="token function">appendCardinality</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">event<span class="token operator">: </span><a href="../../it.uniud.newbestsub.dataset.model/-cardinality-result/index.html">CardinalityResult</a></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1598892366%2FFunctions%2F-116316672" anchor-label="closeStreams" id="-1598892366%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="close-streams.html"><span>close</span><wbr></wbr><span><span>Streams</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1598892366%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="close-streams.html"><span class="token function">closeStreams</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Finalization:</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="521839915%2FFunctions%2F-116316672" anchor-label="getAggregatedDataFilePath" id="521839915%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-aggregated-data-file-path.html"><span>get</span><wbr></wbr><span>Aggregated</span><wbr></wbr><span>Data</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="521839915%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-aggregated-data-file-path.html"><span class="token function">getAggregatedDataFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">isTargetAll<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1027546249%2FFunctions%2F-116316672" anchor-label="getAggregatedDataMergedFilePath" id="-1027546249%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-aggregated-data-merged-file-path.html"><span>get</span><wbr></wbr><span>Aggregated</span><wbr></wbr><span>Data</span><wbr></wbr><span>Merged</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1027546249%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-aggregated-data-merged-file-path.html"><span class="token function">getAggregatedDataMergedFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">isTargetAll<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-143805665%2FFunctions%2F-116316672" anchor-label="getAggregatedDataMergedParquetPath" id="-143805665%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-aggregated-data-merged-parquet-path.html"><span>get</span><wbr></wbr><span>Aggregated</span><wbr></wbr><span>Data</span><wbr></wbr><span>Merged</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-143805665%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-aggregated-data-merged-parquet-path.html"><span class="token function">getAggregatedDataMergedParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">isTargetAll<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-394124053%2FFunctions%2F-116316672" anchor-label="getAggregatedDataParquetPath" id="-394124053%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-aggregated-data-parquet-path.html"><span>get</span><wbr></wbr><span>Aggregated</span><wbr></wbr><span>Data</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-394124053%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-aggregated-data-parquet-path.html"><span class="token function">getAggregatedDataParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">isTargetAll<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div><div class="brief "><p class="paragraph">Final-table Parquet paths (mirror CSV Final tables; also under /Parquet/).</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1339348402%2FFunctions%2F-116316672" anchor-label="getFunctionValuesFilePath" id="-1339348402%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-function-values-file-path.html"><span>get</span><wbr></wbr><span>Function</span><wbr></wbr><span>Values</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1339348402%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-function-values-file-path.html"><span class="token function">getFunctionValuesFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-53954110%2FFunctions%2F-116316672" anchor-label="getFunctionValuesMergedFilePath" id="-53954110%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-function-values-merged-file-path.html"><span>get</span><wbr></wbr><span>Function</span><wbr></wbr><span>Values</span><wbr></wbr><span>Merged</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-53954110%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-function-values-merged-file-path.html"><span class="token function">getFunctionValuesMergedFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-929075120%2FFunctions%2F-116316672" anchor-label="getFunctionValuesMergedParquetPath" id="-929075120%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-function-values-merged-parquet-path.html"><span>get</span><wbr></wbr><span>Function</span><wbr></wbr><span>Values</span><wbr></wbr><span>Merged</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-929075120%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-function-values-merged-parquet-path.html"><span class="token function">getFunctionValuesMergedParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-182016956%2FFunctions%2F-116316672" anchor-label="getFunctionValuesParquetPath" id="-182016956%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-function-values-parquet-path.html"><span>get</span><wbr></wbr><span>Function</span><wbr></wbr><span>Values</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-182016956%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-function-values-parquet-path.html"><span class="token function">getFunctionValuesParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-506112694%2FFunctions%2F-116316672" anchor-label="getInfoFilePath" id="-506112694%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-info-file-path.html"><span>get</span><wbr></wbr><span>Info</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-506112694%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-info-file-path.html"><span class="token function">getInfoFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">isTargetAll<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1030176682%2FFunctions%2F-116316672" anchor-label="getInfoMergedFilePath" id="-1030176682%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-info-merged-file-path.html"><span>get</span><wbr></wbr><span>Info</span><wbr></wbr><span>Merged</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1030176682%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-info-merged-file-path.html"><span class="token function">getInfoMergedFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">isTargetAll<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1197623840%2FFunctions%2F-116316672" anchor-label="getInfoMergedParquetPath" id="-1197623840%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-info-merged-parquet-path.html"><span>get</span><wbr></wbr><span>Info</span><wbr></wbr><span>Merged</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1197623840%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-info-merged-parquet-path.html"><span class="token function">getInfoMergedParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">isTargetAll<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1013478292%2FFunctions%2F-116316672" anchor-label="getInfoParquetPath" id="-1013478292%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-info-parquet-path.html"><span>get</span><wbr></wbr><span>Info</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1013478292%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-info-parquet-path.html"><span class="token function">getInfoParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">isTargetAll<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="588942915%2FFunctions%2F-116316672" anchor-label="getTopSolutionsFilePath" id="588942915%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-top-solutions-file-path.html"><span>get</span><wbr></wbr><span>Top</span><wbr></wbr><span>Solutions</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="588942915%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-top-solutions-file-path.html"><span class="token function">getTopSolutionsFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-373779977%2FFunctions%2F-116316672" anchor-label="getTopSolutionsMergedFilePath" id="-373779977%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-top-solutions-merged-file-path.html"><span>get</span><wbr></wbr><span>Top</span><wbr></wbr><span>Solutions</span><wbr></wbr><span>Merged</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-373779977%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-top-solutions-merged-file-path.html"><span class="token function">getTopSolutionsMergedFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1670950907%2FFunctions%2F-116316672" anchor-label="getTopSolutionsMergedParquetPath" id="1670950907%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-top-solutions-merged-parquet-path.html"><span>get</span><wbr></wbr><span>Top</span><wbr></wbr><span>Solutions</span><wbr></wbr><span>Merged</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1670950907%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-top-solutions-merged-parquet-path.html"><span class="token function">getTopSolutionsMergedParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="357023791%2FFunctions%2F-116316672" anchor-label="getTopSolutionsParquetPath" id="357023791%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-top-solutions-parquet-path.html"><span>get</span><wbr></wbr><span>Top</span><wbr></wbr><span>Solutions</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="357023791%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-top-solutions-parquet-path.html"><span class="token function">getTopSolutionsParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1817489622%2FFunctions%2F-116316672" anchor-label="getVariableValuesFilePath" id="-1817489622%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-variable-values-file-path.html"><span>get</span><wbr></wbr><span>Variable</span><wbr></wbr><span>Values</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1817489622%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-variable-values-file-path.html"><span class="token function">getVariableValuesFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="377014686%2FFunctions%2F-116316672" anchor-label="getVariableValuesMergedFilePath" id="377014686%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-variable-values-merged-file-path.html"><span>get</span><wbr></wbr><span>Variable</span><wbr></wbr><span>Values</span><wbr></wbr><span>Merged</span><wbr></wbr><span>File</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="377014686%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-variable-values-merged-file-path.html"><span class="token function">getVariableValuesMergedFilePath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="405078772%2FFunctions%2F-116316672" anchor-label="getVariableValuesMergedParquetPath" id="405078772%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-variable-values-merged-parquet-path.html"><span>get</span><wbr></wbr><span>Variable</span><wbr></wbr><span>Values</span><wbr></wbr><span>Merged</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="405078772%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-variable-values-merged-parquet-path.html"><span class="token function">getVariableValuesMergedParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1919418856%2FFunctions%2F-116316672" anchor-label="getVariableValuesParquetPath" id="1919418856%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-variable-values-parquet-path.html"><span>get</span><wbr></wbr><span>Variable</span><wbr></wbr><span>Values</span><wbr></wbr><span>Parquet</span><wbr></wbr><span><span>Path</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1919418856%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="get-variable-values-parquet-path.html"><span class="token function">getVariableValuesParquetPath</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1082227588%2FFunctions%2F-116316672" anchor-label="print" id="-1082227588%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="print.html"><span><span>print</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1082227588%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="print.html"><span class="token function">print</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">runResult<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-triple/index.html">Triple</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><span data-unresolved-link="org.uma.jmetal.solution.binarysolution/BinarySolution///PointingToDeclaration/">BinarySolution</span><span class="token operator">&gt;</span><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><span data-unresolved-link="org.uma.jmetal.solution.binarysolution/BinarySolution///PointingToDeclaration/">BinarySolution</span><span class="token operator">&gt;</span><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-triple/index.html">Triple</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span><span class="token punctuation">, </span></span><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-116072857%2FFunctions%2F-116316672" anchor-label="replaceTopBatch" id="-116072857%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="replace-top-batch.html"><span>replace</span><wbr></wbr><span>Top</span><wbr></wbr><span><span>Batch</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-116072857%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="replace-top-batch.html"><span class="token function">replaceTopBatch</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">model<span class="token operator">: </span><a href="../-dataset-model/index.html">DatasetModel</a><span class="token punctuation">, </span></span><span class="parameter ">blocks<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-map/index.html">Map</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="51823052%2FFunctions%2F-116316672" anchor-label="writeCsv" id="51823052%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="write-csv.html"><span>write</span><wbr></wbr><span><span>Csv</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="51823052%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="write-csv.html"><span class="token function">writeCsv</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">csvRows<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span><span class="token punctuation">, </span></span><span class="parameter ">resultCsvPath<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-717075938%2FFunctions%2F-116316672" anchor-label="writeParquet" id="-717075938%2FFunctions%2F-116316672" data-filterable-set="NewBestSub/JVM"></a>
+          <div class="table-row" data-filterable-current="NewBestSub/JVM" data-filterable-set="NewBestSub/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="write-parquet.html"><span>write</span><wbr></wbr><span><span>Parquet</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-717075938%2FFunctions%2F-116316672"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="NewBestSub/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="write-parquet.html"><span class="token function">writeParquet</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">rows<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span><span class="token punctuation">, </span></span><span class="parameter ">resultParquetPath<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Generic table writer for Parquet Final tables (header-driven UTF-8 schema, 6-digit decimals).</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <div class="footer--container">
+            <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+            <div class="footer--content">
+                <div>
+                    <span>Generated by </span>
+                    <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                        Dokka
+                    </a>
+                    <div>© 2025 Copyright</div>
+                </div>
+            </div>
+        </div>
+    </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
