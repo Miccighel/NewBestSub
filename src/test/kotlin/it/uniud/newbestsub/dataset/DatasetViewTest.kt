@@ -12,25 +12,26 @@ import java.nio.file.Paths
 import java.io.File
 import java.util.Locale
 
-/*
- * DatasetViewTest
- * ===============
+/**
+ * Tests for [DatasetView] streaming helpers.
  *
- * This test exercises the streaming helpers in DatasetView:
- *  • Append out-of-order FUN/VAR rows and verify that closeStreams() performs a
- *    global rewrite sorted by (K asc, corr asc), keeping FUN and VAR aligned.
- *  • Send two TopKReplaceBatch updates and verify the TOP file contains the
- *    latest block for K=1 and both K=1 and K=2 blocks in K-ascending order.
+ * Covered scenarios:
+ * - **FUN/VAR**: verify that out-of-order rows are globally rewritten and sorted
+ *   by `(K asc, corr asc)` on [DatasetView.closeStreams], keeping FUN and VAR aligned.
+ * - **TOP**: verify that `replaceTopBatch` replaces blocks as expected
+ *   (newer batch replaces older for the same K; multiple K’s are preserved).
  *
  * Notes:
- *  • We use a minimal DatasetModel stub (only fields the View needs for paths).
- *  • We print progress messages, mimicking your existing test style.
+ * - A minimal [DatasetModel] stub is used (only fields needed for path resolution).
+ * - Topic labels are provided for conversions.
+ * - Progress messages are printed to mimic the existing test style.
  */
+@DisplayName("DatasetView – streaming helpers (FUN/VAR sort + TOP batch replace)")
 class DatasetViewTest {
 
     /*
      * Build a minimal model that satisfies DatasetView path computation.
-     * We also provide topic labels so conversions have a label universe.
+     * Provides topic labels so conversions have a label universe.
      */
     private fun stubModel(
         datasetName: String = "TEST_DS",
@@ -53,6 +54,19 @@ class DatasetViewTest {
             this.topicLabels = Array(50) { (401 + it).toString() }
         }
 
+    /**
+     * Verifies [DatasetView] streaming behavior:
+     * - FUN/VAR: appends rows out-of-order, then checks that [DatasetView.closeStreams]
+     *   rewrites them globally sorted by `(K asc, corr asc)`.
+     * - VAR: lines are normalized into `"B64:<payload>"` and decodable.
+     * - TOP: `replaceTopBatch` updates blocks, newer K=1 batch replaces the previous one,
+     *   and K=2 remains from the earlier batch.
+     *
+     * Also checks:
+     * - FUN/VAR alignment (same row count).
+     * - TOP header correctness and Base64-encoding of topics.
+     * - Test cleans up generated CSV files at the end.
+     */
     @Test
     @DisplayName("Streaming: FUN/VAR global sort + TOP replace-batch")
     fun testViewStreaming() {
@@ -71,10 +85,11 @@ class DatasetViewTest {
 
         // NOTE: do NOT call view.openStreams(model) — streaming opens lazily on first append.
 
-        /*
+        /**
          * Helper to emit a single improved K row (intentionally out-of-order).
-         * We write to FUN/VAR and buffer internally for the final global sort.
-         * Use comma + dot-decimal (Locale.ROOT) to avoid locale issues.
+         *
+         * For FUN we use `"K,corr"`, formatted with `Locale.ROOT` to ensure dot-decimal.
+         * For VAR we pass raw forms; CSV view will normalize to Base64 on close.
          */
         fun emit(cardinality: Int, correlation: Double, variableCsvRaw: String) {
             val corrStr = String.format(Locale.ROOT, "%.6f", correlation)
@@ -83,38 +98,26 @@ class DatasetViewTest {
                 threadName = Thread.currentThread().name,
                 cardinality = cardinality,
                 correlation = correlation,
-                /* FUN: "K,corr" */
                 functionValuesCsvLine = "$cardinality,$corrStr",
-                /* VAR: raw form; view will B64-normalize on close */
                 variableValuesCsvLine = variableCsvRaw
             )
             view.appendCardinality(model, event)
             println("[DatasetViewTest] - append FUN/VAR -> K=$cardinality corr=$corrStr")
         }
 
-        /*
-         * Intentionally emit out-of-order:
-         *  Expected final order by (K asc, corr asc):
-         *    (1, 0.80), (1, 0.90), (2, 0.60), (2, 0.70)
-         *
-         * For VAR we pass simple bit-like strings; the CSV view will normalize them
-         * into compact B64 on close.
-         */
+        /* Intentionally emit out-of-order FUN/VAR rows */
         emit(2, 0.70, "1 1 0 0")
         emit(1, 0.90, "1 0 0 0")
         emit(2, 0.60, "0 1 0 0")
         emit(1, 0.80, "1 1 1 0")
 
-        /*
+        /**
          * Helper to create a 10-row TOP block for a given K with ascending correlations.
-         * We deliberately give label-like payloads; the view will convert to Base64.
          */
         fun topBlock(cardinality: Int, baseCorrelation: Double): List<String> =
             (0 until 10).map { i -> "$cardinality,${baseCorrelation + i * 0.01},topicA|topicB|topicC" }
 
-        /*
-         * First TOP batch: K=1 and K=2.
-         */
+        /* First TOP batch: K=1 and K=2 */
         val firstBatch = mapOf(
             1 to topBlock(1, 0.10),
             2 to topBlock(2, 0.20)
@@ -122,17 +125,12 @@ class DatasetViewTest {
         view.replaceTopBatch(model, firstBatch)
         println("[DatasetViewTest] - replaceTopBatch -> K=1,2 (initial)")
 
-        /*
-         * Second TOP batch: replace only K=1 with newer content (starts at 0.30).
-         */
+        /* Second TOP batch: replace only K=1 */
         val secondBatch = mapOf(1 to topBlock(1, 0.30))
         view.replaceTopBatch(model, secondBatch)
         println("[DatasetViewTest] - replaceTopBatch -> K=1 (new content)")
 
-        /*
-         * Closing the streams triggers the global sort & rewrite for FUN/VAR,
-         * and writes Parquet from the canonical snapshot (handled inside DatasetView).
-         */
+        /* Closing triggers global FUN/VAR sort and canonical write of all streams */
         view.closeStreams(model)
         println("[DatasetViewTest] - closeStreams -> FUN/VAR globally sorted & rewritten")
 
@@ -142,7 +140,6 @@ class DatasetViewTest {
             1 to 0.80, 1 to 0.90, 2 to 0.60, 2 to 0.70
         ).sortedWith(compareBy<Pair<Int, Double>> { it.first }.thenBy { it.second })
 
-        /* Tolerate comma/semicolon/whitespace as delimiters and parse exactly two fields */
         val computedFunctionPairs = functionLines.map { line ->
             val parts = line.trim().split(Regex("[,;\\s]+"), limit = 2)
             require(parts.size == 2) { "Bad FUN/VAR line: '$line'" }
@@ -166,17 +163,13 @@ class DatasetViewTest {
         println("[DatasetViewTest] - VAR line count -> expected=${functionLines.size}, computed=${variableLines.size}")
         assertEquals(functionLines.size, variableLines.size)
 
-        // Sanity: each VAR line should be "B64:<payload>" and decodable
         variableLines.forEachIndexed { idx, line ->
             assertTrue(line.startsWith("B64:"), "VAR line #$idx must start with B64:")
             val payload = line.removePrefix("B64:")
-            java.util.Base64.getDecoder().decode(payload)  // throws if invalid
+            java.util.Base64.getDecoder().decode(payload) // throws if invalid
         }
 
-        /* ===== Assertions: TOP =====
-         * Header + 20 data rows (10 for K=1, 10 for K=2).
-         * K=1 block must reflect the SECOND batch (first corr = 0.30).
-         */
+        /* ===== Assertions: TOP ===== */
         val topLines = Files.readAllLines(topSolutionsPath).filter { it.isNotBlank() }
         println("[DatasetViewTest] - TOP total lines (including header): ${topLines.size}")
         assertEquals(1 + 20, topLines.size)
@@ -195,23 +188,23 @@ class DatasetViewTest {
 
         val firstK1 = dataRows.first().split(',', limit = 3)
         val firstK1Correlation = firstK1[1].toDouble()
-        val firstK1Topics = firstK1[2]  /* "B64:<payload>" */
+        val firstK1Topics = firstK1[2]
         println("[DatasetViewTest] - TOP K=1 first corr (expected 0.30): $firstK1Correlation")
         assertEquals(0.30, firstK1Correlation, 1e-12)
 
-        // Sanity: topics are Base64 (CSV uses "B64:" prefix)
         assertTrue(firstK1Topics.startsWith("B64:"), "TOP topics must start with B64:")
         val topicsPayload = firstK1Topics.removePrefix("B64:")
-        java.util.Base64.getDecoder().decode(topicsPayload)  // throws if invalid
+        java.util.Base64.getDecoder().decode(topicsPayload) // throws if invalid
 
-        /* Optional cleanup so the test is repeatable without manual deletes */
+        /* Cleanup so the test is repeatable without manual deletes */
         cleanup(functionValuesPath.toFile(), variableValuesPath.toFile(), topSolutionsPath.toFile())
 
         println("[DatasetViewTest] - Test ends.")
     }
 
-    /*
-     * Best-effort cleanup helper (ignores failures).
+    /**
+     * Best-effort cleanup helper to delete generated files.
+     * Failures are ignored to keep test repeatable across runs.
      */
     private fun cleanup(vararg files: File) {
         files.forEach { file ->

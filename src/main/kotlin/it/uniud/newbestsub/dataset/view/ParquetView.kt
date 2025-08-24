@@ -38,12 +38,39 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Base64
 
+/**
+ * # ParquetView
+ *
+ * Streaming‑first Parquet writer for **FUN**, **VAR**, and **TOP** tables, plus
+ * generic “final” tables (Aggregated/Info). Mirrors [CSVView] semantics.
+ *
+ * ## Responsibilities
+ * - Resolve deterministic output paths via [ViewPaths].
+ * - Stream or snapshot write:
+ *   - **FUN**: `(K, Correlation)`
+ *   - **VAR**: `(K, TopicsB64)` where topics are a Base64‑packed boolean mask.
+ *   - **TOP** (BEST/WORST only): `(K, Correlation, TopicsB64)`.
+ * - Write arbitrary final tables (header‑driven UTF‑8 schema).
+ *
+ * ## Platform
+ * - Compression: `-Dnbs.parquet.codec=SNAPPY|GZIP|UNCOMPRESSED`; default SNAPPY (non‑Windows), GZIP (Windows).
+ * - SNAPPY tempdir auto‑provisioning when needed.
+ * - Windows without `winutils.exe`: falls back to a pure‑NIO [OutputFile].
+ *
+ * ## Ordering
+ * - On close: FUN/VAR rows sorted by `(K asc, corr asc)` except WORST `(K asc, corr desc)`.
+ *
+ * ## Safety
+ * - Toggle: `-Dnbs.parquet.enabled=false` makes methods no‑ops.
+ * - Internal buffers cleared on [closeStreams].
+ */
 class ParquetView {
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     /* ---------------- Paths (Parquet subfolder) ---------------- */
 
+    /** @return Absolute Parquet path for the FUN table of the current run. */
     private fun funParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
             ViewPaths.parquetNameNoTs(
@@ -51,6 +78,7 @@ class ParquetView {
                 Constants.FUNCTION_VALUES_FILE_SUFFIX
             )
 
+    /** @return Absolute Parquet path for the VAR table of the current run. */
     private fun varParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
             ViewPaths.parquetNameNoTs(
@@ -58,6 +86,7 @@ class ParquetView {
                 Constants.VARIABLE_VALUES_FILE_SUFFIX
             )
 
+    /** @return Absolute Parquet path for the TOP table of the current run. */
     private fun topParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
             ViewPaths.parquetNameNoTs(
@@ -65,12 +94,26 @@ class ParquetView {
                 Constants.TOP_SOLUTIONS_FILE_SUFFIX
             )
 
+    /**
+     * Build the aggregated data Parquet path.
+     *
+     * @param model Dataset model.
+     * @param isTargetAll If `true`, use the `ALL` token instead of the current target.
+     * @return Absolute Parquet path.
+     */
     fun getAggregatedDataParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
             ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.AGGREGATED_DATA_FILE_SUFFIX)
     }
 
+    /**
+     * Build the info Parquet path.
+     *
+     * @param model Dataset model.
+     * @param isTargetAll If `true`, use the `ALL` token instead of the current target.
+     * @return Absolute Parquet path.
+     */
     fun getInfoParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
@@ -95,7 +138,12 @@ class ParquetView {
         .required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named("TopicsB64")
         .named("Top")
 
-    /** Generic UTF-8 schema builder for Final tables (columns derived from header). */
+    /**
+     * Build a UTF‑8 string schema from a header row.
+     *
+     * @param messageName Parquet message name.
+     * @param cols Column names to encode as required UTF‑8 fields.
+     */
     private fun buildUtf8Schema(messageName: String, cols: List<String>): MessageType {
         val b = Types.buildMessage()
         cols.forEach { c -> b.required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named(c) }
@@ -104,9 +152,15 @@ class ParquetView {
 
     /* ---------------- Compression / platform helpers ---------------- */
 
+    /** @return `true` if running on Windows. */
     private fun isWindows(): Boolean =
         System.getProperty("os.name").lowercase(Locale.ROOT).contains("win")
 
+    /**
+     * Select compression codec.
+     *
+     * Honors `-Dnbs.parquet.codec`; defaults to GZIP on Windows, SNAPPY otherwise.
+     */
     private fun chooseCodec(): CompressionCodecName {
         when (System.getProperty("nbs.parquet.codec")?.uppercase(Locale.ROOT)) {
             "SNAPPY" -> return CompressionCodecName.SNAPPY
@@ -116,6 +170,13 @@ class ParquetView {
         return if (isWindows()) CompressionCodecName.GZIP else CompressionCodecName.SNAPPY
     }
 
+    /**
+     * Ensure a SNAPPY temp directory exists and is configured.
+     *
+     * Tries: `<out>/tmp-snappy`, `${java.io.tmpdir}/tmp-snappy`, `${user.home}/.snappy`.
+     *
+     * @param outPathStr Output file path (to derive a sibling temp dir).
+     */
     private fun ensureSnappyTemp(outPathStr: String) {
         if (System.getProperty("org.xerial.snappy.tempdir") != null) return
         val candidates = listOfNotNull(
@@ -132,14 +193,18 @@ class ParquetView {
         }
     }
 
+    /** @return `true` if Hadoop `winutils.exe` is available. */
     private fun hasWinutils(): Boolean {
         fun check(dir: String?): Boolean =
             !dir.isNullOrBlank() && Files.exists(Paths.get(dir, "bin", "winutils.exe"))
         return check(System.getenv("HADOOP_HOME")) || check(System.getProperty("hadoop.home.dir"))
     }
 
-    /* -------- NIO OutputFile (fallback when winutils is missing) -------- */
+    /* ---------------- OutputFile fallback (Windows, no winutils) ---------------- */
 
+    /**
+     * Pure‑NIO Parquet output file used when RawLocalFS is unavailable.
+     */
     private class NioOutputFile(private val path: java.nio.file.Path) : OutputFile {
         override fun create(blockSizeHint: Long) = createOrOverwrite(blockSizeHint)
         override fun createOrOverwrite(blockSizeHint: Long): PositionOutputStream {
@@ -171,6 +236,13 @@ class ParquetView {
 
     /* ---------------- Writer factory (RawLocalFS or NIO fallback, OVERWRITE) ---------------- */
 
+    /**
+     * Open a Parquet writer for `pathStr` and `schema`, overwriting any existing file.
+     *
+     * - Uses RawLocalFileSystem when Hadoop is available (or non‑Windows).
+     * - Falls back to [NioOutputFile] on Windows without `winutils.exe`.
+     * - Applies codec from [chooseCodec] and tuned page/group sizes.
+     */
     private fun openWriter(pathStr: String, schema: MessageType): ParquetWriter<Group> {
         val codec = chooseCodec()
         if (codec == CompressionCodecName.SNAPPY) runCatching { ensureSnappyTemp(pathStr) }
@@ -201,14 +273,21 @@ class ParquetView {
 
     /* ---------------- Local formatting helpers ---------------- */
 
+    /** Round to 6 fractional digits. */
     private fun round6(x: Double): Double = round(x * 1_000_000.0) / 1_000_000.0
 
     private val DEC_FMT = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
+    /** Format with 6 fractional digits (Locale.ROOT). */
     private fun fmt6(x: Double): String = DEC_FMT.format(x)
 
     private val NON_ALNUM_UNDERSCORE = Regex("[^A-Za-z0-9_]")
     private val TOKEN_SPLIT = Regex("[,;\\s|]+")
 
+    /**
+     * Normalize a cell:
+     * - Trim
+     * - If numeric‑looking, parse and render with 6 fractional digits
+     */
     private fun normalizeCell(cellText: String): String {
         val t = cellText.trim()
         if (t.isEmpty()) return ""
@@ -218,6 +297,12 @@ class ParquetView {
         return fmt6(v)
     }
 
+    /**
+     * Sanitize header names to valid, unique identifiers:
+     * - Replace non‑alphanumerics with `_`
+     * - Prefix with `_` if starting with a digit
+     * - Deduplicate with numeric suffixes
+     */
     private fun sanitizeAndUniq(rawNames: List<String>): List<String> {
         val used = mutableSetOf<String>()
         return rawNames.map { raw ->
@@ -236,12 +321,24 @@ class ParquetView {
 
     private data class LabelsKey(val ptr: Int, val size: Int, val first: String?)
     private val indexCache = mutableMapOf<LabelsKey, Map<String, Int>>()
+
+    /**
+     * Build and cache `label -> index` maps for the given labels.
+     */
     private fun indexByLabel(labels: Array<String>): Map<String, Int> {
         val key = LabelsKey(System.identityHashCode(labels), labels.size, labels.firstOrNull())
         return indexCache.getOrPut(key) { labels.withIndex().associate { it.value to it.index } }
     }
 
-    /** Convert any incoming topics field (labels/indices/bits/B64) → "B64:<...>" */
+    /**
+     * Convert incoming topics field (labels/indices/bits/B64) into canonical `"B64:<...>"`.
+     *
+     * Accepted:
+     * - `labelA|labelB|...` (also `,`, `;`, space, optional `[ ... ]`)
+     * - indices (e.g., `0|3|5`)
+     * - bitstring (`"0101..."`)
+     * - already encoded `"B64:..."` (returned as is)
+     */
     private fun fieldToB64(raw: String, labels: Array<String>): String {
         val t = raw.trim()
         if (t.startsWith("B64:")) return t
@@ -271,6 +368,9 @@ class ParquetView {
         }
     }
 
+    /**
+     * Pack a boolean mask into little‑endian 64‑bit words and Base64‑encode the bytes.
+     */
     private fun toBase64(mask: BooleanArray): String {
         val words = (mask.size + 63) ushr 6
         val packed = LongArray(words)
@@ -308,6 +408,16 @@ class ParquetView {
 
     /* ---------------- Snapshot (non-streamed) ---------------- */
 
+    /**
+     * Write a full snapshot of FUN/VAR (and TOP when applicable) to Parquet.
+     *
+     * Respects `-Dnbs.parquet.enabled`. If disabled, logs and returns.
+     *
+     * @param model Dataset model (paths, labels, and run parameters).
+     * @param allSolutions All solutions to dump to FUN/VAR.
+     * @param topSolutions Representative top solutions (BEST/WORST only) for TOP.
+     * @param actualTarget Target token used to decide whether to write TOP.
+     */
     fun printSnapshot(
         model: DatasetModel,
         allSolutions: List<BinarySolution>,
@@ -355,6 +465,12 @@ class ParquetView {
 
     /* ---------------- Streaming hooks ---------------- */
 
+    /**
+     * Buffer one streamed FUN/VAR row (Topics normalized to `B64:`) for later write.
+     *
+     * @param model Dataset context.
+     * @param ev Cardinality event (already on natural scale).
+     */
     fun onAppendCardinality(model: DatasetModel, ev: CardinalityResult) {
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
         val buf = funVarBuffers.getOrPut(viewKey) { mutableListOf() }
@@ -366,6 +482,13 @@ class ParquetView {
         buf += FunVarRow(k = ev.cardinality, corrExternal = corrExternal, topicsB64 = topicsB64)
     }
 
+    /**
+     * Merge/replace per‑K TOP blocks from incoming CSV lines.
+     *
+     * @param model Dataset context.
+     * @param blocks Map of K → list of CSV rows (`"K,Corr,Topics"`), **exactly 10 per K**,
+     *               already sorted by correlation ASC.
+     */
     fun onReplaceTopBatch(model: DatasetModel, blocks: Map<Int, List<String>>) {
         if (blocks.isEmpty()) return
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
@@ -382,6 +505,15 @@ class ParquetView {
         }
     }
 
+    /**
+     * Flush all buffered rows to Parquet and clear internal state.
+     *
+     * Ordering:
+     * - FUN/VAR sorted by `(K asc, corr asc)` except WORST `(K asc, corr desc)`.
+     * - TOP written by ascending K and pre‑sorted block order.
+     *
+     * Respects `-Dnbs.parquet.enabled`.
+     */
     fun closeStreams(model: DatasetModel) {
         if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) {
             val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
@@ -467,6 +599,16 @@ class ParquetView {
 
     /* ---------------- Final-table writer (no CSV dependency) ---------------- */
 
+    /**
+     * Write a header‑driven UTF‑8 table to Parquet.
+     *
+     * - Header cells are sanitized and deduplicated.
+     * - Data cells: numeric‑looking values formatted with 6 decimals.
+     * - Respects `-Dnbs.parquet.enabled`.
+     *
+     * @param rows Rows including header (first element).
+     * @param outPath Destination Parquet path.
+     */
     fun writeTable(rows: List<Array<String>>, outPath: String) {
         if (rows.isEmpty()) return
         if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) {

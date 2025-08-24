@@ -9,69 +9,86 @@ import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 import kotlin.math.min
 
-/* --------------------------------------------------------------------------------------------------------------------
- * BinaryPruningCrossover
- * --------------------------------------------------------------------------------------------------------------------
- * Behavior
- * --------
- * Given two parent masks (true = topic selected):
- *   • ChildSelective:  bit = (ParentA AND ParentB)
- *   • ChildInclusive:  bit = (ParentA OR  ParentB)
+/**
+ * **BinaryPruningCrossover** — logical pruning crossover operator for binary masks.
  *
- * Robustness
- * ----------
- * jMetal may occasionally provide DefaultBinarySolution instances. We *lift* any BinarySolution
- * to BestSubsetSolution before operating, cloning the bitset/objectives and synthesizing labels.
+ * Given two parent topic masks (`true` = topic selected), produces two children:
  *
- * Guarantees
- * ----------
- *   • Both children have EXACTLY N bits (N = totalNumberOfBits()).
- *   • Each child has at least one bit set; if not, one random bit is flipped to true.
- *   • No access to private fields (e.g., topicLabels) — children are copies with replaced bitsets.
+ * - **Selective child**: `bit = ParentA AND ParentB` (intersection of selected topics).
+ * - **Inclusive child**: `bit = ParentA OR  ParentB` (union of selected topics).
  *
- * Determinism
- * -----------
- * All randomness goes through jMetal’s singleton RNG, so external seeding works.
+ * Behavior:
+ * - Each child has exactly `N` bits, where `N = totalNumberOfBits()`.
+ * - If a child mask is all-false, one random bit is flipped to `true` to ensure feasibility.
+ * - Operates in place on [BestSubsetSolution] copies.
  *
- * Complexity
- * ----------
- * O(N) bit ops per crossover call.
- * ------------------------------------------------------------------------------------------------------------------ */
+ * Robustness:
+ * - jMetal may pass [DefaultBinarySolution] instances. This operator lifts them into
+ *   [BestSubsetSolution] objects (bitset and objectives copied, labels synthesized).
+ *
+ * Determinism:
+ * - All randomness goes through jMetal’s [JMetalRandom] singleton for reproducibility.
+ *
+ * Complexity:
+ * - O(N) bitwise operations per crossover.
+ *
+ * @param probability Per-pair crossover probability. If the random draw is `>= probability`,
+ *   no crossover is performed and the children are normalized clones of the parents.
+ */
 class BinaryPruningCrossover(private var probability: Double) : CrossoverOperator<BinarySolution> {
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
-    /* jMetal 6.x operator API */
+    /** jMetal 6.x operator API: returns the configured crossover probability. */
     override fun crossoverProbability(): Double = probability
+
+    /** Always requires 2 parents. */
     override fun numberOfRequiredParents(): Int = 2
+
+    /** Always generates 2 children. */
     override fun numberOfGeneratedChildren(): Int = 2
 
+    /**
+     * Executes the pruning crossover on the given [parents].
+     *
+     * Workflow:
+     * 1. Ensure both parents are [BestSubsetSolution] (lift if necessary).
+     * 2. Normalize parent masks to exactly `N` bits.
+     * 3. With probability [probability], build:
+     *    - Selective child = bitwise `AND`.
+     *    - Inclusive child = bitwise `OR`.
+     *    Otherwise, clone normalized parent masks.
+     * 4. Ensure each child has at least one `true` bit.
+     * 5. Materialize children as copies of parents with new bitsets installed.
+     * 6. Reset caches/flags for safety.
+     *
+     * @param parents list of two parent solutions.
+     * @return a mutable list with two children ([BestSubsetSolution]).
+     * @throws IllegalArgumentException if fewer than 2 parents are supplied or bit lengths differ.
+     */
     override fun execute(parents: MutableList<BinarySolution>): MutableList<BinarySolution> {
-        /* Defensive: NSGA-II should always pass exactly 2 parents. */
         require(parents.size >= 2) {
             "BinaryPruningCrossover requires 2 parents (got ${parents.size})"
         }
 
-        /* ------------------------------------------------------------------------------------
-         * Normalize inputs: operate on BestSubsetSolution (adapter handles DefaultBinarySolution).
-         * ---------------------------------------------------------------------------------- */
+        // Normalize inputs: operate on BestSubsetSolution (adapter handles DefaultBinarySolution).
         val parentA: BestSubsetSolution = ensureBestSubsetView(parents[0])
         val parentB: BestSubsetSolution = ensureBestSubsetView(parents[1])
 
-        /* Invariant: both parents must share the same N (number of topics). */
+        // Invariant: both parents must share the same N (number of topics).
         val nBits = parentA.totalNumberOfBits()
         require(parentB.totalNumberOfBits() == nBits) {
             "Parents bit-length mismatch: ${parentA.totalNumberOfBits()} vs ${parentB.totalNumberOfBits()}"
         }
 
-        /* Normalize masks to exactly N bits to avoid length drift. */
+        // Normalize masks to exactly N bits.
         val maskA: BooleanArray = normalizeToLength(parentA.retrieveTopicStatus(), nBits)
         val maskB: BooleanArray = normalizeToLength(parentB.retrieveTopicStatus(), nBits)
 
         val rng = JMetalRandom.getInstance()
         val performCrossover = rng.nextDouble() < probability
 
-        /* Build children masks (always length = N). */
+        // Build children masks (always length = N).
         val childSelectiveMask = BooleanArray(nBits)
         val childInclusiveMask = BooleanArray(nBits)
 
@@ -80,21 +97,21 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
             while (i < nBits) {
                 val a = maskA[i]
                 val b = maskB[i]
-                childSelectiveMask[i] = a && b  /* selective (AND)   */
-                childInclusiveMask[i] = a || b  /* inclusive (OR)    */
+                childSelectiveMask[i] = a && b  // selective (AND)
+                childInclusiveMask[i] = a || b  // inclusive (OR)
                 i++
             }
         } else {
-            /* No crossover → normalized clones. */
+            // No crossover → normalized clones.
             System.arraycopy(maskA, 0, childSelectiveMask, 0, nBits)
             System.arraycopy(maskB, 0, childInclusiveMask, 0, nBits)
         }
 
-        /* Ensure feasibility: at least one topic selected per child. */
+        // Ensure feasibility: at least one topic selected per child.
         ensureAtLeastOneTrue(childSelectiveMask, nBits, rng)
         ensureAtLeastOneTrue(childInclusiveMask, nBits, rng)
 
-        /* Materialize children as COPIES of the parents, then overwrite their bitset with N-bit masks. */
+        // Materialize children as COPIES of the parents, then overwrite their bitsets.
         val childSelective: BestSubsetSolution = parentA.copy().apply {
             variables()[0] = createNewBitSet(nBits, childSelectiveMask.toTypedArray())
             resetIncrementalEvaluationState()
@@ -106,7 +123,7 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
             clearLastMutationFlags()
         }
 
-        /* Debug traces (safe at DEBUG level). */
+        // Debug traces (safe at DEBUG level).
         logger.debug("<P1 sel=${parentA.numberOfSelectedTopics}> ${parentA.getVariableValueString(0)}")
         logger.debug("<P2 sel=${parentB.numberOfSelectedTopics}> ${parentB.getVariableValueString(0)}")
         logger.debug("<C1 sel=${childSelective.numberOfSelectedTopics}> ${childSelective.getVariableValueString(0)}")
@@ -115,9 +132,11 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
         return mutableListOf(childSelective, childInclusive)
     }
 
-    /* ------------------------------------- Helpers ------------------------------------- */
+    // -------------------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------------------
 
-    /* Copy/resize a BooleanArray to exactly n elements (truncate or pad with false). */
+    /** Copy/resize a [BooleanArray] to exactly [n] elements (truncate or pad with `false`). */
     private fun normalizeToLength(mask: BooleanArray, n: Int): BooleanArray {
         if (mask.size == n) return mask
         val resized = BooleanArray(n)
@@ -126,7 +145,13 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
         return resized
     }
 
-    /* Ensure at least one 'true' in mask; if none, flip a random index to true. */
+    /**
+     * Ensures at least one `true` in [mask]. If none, flips a random index to `true`.
+     *
+     * @param mask boolean array to validate/repair.
+     * @param n length of mask.
+     * @param rng jMetal RNG for deterministic reproducibility.
+     */
     private fun ensureAtLeastOneTrue(mask: BooleanArray, n: Int, rng: JMetalRandom) {
         var anyTrue = false
         var i = 0
@@ -140,7 +165,14 @@ class BinaryPruningCrossover(private var probability: Double) : CrossoverOperato
         }
     }
 
-    /* If input is BestSubsetSolution, return it; otherwise lift DefaultBinarySolution into BestSubsetSolution. */
+    /**
+     * Ensures we operate on a [BestSubsetSolution]. If [src] is already one, returns it.
+     * Otherwise, lifts the [DefaultBinarySolution] into a [BestSubsetSolution]:
+     *
+     * - Synthesizes topic labels (`"t0"`, `"t1"`, …).
+     * - Copies the bitset and objectives.
+     * - Clears caches and mutation flags.
+     */
     private fun ensureBestSubsetView(src: BinarySolution): BestSubsetSolution {
         if (src is BestSubsetSolution) return src
 

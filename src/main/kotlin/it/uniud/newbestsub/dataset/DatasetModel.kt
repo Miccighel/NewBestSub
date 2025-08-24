@@ -9,7 +9,6 @@ import it.uniud.newbestsub.dataset.model.TopKReplaceBatch
 import it.uniud.newbestsub.dataset.model.buildPrecomputedData
 import it.uniud.newbestsub.dataset.model.toPrimitiveAPRows
 import it.uniud.newbestsub.math.Correlations
-import it.uniud.newbestsub.math.Statistics
 import it.uniud.newbestsub.problem.*
 import it.uniud.newbestsub.problem.operators.BinaryPruningCrossover
 import it.uniud.newbestsub.problem.operators.FixedKSwapMutation
@@ -35,46 +34,44 @@ import java.io.FileReader
 import java.util.*
 import kotlinx.coroutines.channels.SendChannel
 
-/*
- * Model + streaming semantics
- * ===========================
+/**
+ * DatasetModel
+ * ============
  *
- * Artifacts produced (CSV + Parquet):
- *  - -Fun : objective rows (K, correlation), streamed during the run.
- *  - -Var : genotype rows, packed as Base64 (compact) and streamed in lockstep with FUN:
- *           • BEST/WORST → only when the per-K representative improves (monotone).
- *           • AVERAGE    → exactly one row per K (the last sampled genotype).
- *  - -Top : top solutions per cardinality K (up to 10 lines per K),
- *           maintained by block replacement (not by append).
+ * In-memory model orchestrating:
+ * - The dataset AP matrix (systems × topics).
+ * - Streaming NSGA-II execution for BEST/WORST and sampling for AVERAGE.
+ * - Compact caches so aggregation/info queries don’t retain large populations.
  *
- * Branches:
- *  - AVERAGE
- *      • For each K = 1..N, sample `numberOfRepetitions` random subsets of size K,
- *        compute correlations vs the full-set mean vector, and stream exactly one -Fun/-Var row.
- *      • Percentiles (1%..99%) are computed from the same repetition samples.
- *      • -Top is not used in AVERAGE.
+ * ## Output artifacts
+ * - **-Fun**: objective rows `(K, correlation)` streamed during runs.
+ * - **-Var**: genotype rows as Base64 masks (`"B64:<...>"`) streamed with -Fun.
+ *   - BEST/WORST → only when the per-K representative improves (monotone).
+ *   - AVERAGE    → exactly one row per K.
+ * - **-Top**: top solutions per cardinality (≤ 10 per K), maintained via block replacement.
  *
- *  - BEST / WORST
- *      • Internal objective encoding for NSGA-II:
- *          BEST : obj[0] = +K,  obj[1] = -corr   (maximize corr)
- *          WORST: obj[0] = -K,  obj[1] = +corr   (minimize corr)
- *        The encoding is local to the algorithm; external printing always uses natural signs.
- *      • Per generation:
- *          (A) Choose one representative per K from the entire generation on the natural scale.
- *          (B) Append -Fun/-Var only if the representative improves the best-so-far for that K.
- *          (C) Maintain -Top from a persistent per-K pool on the natural scale; replace on change.
+ * ## Branches
+ * - **AVERAGE**:
+ *   - For each K = 1..N, sample [numberOfRepetitions] subsets.
+ *   - Correlate vs full-set mean vector, stream exactly one FUN/VAR row.
+ *   - Percentiles computed from the same samples. TOP unused.
+ * - **BEST/WORST**:
+ *   - NSGA-II objective encoding (internal):
+ *     - BEST  → obj[0] = +K, obj[1] = -corr
+ *     - WORST → obj[0] = -K, obj[1] = +corr
+ *   - Per generation: select representative per K (natural scale), stream on improvement,
+ *     and update a persistent TOP pool.
  *
- * RAM-focused changes
- * -------------------
- *  • After load/expansion, call sealData(): we build the dense primitive PrecomputedData and drop
- *    the boxed AP maps to release memory early.
- *  • During runs, we DO NOT retain large solution lists. Instead we cache only:
- *      - per-K best correlation (corrByK)
- *      - per-K representative mask as Base64 (repMaskB64ByK)
- *    These answer aggregation/info queries without storing whole populations.
- *  • Top pool entries no longer keep BestSubsetSolution references (lighter TopEntry).
+ * ## RAM-focused design
+ * - After load/expansion, call [sealData] to drop boxed AP maps and keep dense [PrecomputedData].
+ * - During runs, cache only:
+ *   - per-K representative correlation: [corrByK]
+ *   - per-K representative mask as Base64: [repMaskB64ByK]
+ * - TOP pool uses lightweight entries ([TopEntry]) without holding full solutions.
  */
 class DatasetModel {
+
+    /* --------------------------- Basic dataset fields --------------------------- */
 
     var datasetName = ""
     var numberOfSystems = 0
@@ -89,19 +86,20 @@ class DatasetModel {
     var systemLabels = emptyArray<String>()
     var topicLabels = emptyArray<String>()
 
-    /* Boxed AP rows only during load/expansion. sealData() will clear these. */
+    /** Boxed AP rows only during load/expansion. Cleared by [sealData]. */
     var averagePrecisions = linkedMapOf<String, Array<Double>>()
     private var originalAveragePrecisions = linkedMapOf<String, Array<Double>>()
 
-    /* Full-set mean AP per system (external view kept for API compat). */
+    /** Full-set mean AP per system (boxed for API compatibility). */
     var meanAveragePrecisions = emptyArray<Double>()
 
-    /* AVERAGE percentiles (materialized as List<Double> for the final table). */
+    /** AVERAGE branch percentiles (materialized at the end). */
     var percentiles = linkedMapOf<Int, List<Double>>()
 
-    /* Kept for API compat; we no longer populate it to avoid per-topic maps. */
+    /** Kept for API compatibility; no longer populated to avoid per-topic maps. */
     var topicDistribution = linkedMapOf<String, MutableMap<Double, Boolean>>()
 
+    /** Wall-clock computing time in milliseconds (last run). */
     var computingTime: Long = 0
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
@@ -112,30 +110,40 @@ class DatasetModel {
 
     /* ---------- Memory-friendly run-time state ---------- */
 
-    /* Shared, read-only numeric bundle (dense primitive matrices). Built in refreshDerivedData()/sealData(). */
+    /** Shared, read-only numeric bundle (dense primitive matrices). Built in [refreshDerivedData] or [sealData]. */
     private var precomputedData: PrecomputedData? = null
 
-    /* Per-K representative presence mask, compact textual form "B64:<...>". */
+    /** Per-K representative presence mask, compact textual form `"B64:<...>"`. */
     private val repMaskB64ByK = mutableMapOf<Int, String>()
 
-    /* Per-K correlation (natural scale), used by aggregate()/info() without scanning large lists. */
+    /** Per-K correlation (natural scale), used by aggregate/info helpers. */
     private val corrByK = java.util.TreeMap<Int, Double>()
 
-    /* Index for O(1) topic lookups by label */
+    /** Topic label → index (O(1) presence lookups). */
     private var topicIndexByLabel: Map<String, Int> = emptyMap()
 
     /* ------------------------------ Persistent Top pool (BEST/WORST) ------------------------------ */
 
-    /* Lighter TopEntry (no BestSubsetSolution reference). */
+    /** Lightweight Top entry (no BestSubsetSolution reference). */
     private data class TopEntry(val natural: Double, val maskB64: String)
 
     private val topPoolByK: MutableMap<Int, MutableMap<String, TopEntry>> = mutableMapOf()
 
+    /**
+     * Convert internal objective encoding correlation to natural scale.
+     *
+     * BEST stores `-corr`; WORST stores `+corr`. This returns the natural (positive-is-better) value.
+     */
     private fun naturalCorrOf(s: BestSubsetSolution): Double {
         val internal = s.getCorrelation() // BEST: -corr, WORST: +corr
         return if (targetToAchieve == Constants.TARGET_BEST) -internal else internal
     }
 
+    /**
+     * Build CSV lines for the TOP pool of a given K.
+     * Lines are `"K,Correlation,B64:<mask>"`, ordered by correlation (desc for BEST, asc for WORST),
+     * limited to [Constants.TOP_SOLUTIONS_NUMBER].
+     */
     private fun buildTopLinesFromPool(k: Int): List<String> {
         val pool = topPoolByK[k] ?: return emptyList()
         val ordered = if (targetToAchieve == Constants.TARGET_BEST) {
@@ -143,7 +151,6 @@ class DatasetModel {
         } else {
             pool.values.sortedWith(compareBy<TopEntry> { it.natural }.thenBy { it.maskB64 })
         }
-        /* We know the cardinality from `k`, so we don't store the whole solution. */
         return ordered.take(Constants.TOP_SOLUTIONS_NUMBER).map { e ->
             "$k,${e.natural},B64:${e.maskB64}"
         }
@@ -151,6 +158,16 @@ class DatasetModel {
 
     /* ------------------------------ Data loading/expansion ------------------------------ */
 
+    /**
+     * Load dataset AP matrix from a CSV file.
+     *
+     * - First row is the header (topic labels).
+     * - Column 0 is system ID; remaining columns are AP values (doubles).
+     * - Initializes [averagePrecisions], [originalAveragePrecisions], [systemLabels], [topicLabels],
+     *   [numberOfSystems], [numberOfTopics], and builds derived structures via [refreshDerivedData].
+     *
+     * @param datasetPath Path to the CSV dataset.
+     */
     fun loadData(datasetPath: String) {
         val csvReader = CSVReader(FileReader(datasetPath))
         topicLabels = csvReader.readNext()
@@ -178,6 +195,13 @@ class DatasetModel {
         refreshDerivedData() /* builds topic index + precomputedData (keeps boxed rows for now) */
     }
 
+    /**
+     * Expand topics by appending randomized columns to AP rows and labels.
+     *
+     * @param expansionCoefficient Expansion factor (stored for metadata only).
+     * @param randomizedAveragePrecisions Mapping `system -> DoubleArray(extra APs)` to append.
+     * @param randomizedTopicLabels Labels for the new topics to append.
+     */
     fun expandTopics(
         expansionCoefficient: Int,
         randomizedAveragePrecisions: Map<String, DoubleArray>,
@@ -195,6 +219,15 @@ class DatasetModel {
         refreshDerivedData()
     }
 
+    /**
+     * Expand systems by either reverting to an original prefix (if fewer than the truth)
+     * or by appending randomized systems with their AP rows and labels.
+     *
+     * @param expansionCoefficient Expansion factor (stored for metadata).
+     * @param trueNumberOfSystems Ground-truth number of systems to compare against.
+     * @param randomizedAveragePrecisions Mapping for new randomized systems → AP rows.
+     * @param randomizedSystemLabels Labels for the new randomized systems.
+     */
     fun expandSystems(
         expansionCoefficient: Int,
         trueNumberOfSystems: Int,
@@ -222,14 +255,12 @@ class DatasetModel {
     }
 
     /**
-     * refreshDerivedData
-     * ------------------
      * Rebuild cheap derived structures after load/expansion:
-     *  - topicDistribution (kept empty for API compat)
-     *  - topicIndexByLabel
-     *  - systemLabels / numberOfSystems
-     *  - primitive PrecomputedData (dense matrices)
-     *  - meanAveragePrecisions (external view mirror, from primitive means)
+     * - `topicDistribution` (kept empty for API compat)
+     * - [topicIndexByLabel]
+     * - [systemLabels] / [numberOfSystems] (preserve insertion order)
+     * - Primitive [PrecomputedData] bundle (dense matrices)
+     * - [meanAveragePrecisions] (boxed mirror)
      */
     private fun refreshDerivedData() {
         /* Reset per-topic presence matrix (kept for API compat). */
@@ -254,11 +285,12 @@ class DatasetModel {
     }
 
     /**
-     * sealData
-     * --------
-     * Call once after the last expand*() and before solve().
-     * Converts boxed AP rows to the dense primitive bundle (if not already),
-     * then clears averagePrecisions/originalAveragePrecisions to release memory.
+     * Seal the dataset before solving.
+     *
+     * - Ensures [PrecomputedData] exists (built from boxed rows if needed).
+     * - Updates [meanAveragePrecisions], [systemLabels], [numberOfSystems], [numberOfTopics]
+     *   from the primitive bundle.
+     * - Clears boxed matrices ([averagePrecisions], [originalAveragePrecisions]) to reclaim RAM.
      */
     fun sealData() {
         if (precomputedData == null) {
@@ -278,6 +310,18 @@ class DatasetModel {
 
     /* ------------------------------ Solve + streaming ------------------------------ */
 
+    /**
+     * Run the experiment (AVERAGE | BEST | WORST) and stream progress events to consumers.
+     *
+     * - AVERAGE: per-K repetition sampling; streams one [CardinalityResult] per K.
+     * - BEST/WORST: NSGA-II streaming; streams [CardinalityResult] on per-K improvement,
+     *   plus [TopKReplaceBatch] blocks; ends with [RunCompleted].
+     *
+     * @param parameters Execution parameters (dataset name, target, counts, etc.).
+     * @param out Optional channel to receive [ProgressEvent]s in order (back-pressured).
+     * @return Triple(emptyList, emptyList, signature) — lists are empty to avoid retaining populations.
+     * @throws ParseException if population size is invalid for BEST/WORST.
+     */
     fun solve(
         parameters: Parameters,
         out: SendChannel<ProgressEvent>? = null
@@ -508,8 +552,8 @@ class DatasetModel {
                     val cand = nat(bs)
                     val prev = bestSeenCorrelationByK[k]
                     val improved = (prev == null) || (
-                            if (targetToAchieve == Constants.TARGET_WORST) cand < prev - 1e-12 else cand > prev + 1e-12
-                            )
+                        if (targetToAchieve == Constants.TARGET_WORST) cand < prev - 1e-12 else cand > prev + 1e-12
+                    )
                     if (improved) {
                         bestSeenCorrelationByK[k] = cand
                         improvedRows += k to bs
@@ -632,14 +676,23 @@ class DatasetModel {
         return Triple(emptyList(), emptyList(), Triple(targetToAchieve, Thread.currentThread().name, totalRuntimeMs))
     }
 
+    /**
+     * Send a [ProgressEvent] to the optional channel, preserving order and back-pressure.
+     */
     private fun sendProgress(out: SendChannel<ProgressEvent>?, event: ProgressEvent) {
         if (out == null) return
         kotlinx.coroutines.runBlocking { out.send(event) } /* preserve ordering / back-pressure */
     }
 
-    /* Canonical ordering is now handled by writers; we no longer keep big lists here. */
-
     /* Target encoding loader (internal sign scheme) */
+
+    /**
+     * Load the target mode (BEST/WORST) and return an objective encoder function
+     * that fills the two objectives given a solution and its correlation (natural scale).
+     *
+     * BEST:  obj[0] = +K, obj[1] = -corr
+     * WORST: obj[0] = -K, obj[1] = +corr
+     */
     private fun loadTargetToAchieve(targetToAchieve: String): (BinarySolution, Double) -> BinarySolution {
         val encodeForBest: (BinarySolution, Double) -> BinarySolution = { solution, correlation ->
             /* BEST: obj[0] = +K, obj[1] = -corr (maximize corr) */
@@ -662,12 +715,24 @@ class DatasetModel {
         }
     }
 
-    /* -------------------- Aggregation/presence helpers (now backed by compact caches) -------------------- */
+    /* -------------------- Aggregation/presence helpers (compact caches) -------------------- */
 
+    /**
+     * Find cached correlation for a cardinality (if present).
+     *
+     * @param cardinality K as a double.
+     * @return Correlation in natural scale, or `null` if unknown.
+     */
     fun findCorrelationForCardinality(cardinality: Double): Double? =
         corrByK[cardinality.toInt()]
 
-    /* O(1) presence lookup using the cached representative mask per K (decoded on demand). */
+    /**
+     * O(1) presence lookup using the cached representative mask per K (decoded on demand).
+     *
+     * @param topicLabel Topic label to check for.
+     * @param cardinality K as a double.
+     * @return `true` if the topic is present in the cached representative for K.
+     */
     fun isTopicInASolutionOfCardinality(topicLabel: String, cardinality: Double): Boolean {
         val k = cardinality.toInt()
         val b64 = repMaskB64ByK[k] ?: return false
@@ -677,8 +742,7 @@ class DatasetModel {
     }
 
     /**
-     * Return a COPY of the presence mask for the given cardinality K,
-     * or null if no representative was cached for that K.
+     * Return a **copy** of the representative presence mask for K, or `null` if none cached.
      */
     fun retrieveMaskForCardinality(cardinality: Double): BooleanArray? {
         val k = cardinality.toInt()
@@ -687,9 +751,9 @@ class DatasetModel {
     }
 
     /**
-     * Return a presence mask sized exactly to `expectedSize`.
-     *  - If we have a cached mask for K, decode and pad/truncate to fit.
-     *  - If not, return an all-false mask of the requested size.
+     * Return the presence mask for K sized exactly to [expectedSize].
+     * - If cached, decode and pad/truncate to fit.
+     * - Else return an all-false mask of the requested size.
      */
     fun retrieveMaskForCardinalitySized(cardinality: Double, expectedSize: Int): BooleanArray {
         val k = cardinality.toInt()
@@ -703,22 +767,21 @@ class DatasetModel {
     }
 
     /**
-     * Return the presence mask for K encoded as "B64:<base64>".
-     * Always sized to the model's current numberOfTopics (stored that way).
+     * Return the presence mask for K encoded as `"B64:<base64>"` (always sized to current [numberOfTopics]).
      */
     fun retrieveMaskB64ForCardinality(cardinality: Double): String =
         "B64:" + (repMaskB64ByK[cardinality.toInt()] ?: "")
 
-    /* Small, stable signature of a block to detect content/order changes. */
+    /** Small, stable signature of a block to detect content/order changes. */
     private fun topBlockSig(lines: List<String>): Int =
         lines.joinToString("\n").hashCode()
 
     /* --------------------- VAR streaming: compact Base64 payload --------------------- */
 
-    /*
+    /**
      * Format a -Fun row in the external (natural) view.
-     *  - BEST : print K, +corr (flip internal sign before printing)
-     *  - WORST: print K, +corr (K is stored negative internally; corr already natural)
+     * - BEST : print `K,+corr` (flip internal sign before printing)
+     * - WORST: print `K,+corr` (K is stored negative internally; corr already natural)
      */
     private fun BinarySolution.toFunLineFor(@Suppress("UNUSED_PARAMETER") target: String): String {
         val s = this as BestSubsetSolution
@@ -727,7 +790,7 @@ class DatasetModel {
         return "$kInt,$naturalCorr"
     }
 
-    /** Pack a BooleanArray into LongArray words (LSB-first within each 64-bit word). */
+    /** Pack a BooleanArray into 64-bit words (LSB-first within each word). */
     private fun packTopicMaskToLongWords(topicPresenceMask: BooleanArray): LongArray {
         val totalBits = topicPresenceMask.size
         val numberOfWords = (totalBits + 63) ushr 6  /* ceil(totalBits / 64) */
@@ -757,7 +820,7 @@ class DatasetModel {
         return packedWords
     }
 
-    /** Serialize packed Long words to a little-endian ByteArray (8 bytes per word). */
+    /** Serialize packed long words to a little-endian ByteArray (8 bytes per word). */
     private fun longWordsToLittleEndianBytes(packedWords: LongArray): ByteArray {
         val byteBuffer = ByteArray(packedWords.size * java.lang.Long.BYTES)
         var writeOffset = 0
@@ -774,24 +837,29 @@ class DatasetModel {
         return byteBuffer
     }
 
-    /** BooleanArray → Base64 (unpadded) textual form for the VAR line. */
+    /** BooleanArray → Base64 (unpadded) textual form. */
     private fun booleanMaskToBase64(topicPresenceMask: BooleanArray): String {
         val packedWords = packTopicMaskToLongWords(topicPresenceMask)
         val packedBytes = longWordsToLittleEndianBytes(packedWords)
         return java.util.Base64.getEncoder().withoutPadding().encodeToString(packedBytes)
     }
 
-    /** AVERAGE branch helper: BooleanArray → VAR line (packed Base64, prefixed). */
+    /** AVERAGE branch helper: BooleanArray → VAR line (`"B64:<...>"`). */
     private fun packTopicMaskToVarLineBase64(topicPresenceMask: BooleanArray): String =
         "B64:" + booleanMaskToBase64(topicPresenceMask)
 
-    /** BinarySolution → VAR line (packed Base64, prefixed). */
+    /** BinarySolution → VAR line (`"B64:<...>"`). */
     private fun BinarySolution.toVarLinePackedBase64(): String {
         val topicPresenceMask = (this as BestSubsetSolution).retrieveTopicStatus()
         return "B64:" + booleanMaskToBase64(topicPresenceMask)
     }
 
-    /** Base64 (little-endian words, LSB-first bits) → BooleanArray sized to expectedSize. */
+    /**
+     * Base64 (little-endian words, LSB-first bits) → BooleanArray sized to [expectedSize].
+     *
+     * @param b64 Base64 string (no `"B64:"` prefix; this method expects raw base64).
+     * @param expectedSize Desired mask length.
+     */
     private fun base64ToBooleanMask(b64: String, expectedSize: Int): BooleanArray {
         if (b64.isEmpty()) return BooleanArray(expectedSize)
         val raw = java.util.Base64.getDecoder().decode(b64)
@@ -823,6 +891,11 @@ class DatasetModel {
 
     /* ---------------------- Streaming NSGA-II wrapper (classic API + MNDS) ---------------------- */
 
+    /**
+     * Streaming NSGA-II variant with a generation hook:
+     * - Calls [onGen] on init, every generation, and before result().
+     * - Uses MNDS replacement (MergeNonDominatedSortRanking + crowding distance).
+     */
     private class StreamingNSGAII(
         problem: Problem<BinarySolution>,
         maxEvaluations: Int,
@@ -901,6 +974,9 @@ class DatasetModel {
             return nextGeneration
         }
 
+        /**
+         * Compute crowding distances for a front (descending preferred in replacement).
+         */
         private fun computeCrowdingDistances(frontSolutions: List<BinarySolution>): Map<BinarySolution, Double> {
             val frontSize = frontSolutions.size
             if (frontSize == 0) return emptyMap()
@@ -948,14 +1024,16 @@ class DatasetModel {
 
     /* --------------------------- Post-write cleanup helpers --------------------------- */
 
-    /** Drop percentile lists (often large) once final CSV/Parquet tables have been written. */
+    /**
+     * Drop percentile lists (often large) once final CSV/Parquet tables have been written.
+     */
     fun clearPercentiles() {
         percentiles.clear()
     }
 
     /**
-     * Drop per-run caches (rep masks, corr map, top pools).
-     * Call after closeStreams() and after aggregate/info have consumed this model.
+     * Drop per-run caches (representative masks, correlation map, TOP pools).
+     * Call after writers have closed and aggregations have consumed the model.
      */
     fun clearAfterSerialization() {
         repMaskB64ByK.clear()

@@ -18,47 +18,68 @@ import java.util.*
 import java.util.SplittableRandom
 import kotlin.collections.LinkedHashMap
 
-/*
+/**
  * DatasetController
- * -----------------
+ * =================
+ *
  * Orchestrates:
- *  - DatasetModel lifecycle (load/expand/solve)
- *  - Streaming consumption (printer coroutine)
- *  - View writing for final snapshots and merged artifacts
+ * - [DatasetModel] lifecycle (load → optional expand → seal → solve)
+ * - Streaming consumption (printer coroutine reading [ProgressEvent]s)
+ * - View writing for final snapshots and merged artifacts (CSV + Parquet)
  *
- * Determinism:
- *  - When Parameters.deterministic == true we execute **sequentially** and route all
- *    randomness through jMetal's singleton using RandomBridge.withSeed(...).
- *  - Expansion helpers (expandTopics/expandSystems) also switch to a SplittableRandom
- *    derived from RandomBridge.childSeed(...) to make fake data reproducible.
+ * ## Determinism
+ * When [Parameters.deterministic] is `true`:
+ * - Runs execute **sequentially** (BEST → WORST → AVERAGE).
+ * - All randomness is routed through jMetal's singleton via [RandomBridge.withSeed].
+ * - Expansion helpers ([expandTopics], [expandSystems]) also use a [SplittableRandom]
+ *   seeded via [RandomBridge.childSeed] for reproducible fake data.
  *
- * Efficiency notes:
- *  - Printer uses a Channel with back-pressure.
- *  - We use the **batched** Top-K replace event (TopKReplaceBatch) to avoid rewriting the file
- *    multiple times per generation.
+ * ## Efficiency
+ * - A single printer coroutine consumes a back-pressured [Channel] of events.
+ * - Uses **batched** [TopKReplaceBatch] to avoid rewriting the TOP file multiple times per generation.
+ *
+ * @property targetToAchieve `"BEST" | "WORST" | "AVERAGE" | "ALL"` top-level routing for solve/merge/copy flows.
  */
 class DatasetController(
     private var targetToAchieve: String
 ) {
 
+    /** Per-target models (when TARGET_ALL, indices: 0=BEST, 1=WORST, 2=AVERAGE; else a single entry). */
     var models = mutableListOf<DatasetModel>()
+
+    /** Unified view wrapper writing CSV and Parquet artifacts. */
     private var view = DatasetView()
+
+    /** Parameters of the last/ongoing run. */
     private lateinit var parameters: Parameters
+
+    /** Path passed to [load]. */
     private lateinit var datasetPath: String
+
+    /* Collected output paths for later merge/copy steps (CSV lists; Parquet derived when needed). */
     var aggregatedDataResultPaths = mutableListOf<String>()
     var variableValuesResultPaths = mutableListOf<String>()
     var functionValuesResultPaths = mutableListOf<String>()
     var topSolutionsResultPaths = mutableListOf<String>()
     var infoResultPaths = mutableListOf<String>()
+
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
-    /* Monotone counter to diversify expansion seeds in deterministic mode */
+    /** Monotone counter to diversify expansion child seeds in deterministic mode. */
     private var expansionNonce: Int = 0
 
     init {
         logger.info("Problem resolution started.")
     }
 
+    /**
+     * Load a dataset from a CSV path into one or three [DatasetModel]s depending on [targetToAchieve].
+     *
+     * - Always loads one model at index 0.
+     * - If [targetToAchieve] == `ALL`, also loads models at indices 1 (WORST) and 2 (AVERAGE).
+     *
+     * @param datasetPath Path to the CSV dataset file.
+     */
     fun load(datasetPath: String) {
 
         this.datasetPath = datasetPath
@@ -84,11 +105,14 @@ class DatasetController(
         logger.info("Dataset loading for input file \"${models[0].datasetName}\" completed.")
     }
 
-    /*
-     * expandTopics
-     * ------------
-     * Adds `expansionCoefficient` fake topics. In deterministic mode we use a seed derived
-     * from RandomBridge so that labels and random APs are identical across runs.
+    /**
+     * Expand the dataset by appending `expansionCoefficient` **fake topics** to all loaded models.
+     *
+     * - Topic labels are generated as `"NNN (F)"` where `NNN ∈ [800..998]`.
+     * - APs for the new topics are generated randomly per system.
+     * - In deterministic mode, all randomness is derived from [RandomBridge.childSeed].
+     *
+     * @param expansionCoefficient Number of random topics to append.
      */
     fun expandTopics(expansionCoefficient: Int) {
         val rng: SplittableRandom? =
@@ -110,10 +134,17 @@ class DatasetController(
         models.forEach { model -> model.expandTopics(expansionCoefficient, randomizedAveragePrecisions, topicLabels) }
     }
 
-    /*
-     * expandSystems
-     * -------------
-     * Adds `expansionCoefficient` fake systems. Deterministic when RandomBridge is installed.
+    /**
+     * Expand the dataset by appending `expansionCoefficient` **fake systems** (or revert to a prefix),
+     * across all loaded models.
+     *
+     * - System labels are generated as `"Sys{index}{NNN} (F)"` with `NNN ∈ [800..998]`.
+     * - AP rows for the new systems are random; in deterministic mode they come from
+     *   a [SplittableRandom] seeded via [RandomBridge.childSeed].
+     *
+     * @param expansionCoefficient Number of random systems to append.
+     * @param trueNumberOfSystems Ground-truth number of systems; if `current + expansionCoefficient < trueNumberOfSystems`,
+     * reverts the AP map to a prefix of the original systems instead of appending fakes.
      */
     fun expandSystems(expansionCoefficient: Int, trueNumberOfSystems: Int) {
         val rng: SplittableRandom? =
@@ -136,15 +167,18 @@ class DatasetController(
         }
     }
 
-    /*
-     * solve
-     * -----
-     * Drives the three targets when TARGET_ALL, or a single target otherwise.
-     * Deterministic mode:
-     *  - Sequential execution
-     *  - Seeded via RandomBridge.childSeed("BEST"/"WORST"/"AVERAGE") (or the single target)
-     * Parallel mode:
-     *  - Retains existing coroutine-based parallel execution.
+    /**
+     * Run the experiment(s) according to [parameters.targetToAchieve]:
+     *
+     * - **TARGET_ALL**: solves BEST, WORST, AVERAGE (sequential in deterministic mode, parallel otherwise),
+     *   streams progress to a single printer coroutine, then writes Aggregated & Info (CSV+Parquet) for ALL.
+     * - **Single target**: solves just that target, streams results, then writes Aggregated & Info for that target.
+     *
+     * RAM hygiene: before solving, calls [DatasetModel.sealData] on all models to drop boxed AP maps.
+     * After writing final tables, clears per-run caches via [DatasetModel.clearPercentiles] and
+     * [DatasetModel.clearAfterSerialization].
+     *
+     * @param parameters Execution parameters (determinism, seeds, sizes, etc.).
      */
     fun solve(parameters: Parameters) {
 
@@ -167,10 +201,7 @@ class DatasetController(
             logger.info("Percentiles: $pct. [Experiment: Average]")
         }
 
-        /* ------------------------------------------------------------------------------------------------
-         * RAM: seal boxed AP rows into dense primitive bundle and free the big maps BEFORE the run starts.
-         * We purposely do this here (and not at load/expand time) so callers can still chain expansions.
-         * ------------------------------------------------------------------------------------------------ */
+        /* Seal boxed AP rows into dense primitive bundle and free big maps BEFORE the run. */
         models.forEach { it.sealData() }
 
         if (parameters.targetToAchieve == Constants.TARGET_ALL) {
@@ -179,7 +210,7 @@ class DatasetController(
             val worstParameters = parameters.copy(targetToAchieve = Constants.TARGET_WORST)
             val averageParameters = parameters.copy(targetToAchieve = Constants.TARGET_AVERAGE)
 
-            /* Channel cap tuned for throttled onGen (stride≈3) with headroom */
+            /* Channel capacity tuned for throttled onGen with headroom. */
             val estPerTargetEvents = (models[0].numberOfTopics / 3) + 64
             val cap = (estPerTargetEvents * 3).coerceAtLeast(64)
             val progress: Channel<ProgressEvent> = Channel(cap)
@@ -233,23 +264,21 @@ class DatasetController(
                                         view.appendCardinality(model, ev)
                                         cnt[0]++
                                     }
-
                                     is TopKReplaceBatch -> {
                                         view.replaceTopBatch(model, ev.blocks)
                                         cnt[1]++
                                     }
-
                                     is RunCompleted -> {
                                         cnt[2]++
                                         logger.info(
                                             "[printer] RunCompleted received for target {} → closing streams ({} fun/var appends, {} top batches, {} ms).",
                                             ev.target, cnt[0], cnt[1], (System.nanoTime() - t0) / 1_000_000
                                         )
-                                        view.closeStreams(model) // <-- Parquet write happens here
+                                        view.closeStreams(model) // Parquet write happens here
                                     }
                                 }
 
-                                // very light heartbeat each ~10k events
+                                // light heartbeat each ~10k events
                                 val total = cnt[0] + cnt[1] + cnt[2]
                                 if (total % 10_000 == 0 && total > 0) {
                                     logger.info("[printer] heartbeat events: funVar={}, top={}, done={}", cnt[0], cnt[1], cnt[2])
@@ -307,11 +336,7 @@ class DatasetController(
             logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = true)}\" (Aggregated data CSV)")
             logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = true)}\" (Info CSV)")
 
-            /* -----------------------------------------------------------------------------------------
-             * RAM: final cleanup — drop large per-run caches now that CSV/Parquet tables exist on disk.
-             *  - clearPercentiles() : keep AVERAGE memory footprint small
-             *  - clearAfterSerialization() : delete rep masks / corr map / top pools
-             * ----------------------------------------------------------------------------------------- */
+            /* Final cleanup — drop per-run caches now that tables exist on disk. */
             models.forEach { m ->
                 m.clearPercentiles()
                 m.clearAfterSerialization()
@@ -319,7 +344,6 @@ class DatasetController(
 
         } else {
             /* ---------------- Single target ---------------- */
-            /* Channel cap tuned for throttled onGen (stride≈3) with headroom */
             val estPerTargetEvents = (models[0].numberOfTopics / 3) + 64
             val cap = estPerTargetEvents.coerceAtLeast(64)
             val progress: Channel<ProgressEvent> = Channel(cap)
@@ -350,7 +374,7 @@ class DatasetController(
                 }
 
             } else {
-                /* Parallel path is identical for a single job; keep coroutine structure */
+                /* Keep coroutine structure for symmetry. */
                 runBlocking {
                     supervisorScope {
                         val printer = launch(Dispatchers.IO) {
@@ -372,7 +396,7 @@ class DatasetController(
                 }
             }
 
-            /* Collect paths (files are already appended by the printer) */
+            /* Collect paths (files already appended by the printer) */
             aggregatedDataResultPaths.add(view.getAggregatedDataFilePath(models[0], isTargetAll = false))
             functionValuesResultPaths.add(view.getFunctionValuesFilePath(models[0]))
             variableValuesResultPaths.add(view.getVariableValuesFilePath(models[0]))
@@ -404,9 +428,7 @@ class DatasetController(
             logger.info("\"${view.getAggregatedDataFilePath(models[0], isTargetAll = false)}\" (Aggregated data CSV)")
             logger.info("\"${view.getInfoFilePath(models[0], isTargetAll = false)}\" (Info CSV)")
 
-            /* -----------------------------------------------------------------------------------------
-             * RAM: final cleanup for single target.
-             * ----------------------------------------------------------------------------------------- */
+            /* Final cleanup for single target. */
             models.forEach { m ->
                 m.clearPercentiles()
                 m.clearAfterSerialization()
@@ -418,9 +440,21 @@ class DatasetController(
         logger.info("Problem resolution completed.")
     }
 
+    /* ------------------------ Aggregation and info ------------------------ */
 
-    /* ------------------------ Aggregation and info (unchanged) ------------------------ */
-
+    /**
+     * Build the **Aggregated** table for the given list of models.
+     *
+     * Header: `"Cardinality" + one column per model target + one column per AVERAGE percentile + "BestTopicsB64","WorstTopicsB64"`
+     *
+     * - Correlations per target are taken from each model’s per-K caches.
+     * - Percentiles come from the AVERAGE model, if present.
+     * - The Best/Worst topic masks are pulled from the respective models as `"B64:<...>"`.
+     *
+     * @param datasetModels One or more models (when TARGET_ALL, three models are expected).
+     * @return Rows including header (first row) and per-K data.
+     * @throws IllegalArgumentException if [datasetModels] is empty.
+     */
     private fun aggregate(datasetModels: List<DatasetModel>): List<Array<String>> {
         /* ---------- validate input ---------- */
         require(datasetModels.isNotEmpty()) { "aggregate(datasetModels): input list must not be empty" }
@@ -522,7 +556,16 @@ class DatasetController(
         return aggregatedRows
     }
 
-
+    /**
+     * Build the **Info** table listing execution parameters and times for each model.
+     *
+     * Columns:
+     * `"Dataset Name","Number of Systems","Number of Topics","Correlation Method",
+     * "Target to Achieve","Number of Iterations","Population Size","Number of Repetitions","Computing Time"`
+     *
+     * @param models The models to summarize.
+     * @return Rows including header (first row).
+     */
     private fun info(models: List<DatasetModel>): List<Array<String>> {
         val header = mutableListOf<String>()
         val aggregatedData = mutableListOf<Array<String>>()
@@ -555,6 +598,18 @@ class DatasetController(
         return aggregatedData
     }
 
+    /**
+     * Merge results from multiple executions (ex1..exN) into **merged** CSV/Parquet artifacts:
+     *
+     * - Aggregated (pick best-of/best and worst-of/worst across executions per K).
+     * - FUN/VAR per target (select execution with best/worst aggregated correlations for each K).
+     * - TOP per target (copy rows matching the chosen execution per K).
+     * - Info (sum computing times).
+     *
+     * Also **cleans** the original per-execution CSV/Parquet files after writing merged outputs.
+     *
+     * @param numberOfExecutions Number of executions to merge (prefix of collected path lists).
+     */
     fun merge(numberOfExecutions: Int) {
 
         logger.info("Starting to merge results of $numberOfExecutions executions.")
@@ -642,13 +697,11 @@ class DatasetController(
                     varPaths += variableValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_BEST) }
                     topPaths += topSolutionsResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_BEST) }
                 }
-
                 Constants.TARGET_WORST -> {
                     funPaths += functionValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_WORST) }
                     varPaths += variableValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_WORST) }
                     topPaths += topSolutionsResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_WORST) }
                 }
-
                 Constants.TARGET_AVERAGE -> {
                     funPaths += functionValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_AVERAGE) }
                     varPaths += variableValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_AVERAGE) }
@@ -687,13 +740,11 @@ class DatasetController(
                     bestVariableValues = transposeToLinked(varTables)
                     bestTopSolutions = transposeToLinked(topTables)
                 }
-
                 Constants.TARGET_WORST -> {
                     worstFunctionValues = transposeToLinked(funTables)
                     worstVariableValues = transposeToLinked(varTables)
                     worstTopSolutions = transposeToLinked(topTables)
                 }
-
                 Constants.TARGET_AVERAGE -> {
                     averageFunctionValues = transposeToLinked(funTables)
                     averageVariableValues = transposeToLinked(varTables)
@@ -753,7 +804,6 @@ class DatasetController(
                             }
                         }
                     }
-
                     Constants.TARGET_BEST -> {
                         safeDouble(row.getOrNull(1) ?: "")?.let {
                             if (it > bestAggCorr) {
@@ -761,7 +811,6 @@ class DatasetController(
                             }
                         }
                     }
-
                     Constants.TARGET_WORST -> {
                         safeDouble(row.getOrNull(1) ?: "")?.let {
                             if (it < worstAggCorr) {
@@ -769,9 +818,7 @@ class DatasetController(
                             }
                         }
                     }
-
-                    Constants.TARGET_AVERAGE -> { /* copy as is */
-                    }
+                    Constants.TARGET_AVERAGE -> { /* copy as is */ }
                 }
             }
 
@@ -784,17 +831,14 @@ class DatasetController(
                     out[2] = if (worstExecIdx >= 0) worstAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
                     for (col in 3 until template.size) out[col] = template[col]
                 }
-
                 Constants.TARGET_BEST -> {
                     out[1] = if (bestExecIdx >= 0) bestAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
                     for (col in 2 until template.size) out[col] = template[col]
                 }
-
                 Constants.TARGET_WORST -> {
                     out[1] = if (worstExecIdx >= 0) worstAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
                     for (col in 2 until template.size) out[col] = template[col]
                 }
-
                 Constants.TARGET_AVERAGE -> {
                     val src = rowsAtI.first()
                     for (col in src.indices) out[col] = src[col]
@@ -888,7 +932,6 @@ class DatasetController(
                 if (worstLines.size > 1) mergedInfo += mergeInfoRow(worstLines[1], sumTimes(worstLines))
                 if (avgLines.size > 1) mergedInfo += mergeInfoRow(avgLines[1], sumTimes(avgLines))
             }
-
             else -> {
                 val lines = infoTables.firstOrNull() ?: emptyList()
                 if (lines.size > 1) {
@@ -1073,7 +1116,13 @@ class DatasetController(
 
     }
 
-
+    /**
+     * Copy the per-execution and merged results produced by the last solve/merge
+     * into the `experiments` destination tree (CSV + Parquet), preserving filenames.
+     *
+     * Structure mirrors writers: `<root>/CSV` and `<root>/Parquet`.
+     * Missing files are skipped with a log line.
+     */
     fun copy() {
 
         logger.info("Execution result copy to ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} started.")
@@ -1187,6 +1236,12 @@ class DatasetController(
         logger.info("Execution result copy to ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} completed.")
     }
 
+    /**
+     * Delete a list of files on disk and remove their paths from the given list.
+     *
+     * @param dataList Mutable list of absolute file paths to delete and prune in-place.
+     * @param logMessage Message to log before deletion.
+     */
     fun clean(dataList: MutableList<String>, logMessage: String) {
         logger.info(logMessage)
         val toBeRemoved = mutableListOf<String>()

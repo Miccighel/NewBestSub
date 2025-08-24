@@ -8,51 +8,64 @@ import org.uma.jmetal.solution.binarysolution.impl.DefaultBinarySolution
 import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
-/* --------------------------------------------------------------------------------------------------------------------
- * FixedKSwapMutation
- * --------------------------------------------------------------------------------------------------------------------
- * Intent
- * ------
- * Preserve cardinality K during mutation by swapping:
- *   • pick one index with bit = 1  → set it to 0   (swap OUT)
- *   • pick one index with bit = 0  → set it to 1   (swap IN)
+/**
+ * Mutation operator that **preserves subset cardinality K** by swapping one `1` → `0` and one `0` → `1`.
  *
- * Robustness
- * ----------
- * jMetal may occasionally pass DefaultBinarySolution instances. We *lift* any BinarySolution
- * to BestSubsetSolution before mutating, cloning bitset + objectives and synthesizing labels.
+ * Intent:
+ * - Pick one index from the **1‑pool** (selected topics) and set it to `false` (swap OUT).
+ * - Pick one index from the **0‑pool** (unselected topics) and set it to `true` (swap IN).
  *
- * Guarantees
- * ----------
- *   • If both 1-pool and 0-pool are non-empty → K is preserved exactly.
- *   • Degenerate cases (all-zeros / all-ones) are handled safely:
- *       - all-zeros  → flip one random bit to true (K = 1)
- *       - all-ones   → flip one random bit to false (K = N - 1)
- *   • Operates in-place on the (adapted) BestSubsetSolution; no private fields are accessed.
+ * Robustness:
+ * - jMetal may occasionally pass [DefaultBinarySolution] instances. This operator **lifts** any
+ *   [BinarySolution] into a [BestSubsetSolution] view before mutating (cloning bitset/objectives and
+ *   synthesizing labels as needed).
  *
- * Step 3 hook (delta evaluation)
- * ------------------------------
- *   • On a true swap, we set:
- *       solution.lastSwapOutIndex = index turned 1→0
- *       solution.lastSwapInIndex  = index turned 0→1
- *       solution.lastMutationWasFixedKSwap = true
- *     BestSubsetProblem.evaluate(...) can then update cached per-system sums in O(S).
+ * Guarantees:
+ * - If both pools are non‑empty, **K is preserved** exactly.
+ * - Degenerate masks are repaired safely:
+ *   - all‑zeros  → flip one random bit to `true` (K becomes 1)
+ *   - all‑ones   → flip one random bit to `false` (K becomes N‑1)
+ * - Operates in‑place on the (adapted) [BestSubsetSolution].
  *
- * Determinism
- * -----------
- * All randomness goes through jMetal’s singleton RNG, so external seeding works.
+ * Delta‑evaluation hook:
+ * - On a true swap or repair, sets:
+ *   - [BestSubsetSolution.lastSwapOutIndex]
+ *   - [BestSubsetSolution.lastSwapInIndex]
+ *   - [BestSubsetSolution.lastMutationWasFixedKSwap] = `true`
+ *   so that `BestSubsetProblem.evaluate(...)` can update cached per‑system sums in **O(S)**.
  *
- * Complexity
- * ----------
- * O(N) to collect indices + O(1) updates.
- * ------------------------------------------------------------------------------------------------------------------ */
+ * Determinism:
+ * - All randomness goes through jMetal’s singleton RNG, so external seeding works.
+ *
+ * Complexity:
+ * - O(N) to collect indices + O(1) updates.
+ *
+ * @param probability Per‑candidate mutation probability in `(0.0..1.0]`. When the random draw is
+ *   ≥ `probability`, the operator is a no‑op.
+ */
 class FixedKSwapMutation(private var probability: Double) : MutationOperator<BinarySolution> {
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
-    /* jMetal 6.x mutation API */
+    /** jMetal 6.x mutation API: returns the configured per‑candidate mutation probability. */
     override fun mutationProbability(): Double = probability
 
+    /**
+     * Executes the fixed‑K swap mutation on [candidate]. If the candidate is not a
+     * [BestSubsetSolution], it is **lifted** to one (bitset and objectives are copied).
+     *
+     * Steps:
+     * 1. Early exit if mutation does not trigger or there are no bits.
+     * 2. Snapshot current mask into a primitive array.
+     * 3. Collect indices with `1` and with `0`.
+     * 4. Perform:
+     *    - **Swap** if both pools have elements (K preserved).
+     *    - **Repair** if the mask is all‑zeros or all‑ones (K set to 1 or N‑1).
+     * 5. Record swap/repair metadata for delta‑evaluation.
+     *
+     * @param candidate input solution (possibly a [DefaultBinarySolution]).
+     * @return the mutated [BestSubsetSolution] (same instance if already compatible; otherwise lifted).
+     */
     override fun execute(candidate: BinarySolution): BinarySolution {
         /* ------------------------------------------------------------------------------------
          * Ensure we operate on BestSubsetSolution (adapter if jMetal hands us DefaultBinarySolution).
@@ -135,9 +148,22 @@ class FixedKSwapMutation(private var probability: Double) : MutationOperator<Bin
         return solution
     }
 
-    /* ------------------------------------- Helpers ------------------------------------- */
+    // -------------------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------------------
 
-    /* If input is BestSubsetSolution, return it; otherwise lift DefaultBinarySolution into BestSubsetSolution. */
+    /**
+     * Ensures we operate on a [BestSubsetSolution]. If [src] already is one, returns it.
+     * Otherwise, **lifts** the solution by copying the bitset and objectives into a fresh
+     * [BestSubsetSolution] with synthesized labels.
+     *
+     * Side effects on lifted instance:
+     * - Delta‑eval state is cleared ([BestSubsetSolution.resetIncrementalEvaluationState]).
+     * - Mutation flags are cleared ([BestSubsetSolution.clearLastMutationFlags]).
+     *
+     * @param src a possibly generic [BinarySolution].
+     * @return a [BestSubsetSolution] view suitable for downstream delta‑evaluation.
+     */
     private fun ensureBestSubsetView(src: BinarySolution): BestSubsetSolution {
         if (src is BestSubsetSolution) return src
 

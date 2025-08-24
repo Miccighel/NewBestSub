@@ -10,18 +10,49 @@ import java.util.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+/**
+ * Tests for core operations of [BestSubsetSolution].
+ *
+ * Covered behavior:
+ * - Bit flip semantics via [BestSubsetSolution.setBitValue] and selection count consistency.
+ * - Correct computation of total bit capacity ([BestSubsetSolution.totalNumberOfBits]) as the sum
+ *   of per‑variable capacities ([BestSubsetSolution.numberOfBitsPerVariable]).
+ * - Value‑semantics cloning via [BestSubsetSolution.copy].
+ *
+ * Test data:
+ * - A deterministic fake AP table is created for `numberOfTopics + 1` systems to satisfy
+ *   [BestSubsetProblem] construction.
+ */
 @DisplayName("BestSubsetSolution – core operations")
 class BestSubsetSolutionTest {
 
     /* ----------------------------------------------------------------------------------------------------------------
      * Test fixtures
      * ---------------------------------------------------------------------------------------------------------------- */
+
+    /** Problem instance used only for construction needs in the fixtures. */
     private lateinit var testProblem: BestSubsetProblem
+
+    /** Solution under test; independent from [testProblem] once constructed. */
     private lateinit var testSolution: BestSubsetSolution
+
+    /** Dummy correlation strategy injected into the problem (returns a constant). */
     private lateinit var dummyCorrelationFunc: (Array<Double>, Array<Double>) -> Double
+
+    /** Dummy target strategy injected into the problem (identity passthrough). */
     private lateinit var dummyTargetEncoder: (BinarySolution, Double) -> BinarySolution
+
+    /** Deterministic fake AP rows keyed by system name. */
     private var fakeAveragePrecisions: MutableMap<String, Array<Double>> = LinkedHashMap()
 
+    /**
+     * Initializes deterministic fixtures:
+     *
+     * - Builds `numberOfTopics = 10`, `numberOfSystems = 11`.
+     * - Populates [fakeAveragePrecisions] with values in `(0.01 .. 1.00]`.
+     * - Constructs a minimal [BestSubsetProblem] with dummy strategies.
+     * - Allocates a [BestSubsetSolution] with a single binary variable and two objectives.
+     */
     @BeforeEach
     @DisplayName("BestSubsetSolution – initialize fixtures")
     fun initTest() {
@@ -80,6 +111,11 @@ class BestSubsetSolutionTest {
      * Tests
      * ---------------------------------------------------------------------------------------------------------------- */
 
+    /**
+     * Verifies that toggling a bit with [BestSubsetSolution.setBitValue] both:
+     * 1) changes the corresponding position in the internal mask, and
+     * 2) updates [BestSubsetSolution.numberOfSelectedTopics] by exactly ±1 accordingly.
+     */
     @Test
     @DisplayName("setBitValue toggles selection and updates counts consistently")
     fun setBitValueTest() {
@@ -96,8 +132,10 @@ class BestSubsetSolutionTest {
         val newMask = testSolution.retrieveTopicStatus()
         val isSelected = newMask[0]
 
-        println("[BestSubsetSolutionTest setBitValue] - Before bit0=$wasSelected, After bit0=$isSelected, " +
-                "SelectedCount: $oldSelectedCount -> $newSelectedCount")
+        println(
+            "[BestSubsetSolutionTest setBitValue] - Before bit0=$wasSelected, After bit0=$isSelected, " +
+                "SelectedCount: $oldSelectedCount -> $newSelectedCount"
+        )
 
         // The bit must reflect the set value
         assertEquals(!wasSelected, isSelected, "bit 0 should be toggled")
@@ -109,6 +147,10 @@ class BestSubsetSolutionTest {
         println("[BestSubsetSolutionTest setBitValue] - Test ends.")
     }
 
+    /**
+     * Ensures that [BestSubsetSolution.totalNumberOfBits] equals the sum of
+     * [BestSubsetSolution.numberOfBitsPerVariable] for jMetal 6.x binary solutions.
+     */
     @Test
     @DisplayName("totalNumberOfBits equals sum(numberOfBitsPerVariable)")
     fun getTotalNumberOfBitsTest() {
@@ -125,6 +167,10 @@ class BestSubsetSolutionTest {
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test ends.")
     }
 
+    /**
+     * Checks that [BestSubsetSolution.copy] produces a value‑equal clone (reflexive and equal‑to‑original).
+     * jMetal’s [BinarySolution] equality is value‑based, so the cloned instance should compare equal.
+     */
     @Test
     @DisplayName("copy produces an equal solution (value semantics)")
     fun copyTest() {

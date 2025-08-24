@@ -6,9 +6,32 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+/**
+ * Tests for the [BitFlipMutation] operator.
+ *
+ * Covered behavior:
+ * - Mutation flips **exactly one bit** in the solution (Hamming distance = 1).
+ * - The number of selected topics remains ≥ 1 after mutation (safety constraint).
+ * - Cardinality changes by exactly ±1 relative to the pre-mutation state.
+ * - Underlying bitset capacity is preserved and remains equal to `numberOfTopics`.
+ *
+ * The operator is tested with probability = 1.0 to guarantee that one mutation occurs.
+ */
 @DisplayName("BitFlipMutation – single-bit flip semantics")
 class BitFlipMutationTest {
 
+    /**
+     * Ensures that executing [BitFlipMutation]:
+     * 1. flips exactly one bit in the binary mask,
+     * 2. preserves the invariant that at least one topic remains selected,
+     * 3. changes the number of selected topics by exactly ±1,
+     * 4. leaves the bitset capacity unchanged.
+     *
+     * Setup:
+     * - Construct a [BestSubsetSolution] with 10 topics.
+     * - Initialize with a known mask where two topics are selected.
+     * - Apply mutation with probability = 1.0 (guaranteed single flip).
+     */
     @Test
     @DisplayName("BitFlipMutation flips exactly one bit and keeps ≥1 topic selected")
     fun testExecute() {

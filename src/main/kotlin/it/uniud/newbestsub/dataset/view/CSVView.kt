@@ -23,17 +23,26 @@ import java.util.Locale
  * CSVView
  * =======
  *
- * Streaming-first CSV writer:
- *  - -Fun/-Var: append live into buffered writers; keep an in-memory buffer for final rewrite.
- *  - Final rewrite: (optional) globally sort by K and correlation and rewrite both files aligned.
- *      • BEST  : (K asc, corr asc)
- *      • WORST : (K asc, corr desc)
- *      • AVERAGE rows are already one-per-K, order is K asc.
- *  - -Var: Base64-packed bitmasks as "B64:<base64>" (compact, no padding).
- *  - -Top: replace-batch semantics; header announces TopicsB64.
- *      • Set -Dnbs.csv.top.live=false to buffer all batches and write once on close.
+ * Streaming‑first CSV writer mirroring the Parquet view.
  *
- * Files live under the per-run **CSV** subdirectory.
+ * ## Responsibilities
+ * - **FUN/VAR streaming**: append live into buffered writers; keep an in‑memory buffer for a final rewrite
+ * - **Final rewrite** (optional): globally sort by `(K, correlation)` and rewrite both files aligned
+ *   - BEST  → `(K asc, corr asc)`
+ *   - WORST → `(K asc, corr desc)`
+ *   - AVERAGE rows are one‑per‑K; effective order is `K asc`
+ * - **Topics** in `-Var` and `-Top`: base64‑packed masks as `"B64:<base64>"` (no padding)
+ * - **Top solutions**: replace‑batch semantics; header announces `TopicsB64`
+ *   - Set `-Dnbs.csv.top.live=false` to buffer all batches and write once on close
+ *
+ * ## Filesystem
+ * - Files live under the per‑run **CSV** subdirectory returned by [ViewPaths.ensureCsvDir]
+ *
+ * ## Toggles
+ * - `-Dnbs.csv.top.live` (default `true`): live write of `-Top` on each batch
+ * - `-Dnbs.csv.finalRewrite` (default `true`): global sort & rewrite of FUN/VAR on close
+ * - `-Dnbs.csv.flushEvery` (default `256`): throttled flush frequency
+ * - `-Dnbs.csv.buffer` (default `262144`): writer buffer size in bytes
  */
 class CSVView {
 
@@ -41,6 +50,7 @@ class CSVView {
 
     /* -------- Path helpers (CSV subfolder) -------- */
 
+    /** @return Absolute path for the FUN CSV file of the current run. */
     fun getFunctionValuesFilePath(model: DatasetModel): String =
         ViewPaths.ensureCsvDir(model) +
             ViewPaths.csvNameNoTs(
@@ -48,6 +58,7 @@ class CSVView {
                 Constants.FUNCTION_VALUES_FILE_SUFFIX
             )
 
+    /** @return Absolute path for the VAR CSV file of the current run. */
     fun getVariableValuesFilePath(model: DatasetModel): String =
         ViewPaths.ensureCsvDir(model) +
             ViewPaths.csvNameNoTs(
@@ -55,6 +66,7 @@ class CSVView {
                 Constants.VARIABLE_VALUES_FILE_SUFFIX
             )
 
+    /** @return Absolute path for the TOP CSV file of the current run. */
     fun getTopSolutionsFilePath(model: DatasetModel): String =
         ViewPaths.ensureCsvDir(model) +
             ViewPaths.csvNameNoTs(
@@ -62,12 +74,20 @@ class CSVView {
                 Constants.TOP_SOLUTIONS_FILE_SUFFIX
             )
 
+    /**
+     * @param isTargetAll If `true`, use `"ALL"` token instead of current target.
+     * @return Absolute path for the info CSV file.
+     */
     fun getInfoFilePath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureCsvDir(model) +
             ViewPaths.csvNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.INFO_FILE_SUFFIX)
     }
 
+    /**
+     * @param isTargetAll If `true`, use `"ALL"` token instead of current target.
+     * @return Absolute path for the aggregated data CSV file.
+     */
     fun getAggregatedDataFilePath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureCsvDir(model) +
@@ -76,6 +96,12 @@ class CSVView {
 
     /* -------- CSV writer for controller tables (aggregate/info) -------- */
 
+    /**
+     * Write a full CSV table with OpenCSV (header + rows).
+     *
+     * @param data Rows including header as the first element.
+     * @param resultPath Destination CSV path.
+     */
     fun writeCsv(data: List<Array<String>>, resultPath: String) {
         Files.newBufferedWriter(Paths.get(resultPath), Charsets.UTF_8).use { bw ->
             CSVWriter(bw).use { writer -> writer.writeAll(data) }
@@ -84,7 +110,7 @@ class CSVView {
 
     /* ---------------- STREAMING SUPPORT ---------------- */
 
-    /** Single no-padding encoder reused everywhere. */
+    /** Single no‑padding Base64 encoder reused everywhere. */
     private val b64Encoder = Base64.getEncoder().withoutPadding()
 
     /** Buffered writer bundle for FUN/VAR. */
@@ -95,8 +121,7 @@ class CSVView {
 
     /**
      * Open stream key:
-     *   (datasetName, currentExecution, target)
-     * Avoids collisions when the same dataset/target is executed multiple times.
+     * `(datasetName, currentExecution, target)` to avoid collisions across runs.
      */
     private data class StreamKey(val dataset: String, val execution: Int, val target: String)
 
@@ -106,27 +131,28 @@ class CSVView {
     private data class TopKey(val dataset: String, val execution: Int, val target: String)
     private val topBlocks: MutableMap<TopKey, MutableMap<Int, List<String>>> = mutableMapOf()
 
-    /** Buffered Fun/Var rows for final rewrite. */
+    /** Buffered FUN/VAR rows for final rewrite. */
     private data class FunVarRow(val k: Int, val corr: Double, val funLine: String, val varLine: String)
     private val funVarBuffers: MutableMap<TopKey, MutableList<FunVarRow>> = mutableMapOf()
 
     /* --------- Lightweight formatting & parsing --------- */
 
-    /** Precompiled splitter for "K corr" / "K,corr" / any mix of commas/whitespace. */
+    /** Precompiled splitter for `"K corr"` / `"K,corr"` / any mix of commas/whitespace. */
     private val FUN_SPLIT = Regex("[,\\s]+")
 
-    /** Locale-stable double format (dot decimal, 6 digits). */
+    /** Locale‑stable double format (dot decimal, 6 digits). */
     private val DF = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
+    /** Format a double to 6 decimals with `Locale.ROOT`. */
     private fun fmt(x: Double): String = DF.format(x)
 
-    /** Throttle streaming flushes to reduce I/O overhead. (configurable) */
+    /** Throttle streaming flushes to reduce I/O overhead (configurable). */
     private val flushEvery: Int = System.getProperty("nbs.csv.flushEvery", "256").toIntOrNull()?.coerceAtLeast(1) ?: 256
     private val flushCounters: MutableMap<TopKey, Int> = mutableMapOf()
 
-    /** Optional: write TOP only once at close (instead of live on every batch). */
+    /** If `false`, buffer TOP and write once on close instead of live. */
     private val topLive: Boolean = !System.getProperty("nbs.csv.top.live", "true").equals("false", ignoreCase = true)
 
-    /** Optional: skip final rewrite (keep live-append order). */
+    /** If `false`, skip the final rewrite (keep live‑append order). */
     private val doFinalRewrite: Boolean = !System.getProperty("nbs.csv.finalRewrite", "true").equals("false", ignoreCase = true)
 
     /** Writer buffer size (bytes). */
@@ -137,12 +163,30 @@ class CSVView {
     private data class LabelsKey(val ptr: Int, val size: Int, val first: String?)
     private val indexCache = mutableMapOf<LabelsKey, Map<String, Int>>()
 
+    /**
+     * Build (and cache) label→index maps for a given labels array.
+     *
+     * @param labels Topic labels for the dataset.
+     * @return Map from label to its position.
+     */
     private fun indexByLabel(labels: Array<String>): Map<String, Int> {
         val key = LabelsKey(System.identityHashCode(labels), labels.size, labels.firstOrNull())
         return indexCache.getOrPut(key) { labels.withIndex().associate { it.value to it.index } }
     }
 
-    /** Normalize topics text already in "B64:..." form or legacy label/bits. Always return "B64:..." */
+    /**
+     * Normalize a topics field to canonical `"B64:<...>"` form.
+     *
+     * Accepted inputs:
+     * - Already encoded: `"B64:..."`
+     * - Label list: `labelA|labelB|...` (also `,`, `;`, whitespace)
+     * - Index list: `0|3|5`
+     * - Bitstring: `"0100101..."` (optionally wrapped in `[]`)
+     *
+     * @param raw Incoming field string.
+     * @param labels Topic labels array to resolve names to indices.
+     * @return Canonical `"B64:<base64>"` string.
+     */
     private fun fieldToB64(raw: String, labels: Array<String>): String {
         val t = raw.trim()
         if (t.startsWith("B64:")) return t
@@ -174,7 +218,12 @@ class CSVView {
         }
     }
 
-    /** BooleanArray -> little-endian bytes via 64-bit words (matches model packing). */
+    /**
+     * Pack a boolean mask into little‑endian longs and return raw bytes.
+     *
+     * @param mask Topic selection mask.
+     * @return Little‑endian byte array of 64‑bit words (no padding).
+     */
     private fun packMaskToLEBytes(mask: BooleanArray): ByteArray {
         val words = (mask.size + 63) ushr 6
         val packed = LongArray(words)
@@ -199,6 +248,13 @@ class CSVView {
         return out
     }
 
+    /**
+     * Open and cache large‑buffer appenders for FUN/VAR of the current run/target.
+     *
+     * Ensures clean files exist, then returns append‑mode writers.
+     *
+     * @return [StreamHandles] with FUN and VAR buffered writers.
+     */
     fun openStreams(model: DatasetModel): StreamHandles {
         val key = StreamKey(model.datasetName, model.currentExecution, model.targetToAchieve)
         return openStreams.getOrPut(key) {
@@ -224,8 +280,10 @@ class CSVView {
         }
     }
 
-    /*
-     * Robust FUN line parser: accepts "K corr" or "K,corr" or any mix of commas and whitespace.
+    /**
+     * Robust FUN line parser: accepts `"K corr"` or `"K,corr"` or any mix of commas and whitespace.
+     *
+     * @return `(K, corr)` if parsed, else `null`.
      */
     private fun parseFunLine(line: String): Pair<Int, Double>? {
         val parts = line.trim().split(FUN_SPLIT)
@@ -235,6 +293,12 @@ class CSVView {
         return k to corr
     }
 
+    /**
+     * Append one streamed FUN/VAR row, buffering for a possible final rewrite.
+     *
+     * @param model Dataset model.
+     * @param ev Incoming cardinality event (FUN line already in natural scale).
+     */
     fun onAppendCardinality(model: DatasetModel, ev: CardinalityResult) {
         val handles = openStreams(model)
         val key = TopKey(model.datasetName, model.currentExecution, model.targetToAchieve)
@@ -265,6 +329,12 @@ class CSVView {
         buf += FunVarRow(k = k, corr = corr, funLine = funLine, varLine = varLine)
     }
 
+    /**
+     * Merge/replace cached TOP blocks and optionally write the whole file live.
+     *
+     * @param model Dataset model.
+     * @param blocks Map of K → list of CSV rows `"K,Corr,Topics"`, **exactly 10 per K**, sorted by corr ASC.
+     */
     fun onReplaceTopBatch(model: DatasetModel, blocks: Map<Int, List<String>>) {
         if (blocks.isEmpty()) return
         val key = TopKey(model.datasetName, model.currentExecution, model.targetToAchieve)
@@ -292,9 +362,12 @@ class CSVView {
     }
 
     /**
-     * Close writers, then (optionally) globally sort & rewrite -Fun/-Var to keep them aligned.
-     * Toggle: -Dnbs.csv.finalRewrite=false to skip the rewrite during exploratory runs.
-     * If -Dnbs.csv.top.live=false, write the final TOP file here.
+     * Close writers, then (optionally) globally sort & rewrite FUN/VAR to keep them aligned.
+     *
+     * - Toggle: `-Dnbs.csv.finalRewrite=false` to skip the rewrite during exploratory runs
+     * - If `-Dnbs.csv.top.live=false`, write the final TOP file here
+     *
+     * @param model Dataset model.
      */
     fun closeStreams(model: DatasetModel) {
         val keyStreams = StreamKey(model.datasetName, model.currentExecution, model.targetToAchieve)
@@ -372,6 +445,14 @@ class CSVView {
 
     /* ---------------- Final snapshot (non-streamed) ---------------- */
 
+    /**
+     * Write a full snapshot of FUN/VAR (and TOP when applicable) to CSV.
+     *
+     * @param model Dataset model (paths, labels, and run parameters).
+     * @param allSolutions All solutions to dump to FUN/VAR.
+     * @param topSolutions Representative top solutions (BEST/WORST only) for TOP.
+     * @param actualTarget Explicit target token (used to decide whether to write TOP).
+     */
     fun printSnapshot(
         model: DatasetModel,
         allSolutions: List<BinarySolution>,

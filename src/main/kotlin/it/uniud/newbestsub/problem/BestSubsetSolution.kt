@@ -5,26 +5,31 @@ import org.uma.jmetal.solution.binarysolution.impl.DefaultBinarySolution
 import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
-/* --------------------------------------------------------------------------------------------------------------------
- * BestSubsetSolution
- * --------------------------------------------------------------------------------------------------------------------
- * Concrete binary solution backed by jMetal's BinarySet with a few conveniences:
+/**
+ * Concrete binary solution for the “best subset” problem, backed by jMetal’s [BinarySet].
  *
- *  • Construction helpers for either a fixed cardinality K or a random non-empty mask.
- *  • Readable accessors used across the project (retrieveTopicStatus, numberOfSelectedTopics, …).
- *  • Mirror field `topicStatus` kept for downstream writers (-Top CSV).
- *  • Delta-eval scaffolding:
- *      - `lastEvaluatedMask`, `cachedSumsBySystem` (subset-sum cache)
- *      - `lastSwapOutIndex`, `lastSwapInIndex`, `lastMutationWasFixedKSwap` (operator hook)
- *  • Performance:
- *      - Cached genotype key (bitstring) with dirty tracking to avoid rebuilding strings.
- *      - Cached Base64 mask derived directly from BinarySet (avoids BooleanArray round-trips).
- *      - Reusable boolean buffer for `lastEvaluatedMask` to avoid per-eval allocations.
+ * Highlights:
+ * - **Construction helpers** for fixed cardinality `K` or a random non‑empty mask.
+ * - **Readable accessors** used across the project (`retrieveTopicStatus`, `numberOfSelectedTopics`, …).
+ * - **Mirror field** [topicStatus] kept for downstream writers (e.g., `-Top` CSV).
+ * - **Delta‑evaluation scaffolding**:
+ *   - [lastEvaluatedMask], [cachedSumsBySystem] (subset‑sum cache)
+ *   - [lastSwapOutIndex], [lastSwapInIndex], [lastMutationWasFixedKSwap] (operator hooks)
+ * - **Performance**:
+ *   - Cached genotype key (bitstring) with dirty tracking to avoid repeated builds.
+ *   - Cached Base64 of the mask computed directly from [BinarySet] (no `BooleanArray` roundtrips).
+ *   - Reusable boolean buffer for [lastEvaluatedMask] to avoid per‑eval allocations.
  *
  * Notes:
- *  - jMetal 6.x API: use variables() / objectives() lists.
- *  - All randomness uses JMetalRandom's singleton to preserve determinism when seeded.
- * ------------------------------------------------------------------------------------------------------------------ */
+ * - jMetal 6.x API uses `variables()` and `objectives()` lists.
+ * - All randomness comes from the [JMetalRandom] singleton to preserve determinism when seeded.
+ *
+ * @param numberOfVariables the number of variables (always 1 for this problem)
+ * @param numberOfObjectives the number of objectives
+ * @param numberOfTopics number of topics (size of the binary mask)
+ * @param topicLabels human‑readable labels for topics; mirrored to copies
+ * @param forcedCardinality if non‑null, initialize with exactly this many bits set; otherwise random non‑empty
+ */
 class BestSubsetSolution(
     numberOfVariables: Int,
     numberOfObjectives: Int,
@@ -33,16 +38,22 @@ class BestSubsetSolution(
     private val forcedCardinality: Int?
 ) : DefaultBinarySolution(listOf(numberOfTopics), numberOfObjectives) {
 
-    /* External mirror for writers (-Top CSV, etc.). */
+    /** External mirror for writers (`-Top` CSV, etc.). */
     var topicStatus: Array<Boolean> = Array(numberOfTopics) { false }
 
-    /* Delta-eval caches. */
+    /** Last evaluated mask snapshot (reused to avoid allocations). */
     var lastEvaluatedMask: BooleanArray? = null
+
+    /** Cached per‑system subset sums for incremental/delta evaluation. */
     var cachedSumsBySystem: DoubleArray? = null
 
-    /* Operator flags (for Fixed-K swap hints). */
+    /** Index swapped *out* by the last fixed‑K mutation (if any). */
     var lastSwapOutIndex: Int? = null
+
+    /** Index swapped *in* by the last fixed‑K mutation (if any). */
     var lastSwapInIndex: Int? = null
+
+    /** Whether the last mutation was a fixed‑K swap. */
     var lastMutationWasFixedKSwap: Boolean = false
 
     /* Genotype / mask caches (avoid repeated string/materialization). */
@@ -51,12 +62,14 @@ class BestSubsetSolution(
     private var genotypeDirty: Boolean = true
 
     /* -------------------------------- Perf: reusable buffers -------------------------------- */
-    /* Reusable mask buffer to avoid allocating a new BooleanArray at every evaluation. */
+
+    /** Reusable mask buffer to avoid allocating a new BooleanArray at every evaluation. */
     private val reusableMaskBuffer: BooleanArray = BooleanArray(numberOfTopics)
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
     /* -------------------------------- Initialization ------------------------------- */
+
     init {
         val initialMask: BinarySet =
             if (forcedCardinality != null) buildMaskWithExactCardinality(forcedCardinality)
@@ -68,15 +81,20 @@ class BestSubsetSolution(
         cachedMaskB64 = null
     }
 
-    /* ------------------------------ Mask Builders ---------------------------------- */
+    // -----------------------------------------------------------------------------------------
+    // Mask builders
+    // -----------------------------------------------------------------------------------------
 
     /**
-     * Build a BinarySet with exactly K bits set.
+     * Builds a [BinarySet] with exactly **K** bits set.
      *
-     * - K is clamped to [0, numberOfTopics].
-     * - K == 0  → all false.
-     * - K == N  → all true (fast path; avoids sampling edge-cases).
-     * - 0 < K < N → partial Fisher–Yates with a correct [i, N-1] pick.
+     * Rules:
+     * - `K` is clamped to `[0, numberOfTopics]`.
+     * - `K == 0` → all false.
+     * - `K == N` → all true (fast path).
+     * - `0 < K < N` → partial Fisher–Yates over indices with a correct `[i, N-1]` pick.
+     *
+     * Determinism: uses [JMetalRandom]’s singleton.
      */
     private fun buildMaskWithExactCardinality(kRequested: Int): BinarySet {
         val n = numberOfTopics
@@ -88,11 +106,10 @@ class BestSubsetSolution(
             var i = 0
             while (i < n) {
                 mask.set(i, true); i++
-            }   // set all bits via API
+            }
             return mask
         }
 
-        // Use the same RNG source to preserve determinism.
         val rng = JMetalRandom.getInstance().randomGenerator
 
         // Index pool: 0..n-1; fix the first k slots via partial Fisher–Yates.
@@ -109,7 +126,12 @@ class BestSubsetSolution(
         return mask
     }
 
-    /** Build a BinarySet with random bits and ensure it's not empty (flip 1 if needed). */
+    /**
+     * Builds a [BinarySet] with random bits and guarantees it is not empty
+     * (flips one bit to `true` if necessary).
+     *
+     * Determinism: uses [JMetalRandom]’s singleton.
+     */
     private fun buildRandomNonEmptyMask(): BinarySet {
         val mask = BinarySet(numberOfTopics)
         val rng = JMetalRandom.getInstance().randomGenerator
@@ -131,9 +153,14 @@ class BestSubsetSolution(
         return mask
     }
 
-    /* ------------------------------ Public Helpers --------------------------------- */
+    // -----------------------------------------------------------------------------------------
+    // Public helpers
+    // -----------------------------------------------------------------------------------------
 
-    /** Return the current topic mask as a primitive BooleanArray (fast for numeric loops). */
+    /**
+     * Returns the current topic mask as a primitive [BooleanArray].
+     * This is faster for numeric loops than boxing/unboxing via [Array].
+     */
     fun retrieveTopicStatus(): BooleanArray {
         val bits: BinarySet = variables()[0]
         val status = BooleanArray(numberOfTopics)
@@ -145,21 +172,31 @@ class BestSubsetSolution(
         return status
     }
 
-    /** Ensure and return the reusable last-mask buffer (no allocation when persisting state). */
+    /** Returns a reusable buffer to persist the last evaluated mask without reallocations. */
     fun ensureReusableLastMaskBuffer(): BooleanArray = reusableMaskBuffer
 
-    /** Count of selected topics (cardinality of the bitset). */
+    /** Count of selected topics (bitset cardinality). */
     val numberOfSelectedTopics: Int
         get() = variables()[0].cardinality()
 
-    /** Set a single bit in the underlying BinarySet. */
+    /**
+     * Sets a single bit in the underlying [BinarySet] and marks caches dirty.
+     *
+     * @param bitIndex the bit to set
+     * @param value new boolean value
+     */
     fun setBitValue(bitIndex: Int, value: Boolean) {
         variables()[0].set(bitIndex, value)
         genotypeDirty = true
         cachedMaskB64 = null
     }
 
-    /** String form of variable bits without separators (used by logging/ranking). */
+    /**
+     * Returns the string form of the variable bits without separators (e.g., "101001…").
+     * Cached and rebuilt only when mutated.
+     *
+     * @param variableIndex index of the variable (always 0 for this problem)
+     */
     fun getVariableValueString(variableIndex: Int): String {
         var key = cachedGenotypeKey
         if (genotypeDirty || key == null) {
@@ -172,12 +209,15 @@ class BestSubsetSolution(
             }
             key = sb.toString()
             cachedGenotypeKey = key
-            // Do not clear dirty here: we also rebuild Base64 lazily.
+            // Keep dirty flag; Base64 is rebuilt lazily and clears the dirty flag there.
         }
         return key
     }
 
-    /** Base64 for current mask, computed directly from BinarySet and cached. */
+    /**
+     * Returns an unpadded Base64 of the current mask, computed directly from [BinarySet] and cached.
+     * Recomputed only when the genotype is marked dirty.
+     */
     fun maskB64Cached(): String {
         var b64 = cachedMaskB64
         if (genotypeDirty || b64 == null) {
@@ -188,7 +228,13 @@ class BestSubsetSolution(
         return b64
     }
 
-    /** Build a BinarySet from a genes array (used by streaming/Average paths). */
+    /**
+     * Creates a new [BinarySet] with [numBits] bits and, if provided, sets bits from [genes].
+     * Marks caches dirty so callers can install the returned bitset into `variables()[0]`.
+     *
+     * @param numBits number of bits
+     * @param genes optional boolean array to initialize bits (truncated to [numBits])
+     */
     fun createNewBitSet(numBits: Int, genes: Array<Boolean>? = null): BinarySet {
         val bs = BinarySet(numBits)
         if (genes != null) {
@@ -198,39 +244,55 @@ class BestSubsetSolution(
                 bs.set(i, genes[i]); i++
             }
         }
-        // When external code installs this into variables()[0], that constitutes a mutation.
         genotypeDirty = true
         cachedMaskB64 = null
         return bs
     }
 
-    /** Clear delta-eval caches (subset sums). */
+    /** Clears delta‑evaluation caches (subset sums and last evaluated mask). */
     fun resetIncrementalEvaluationState() {
         lastEvaluatedMask = null
         cachedSumsBySystem = null
     }
 
-    /** Clear operator flags (swap info). */
+    /** Clears operator flags (swap info used by fixed‑K operators). */
     fun clearLastMutationFlags() {
         lastMutationWasFixedKSwap = false
         lastSwapOutIndex = null
         lastSwapInIndex = null
     }
 
-    /** Friendly cardinality accessor (Double) used by writers/streams. */
+    /** Friendly cardinality accessor (as `Double`) used by writers/streams. */
     fun getCardinality(): Double = numberOfSelectedTopics.toDouble()
 
     /**
-     * Returns the correlation as stored in objectives()[1]:
-     *  - BEST  : negative of the natural correlation (internal encoding)
-     *  - WORST : natural correlation
-     * External printing logic must convert to the natural view where required.
+     * Returns the correlation objective stored in `objectives()[1]`.
+     *
+     * Encoding:
+     * - **BEST**: negative of the natural correlation (internal encoding).
+     * - **WORST**: natural correlation.
+     *
+     * External printing/aggregation may convert it back to the “natural” view.
      */
     fun getCorrelation(): Double = objectives()[1]
 
-    /* --------------------------- Bitset → Base64 (no arrays) ------------------------ */
+    // -----------------------------------------------------------------------------------------
+    // Bitset → Base64 (no array materialization)
+    // -----------------------------------------------------------------------------------------
 
-    /** BinarySet → Base64 (unpadded) directly, little-endian by word, LSB-first within word. */
+    /**
+     * Converts a [BinarySet] to an **unpadded Base64** string.
+     *
+     * Encoding:
+     * - Words are packed little‑endian by 64‑bit word.
+     * - Bits are LSB‑first within each word.
+     *
+     * This mirrors the project’s boolean mask encoding conventions and avoids
+     * intermediate `BooleanArray` materializations.
+     *
+     * @param bits source bitset
+     * @param totalBits number of bits to encode
+     */
     private fun binarySetToBase64(bits: BinarySet, totalBits: Int): String {
         val numberOfWords = (totalBits + 63) ushr 6
         val byteBuffer = ByteArray(numberOfWords * java.lang.Long.BYTES)
@@ -244,7 +306,7 @@ class BestSubsetSolution(
             if (bits.get(i)) accumulator = accumulator or (1L shl bitIndexWithinWord)
             bitIndexWithinWord++
             if (bitIndexWithinWord == 64) {
-                // Write 8 bytes, least-significant first (matches booleanMaskToBase64 convention).
+                // Write 8 bytes, least‑significant first.
                 var w = accumulator
                 var b = 0
                 while (b < 8) {
@@ -272,14 +334,17 @@ class BestSubsetSolution(
         return java.util.Base64.getEncoder().withoutPadding().encodeToString(byteBuffer)
     }
 
-    /* ---------------------------------- Copy --------------------------------------- */
+    // -----------------------------------------------------------------------------------------
+    // Copy
+    // -----------------------------------------------------------------------------------------
+
     /**
      * Deep copy preserving:
-     *  - Variable bitset
-     *  - Objectives
-     *  - topicStatus mirror
-     *  - Delta-eval caches and operator flags
-     *  - Genotype/cache state (safe to reuse)
+     * - Variable bitset
+     * - Objectives
+     * - [topicStatus] mirror
+     * - Delta‑eval caches and operator flags
+     * - Genotype/cache state
      */
     override fun copy(): BestSubsetSolution {
         val clone = BestSubsetSolution(
@@ -327,5 +392,4 @@ class BestSubsetSolution(
 
         return clone
     }
-
 }

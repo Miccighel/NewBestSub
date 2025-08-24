@@ -14,8 +14,43 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.nio.file.FileSystemException
 
+/**
+ * Main program entry point for **NewBestSub**.
+ *
+ * Responsibilities:
+ * - Parse CLI arguments and validate them.
+ * - Initialize logging: bootstrap log → parameterized log.
+ * - Load dataset and build parameter tokens.
+ * - Manage deterministic seeding via [RandomBridge].
+ * - Run experiments according to the target:
+ *   - `Best`, `Worst`: NSGA-II evolutionary optimization.
+ *   - `Average`: percentile-based evaluation.
+ *   - `All`: combined execution of Best/Worst + Average.
+ * - Handle expansions (`--expt`, `--exps`) and multi-run merging (`--mrg`).
+ * - Optionally copy results into `NewBestSub-Experiments/`.
+ * - Catch and log errors (CLI, FS, jMetal, OOM) with hints.
+ */
 object Program {
 
+    /**
+     * Main entry point for the program.
+     *
+     * @param arguments Command line arguments passed to the program.
+     *
+     * Workflow:
+     * 1. Bootstrap logging to a temporary log file.
+     * 2. Parse CLI options and validate values.
+     * 3. Initialize log level and switch to parameterized log file.
+     * 4. Load dataset and metadata via [DatasetController].
+     * 5. Optionally install deterministic RNG ([RandomBridge]).
+     * 6. Execute run(s) depending on selected options:
+     *    - Multi-run merging (`--mrg`)
+     *    - Topic expansion (`--expt`)
+     *    - System expansion (`--exps`)
+     *    - Single run
+     * 7. Optionally copy results into experiments folder.
+     * 8. Log contextual error messages for failures.
+     */
     @JvmStatic
     fun main(arguments: Array<String>) {
 
@@ -436,9 +471,16 @@ object Program {
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to OutOfMemoryError.")
         }
 
-
     }
 
+    /**
+     * Build and return the complete set of CLI options.
+     *
+     * The ordering (and the pretty help page) is tuned for clarity. Required options
+     * are marked as such, while conditional/optional ones carry guidance in their descriptions.
+     *
+     * @return the configured [Options] instance.
+     */
     fun loadCommandLineOptions(): Options {
 
         val options = Options()
@@ -522,11 +564,14 @@ object Program {
         return options
     }
 
-    /* ------------------------------------------------------------------------------------
-     * Pretty help/usage
-     *  - Wider layout, custom option ordering, clear header + example commands.
-     *  - Keeps your comment style and avoids noisy auto-wrapping of descriptions.
-     * ---------------------------------------------------------------------------------- */
+    /**
+     * Pretty help/usage printer.
+     *
+     * - Wider layout, custom option ordering, clear header + example commands.
+     * - Keeps comment style and avoids noisy auto-wrapping of descriptions.
+     *
+     * @return configured [HelpFormatter].
+     */
     private fun buildHelpFormatter(): org.apache.commons.cli.HelpFormatter {
         val columns = System.getenv("COLUMNS")?.toIntOrNull()?.coerceIn(100, 160) ?: 120
         return org.apache.commons.cli.HelpFormatter().apply {
@@ -541,11 +586,11 @@ object Program {
             // Order: required & core options first, then the rest (stable)
             val priority = listOf(
                 "fi", "c", "t", "l",     // core required
-                "i", "po",             // iterations/population (Best/Worst/All)
-                "r", "pe",             // repetitions/percentiles (Average/All)
-                "det", "sd",           // deterministic flags
+                "i", "po",               // iterations/population (Best/Worst/All)
+                "r", "pe",               // repetitions/percentiles (Average/All)
+                "det", "sd",             // deterministic flags
                 "mr", "et", "es", "mx",  // multi-run & expansions
-                "copy"                // experiments copy
+                "copy"                   // experiments copy
             )
             optionComparator = Comparator { a, b ->
                 val ia = priority.indexOf(a.opt).let { if (it == -1) Int.MAX_VALUE else it }
@@ -555,7 +600,12 @@ object Program {
         }
     }
 
-    /* Print a clean, helpful usage page with a contextual cause and examples. */
+    /**
+     * Print a clean, helpful usage page with a contextual cause and examples.
+     *
+     * @param options CLI options set.
+     * @param cause Optional error cause to show before usage.
+     */
     private fun printNiceHelp(options: Options, cause: String?) {
         val formatter = buildHelpFormatter()
 
