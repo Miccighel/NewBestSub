@@ -44,6 +44,7 @@ Select small topic subsets that preserve the **system ranking** induced by the f
 - [Features](#features)
 - [Requirements](#requirements)
 - [Build](#build)
+- [Run from release](#run-from-release)
 - [Quick start](#quick-start)
 - [Dataset schema](#dataset-schema)
 - [Outputs](#outputs)
