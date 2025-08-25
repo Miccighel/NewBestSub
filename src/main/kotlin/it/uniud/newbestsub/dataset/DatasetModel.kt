@@ -38,36 +38,69 @@ import kotlinx.coroutines.channels.SendChannel
  * DatasetModel
  * ============
  *
- * In-memory model orchestrating:
- * - The dataset AP matrix (systems × topics).
- * - Streaming NSGA-II execution for BEST/WORST and sampling for AVERAGE.
- * - Compact caches so aggregation/info queries don’t retain large populations.
+ * In‑memory orchestrator for:
+ * - Dataset AP matrix (systems × topics).
+ * - Streaming NSGA‑II execution for BEST/WORST and random sampling for AVERAGE.
+ * - Compact caches so aggregations do not retain large populations.
  *
- * ## Output artifacts
- * - **-Fun**: objective rows `(K, correlation)` streamed during runs.
- * - **-Var**: genotype rows as Base64 masks (`"B64:<...>"`) streamed with -Fun.
- *   - BEST/WORST → only when the per-K representative improves (monotone).
- *   - AVERAGE    → exactly one row per K.
- * - **-Top**: top solutions per cardinality (≤ 10 per K), maintained via block replacement.
+ * ## Output artifacts (what files mean)
+ * - **-Fun** (functions): history of **best‑so‑far improvements** per K during a run.
+ *   - One row is written **only when the incumbent improves** for that K.
+ *   - Therefore, it typically contains **few rows** and is **monotone** in the objective.
+ *   - Example for WORST at K=1:
+ *     ```
+ *     1,0.665046   // first incumbent
+ *     1,0.530908   // improved
+ *     1,-0.602607  // improved
+ *     1,-0.720060  // improved (current best)
+ *     ```
+ *   - AVERAGE branch writes **exactly one row per K** (no incumbent concept).
+ *
+ * - **-Var** (variables): genotypes aligned with -Fun, encoded as `"B64:<...>"`.
+ *   - BEST/WORST: emitted only on improvement (one VAR line per FUN line).
+ *   - AVERAGE: exactly one VAR line per K.
+ *
+ * - **-Top** (top solutions per K): **presentation snapshot(s)** for K.
+ *   - Maintained from a **persistent per‑K pool**; each update sends a replacement block.
+ *   - Lines are `"K,Correlation,B64:<mask>"`, ordered by correlation
+ *     (desc for BEST, asc for WORST), capped at [Constants.TOP_SOLUTIONS_NUMBER].
+ *   - Intended to have **at most one final “best” entry per K** for downstream aggregators.
+ *     Readers should either:
+ *       - consume the **first line** for BEST and **first line** for WORST (after ordering), or
+ *       - compute **extrema** per K (max for BEST, min for WORST) if multiple lines exist.
  *
  * ## Branches
  * - **AVERAGE**:
- *   - For each K = 1..N, sample [numberOfRepetitions] subsets.
- *   - Correlate vs full-set mean vector, stream exactly one FUN/VAR row.
- *   - Percentiles computed from the same samples. TOP unused.
- * - **BEST/WORST**:
- *   - NSGA-II objective encoding (internal):
+ *   - For each K, sample [numberOfRepetitions] random subsets.
+ *   - Compute correlations vs the full‑set mean vector and stream exactly one FUN/VAR row.
+ *   - Percentiles are computed from the same samples; -Top is not used.
+ *
+ * - **BEST / WORST**:
+ *   - Objective sign scheme (internal):
  *     - BEST  → obj[0] = +K, obj[1] = -corr
  *     - WORST → obj[0] = -K, obj[1] = +corr
- *   - Per generation: select representative per K (natural scale), stream on improvement,
- *     and update a persistent TOP pool.
+ *   - A **representative per K** is selected each generation, in **natural scale**:
+ *     - naturalCorr(s) = -obj[1] for BEST, naturalCorr(s) = obj[1] for WORST.
+ *   - On **strict improvement** vs best‑seen per K, stream one -Fun/-Var row and update the Top pool.
  *
- * ## RAM-focused design
- * - After load/expansion, call [sealData] to drop boxed AP maps and keep dense [PrecomputedData].
- * - During runs, cache only:
- *   - per-K representative correlation: [corrByK]
- *   - per-K representative mask as Base64: [repMaskB64ByK]
- * - TOP pool uses lightweight entries ([TopEntry]) without holding full solutions.
+ * ## On negative correlations (important)
+ * - Correlation is in [-1, 1]. With small K, subsets can **invert the ranking** of systems.
+ * - **WORST** explicitly minimizes correlation, so negative values are **expected**.
+ * - **AVERAGE** reports the mean over random subsets; at small K the mean can be **negative** if many
+ *   samples invert the ranking. This is a statistical effect, not a bug.
+ *
+ * ## Invariants and expectations
+ * - -Fun (BEST/WORST): per K, rows are **strictly improving over time** in natural scale.
+ * - -Fun/-Var alignment: for every FUN row there is exactly one aligned VAR row.
+ * - -Top: treat it as a **snapshot**; if multiple lines exist per K, select the **extremum** by target
+ *   (BEST=max, WORST=min), or rely on the first line after ordering.
+ *
+ * ## RAM‑focused design
+ * - After load/expansion, [sealData] discards boxed AP maps and keeps dense [PrecomputedData].
+ * - During runs, we cache only:
+ *   - Per‑K representative correlation: [corrByK]
+ *   - Per‑K representative mask (Base64): [repMaskB64ByK]
+ * - The Top pool stores lightweight entries ([TopEntry]) without retaining full solutions.
  */
 class DatasetModel {
 
@@ -143,6 +176,11 @@ class DatasetModel {
      * Build CSV lines for the TOP pool of a given K.
      * Lines are `"K,Correlation,B64:<mask>"`, ordered by correlation (desc for BEST, asc for WORST),
      * limited to [Constants.TOP_SOLUTIONS_NUMBER].
+     *
+     * Downstream readers that require a single value per K should pick:
+     *   - BEST  → the first line (max corr)
+     *   - WORST → the first line (min corr)
+     * or compute the extremum across lines if multiple are present.
      */
     private fun buildTopLinesFromPool(k: Int): List<String> {
         val pool = topPoolByK[k] ?: return emptyList()
@@ -779,9 +817,11 @@ class DatasetModel {
     /* --------------------- VAR streaming: compact Base64 payload --------------------- */
 
     /**
-     * Format a -Fun row in the external (natural) view.
-     * - BEST : print `K,+corr` (flip internal sign before printing)
-     * - WORST: print `K,+corr` (K is stored negative internally; corr already natural)
+     * External -Fun row (natural scale).
+     * BEST  : prints "K,+corr" where corr = -obj[1]
+     * WORST : prints "K,+corr" where corr =  obj[1]
+     * Note: For BEST/WORST this is emitted **only on improvement**, so -Fun is a short,
+     * strictly improving trace per K. For AVERAGE there is one row per K (no incumbent).
      */
     private fun BinarySolution.toFunLineFor(@Suppress("UNUSED_PARAMETER") target: String): String {
         val s = this as BestSubsetSolution
