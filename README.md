@@ -44,7 +44,6 @@ Select small topic subsets that preserve the **system ranking** induced by the f
 - [Features](#features)
 - [Requirements](#requirements)
 - [Build](#build)
-- [Run from release](#run-from-release)
 - [Quick start](#quick-start)
 - [Dataset schema](#dataset-schema)
 - [Outputs](#outputs)
@@ -52,6 +51,7 @@ Select small topic subsets that preserve the **system ranking** induced by the f
   - [Parquet](#parquet)
   - [VAR/TOP Base64 layout](#vartop-base64-layout)
   - [Decoding snippets](#decoding-snippets)
+  - [Additional notes](#additional-notes)
 - [CLI options](#cli-options)
 - [Deterministic execution](#deterministic-execution)
 - [Folder naming pattern](#folder-naming-pattern)
@@ -179,6 +179,8 @@ RM3,  0.40, 0.51, 0.26, 0.17, 0.42
 Results are written into a per-run container named from parameters (see Folder naming pattern).
 Each container has `CSV/` and `Parquet/` subfolders.
 
+---
+
 ### CSV
 
 - `...-Fun.csv` contains `K corr` (space-separated; `K` integer; `corr` with 6 digits; always natural correlation).
@@ -268,6 +270,28 @@ def decode_mask_from_base64(b64_or_prefixed: str, n_topics: int) -> list[bool]:
         off += 8
     return out
 ```
+
+### Additional notes
+
+- **FUN**  
+  - Contains the history of *best-so-far improvements* for each K.  
+  - BEST/WORST: only written when the incumbent improves → few, strictly monotone rows.  
+  - AVERAGE: exactly one row per K (no incumbent concept).  
+
+- **VAR**  
+  - Genotypes aligned 1:1 with FUN rows (same number of lines).  
+  - BEST/WORST: written only on improvement.  
+  - AVERAGE: exactly one line per K.  
+
+- **TOP**  
+  - Maintains a per-K pool of best solutions, replaced as new ones are found.  
+  - May contain multiple rows per K (≤ 10).  
+  - Downstream readers should select the extremum: max for BEST, min for WORST.  
+
+- **Negative correlations**  
+  - Valid and expected for WORST (objective = minimize correlation).  
+  - Can also appear in AVERAGE at small K, if many random subsets invert the ranking.  
+  - Not a bug — reflects genuine inversions of system orderings.
 
 ---
 
