@@ -44,6 +44,7 @@ Select small topic subsets that preserve the **system ranking** induced by the f
 - [Features](#features)
 - [Requirements](#requirements)
 - [Build](#build)
+- [Release artifacts & versioning](#release-artifacts--versioning)
 - [Run from release](#run-from-release)
 - [Quick start](#quick-start)
 - [Dataset schema](#dataset-schema)
@@ -96,9 +97,43 @@ mvn -DskipTests=false clean package
 
 Artifacts:
 ```
+target/NewBestSub-2.0.jar
 target/NewBestSub-2.0-jar-with-dependencies.jar
 target/NewBestSub-2.0-test-jar-with-dependencies.jar
 ```
+
+---
+
+## Release artifacts & versioning
+
+We pin the **distribution filenames** to a *major/minor* track for stable scripting, while the Maven **project version** keeps full semver (including patches).
+
+- **Release assets (fat & test-fat jars)**  
+  Produced by the Assembly plugin using a pinned `dist.version` →  
+  `NewBestSub-2.0-jar-with-dependencies.jar`  
+  `NewBestSub-2.0-test-jar-with-dependencies.jar`
+
+- **Local Maven artifact (thin jar)**  
+  Also pinned via `finalName` to the same `dist.version` →  
+  `target/NewBestSub-2.0.jar`
+
+- **Why this pinning?**  
+  Patch bumps (2.0.1, 2.0.2, …) won’t break scripts or docs that reference the
+  stable `NewBestSub-2.0*.jar` names.
+
+- **Coordinates remain precise**  
+  If you depend via Maven/Gradle, you still pull the full project version (e.g. `2.0.2`):  
+  `it.uniud.newbestsub:NewBestSub:2.0.2`
+
+- **Override the label (optional)**  
+  ```bash
+  mvn -Ddist.version=2.1 clean package
+  ```
+  → produces `NewBestSub-2.1.jar`, `NewBestSub-2.1-jar-with-dependencies.jar`, etc. (POM version unchanged).
+
+> When building from source, you’ll typically see **both** pinned artifacts:
+> - `target/NewBestSub-2.0.jar` (thin jar)  
+> - `target/NewBestSub-2.0-jar-with-dependencies.jar` (fat jar)
 
 ---
 
@@ -113,7 +148,7 @@ Instead of building from source, you can download a ready-to-use JAR:
    NewBestSub-<version>-jar-with-dependencies.jar
    ```
 
-   (e.g., `NewBestSub-2.0-jar-with-dependencies.jar`).
+   (Pinned distribution name example: `NewBestSub-2.0-jar-with-dependencies.jar`).
 
 3. Run it with Java 22:
 
