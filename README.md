@@ -8,6 +8,7 @@ The selection task is formulated as a bi-objective optimization—minimizing sub
 [![CI](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml/badge.svg)](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Miccighel/NewBestSub)](https://github.com/Miccighel/NewBestSub/releases)
 [![License](https://img.shields.io/github/license/Miccighel/NewBestSub)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.16950389.svg)](https://doi.org/10.5281/zenodo.16950389)
 
 ![Java 22](https://img.shields.io/badge/Java-22-007396?logo=openjdk&logoColor=white)
 ![Kotlin 2.2](https://img.shields.io/badge/Kotlin-2.2-7F52FF?logo=kotlin&logoColor=white)
@@ -440,6 +441,8 @@ Logging:
 ---
 
 ## Citation
+
+Software archive: <https://doi.org/10.5281/zenodo.16950389>
 
 - Kevin Roitero, Michael Soprano, Andrea Brunello, Stefano Mizzaro. *Reproduce and Improve: An Evolutionary Approach to Select a Few Good Topics for Information Retrieval Evaluation*. ACM JDIQ 10(3), Article 12, 2018. https://doi.org/10.1145/3239573
 - Kevin Roitero, Michael Soprano, Stefano Mizzaro. *Effectiveness Evaluation with a Subset of Topics: A Practical Approach*. In SIGIR '18, 1145–1148. https://doi.org/10.1145/3209978.3210108

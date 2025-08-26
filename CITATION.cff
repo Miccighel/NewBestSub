@@ -1,0 +1,101 @@
+cff-version: "1.2.0"
+message: "If you use this software, please cite it as below."
+title: "NewBestSub"
+version: "2.0.2"
+abstract: >
+  NewBestSub is a research tool for efficient topic-set reduction in information retrieval (IR)
+  evaluation. The task is formulated as a bi-objective optimization—minimizing subset cardinality K
+  while maximizing rank agreement with the full topic set—solved via NSGA-II. Given a
+  system-by-topic AP matrix and a chosen correlation metric (Pearson or Kendall), the method explores
+  the search space and streams results to CSV/Parquet, including best/worst subsets and percentile
+  summaries. Deterministic execution is supported for reproducibility.
+doi: "10.5281/zenodo.16950389"
+url: "https://github.com/Miccighel/NewBestSub"
+repository-code: "https://github.com/Miccighel/NewBestSub"
+repository-artifact: "https://github.com/Miccighel/NewBestSub/releases"
+license: "MIT"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.16950389"
+languages:
+  - en
+keywords:
+  - information retrieval
+  - evaluation
+  - topic selection
+  - NSGA-II
+  - Pearson
+  - Kendall
+  - Parquet
+  - reproducibility
+authors:
+  - family-names: "Soprano"
+    given-names: "Michael"
+    affiliation: "University of Udine (Uniud)"
+    orcid: "https://orcid.org/0000-0002-7337-7592"
+  - family-names: "Lunardi"
+    given-names: "Riccardo"
+    affiliation: "University of Udine (Uniud)"
+    orcid: "https://orcid.org/0009-0001-5550-317X"
+  - family-names: "Roitero"
+    given-names: "Kevin"
+    affiliation: "University of Udine (Uniud)"
+    orcid: "https://orcid.org/0000-0002-9191-3280"
+  - family-names: "Mizzaro"
+    given-names: "Stefano"
+    affiliation: "University of Udine (Uniud)"
+    orcid: "https://orcid.org/0000-0002-2852-168X"
+contact:
+  - family-names: "Soprano"
+    given-names: "Michael"
+    affiliation: "University of Udine (Uniud)"
+    orcid: "https://orcid.org/0000-0002-7337-7592"
+preferred-citation:
+  type: software
+  title: "NewBestSub"
+  version: "2.0.2"
+  doi: "10.5281/zenodo.16950389"
+  url: "https://github.com/Miccighel/NewBestSub"
+  authors:
+    - family-names: "Soprano"
+      given-names: "Michael"
+      orcid: "https://orcid.org/0000-0002-7337-7592"
+    - family-names: "Lunardi"
+      given-names: "Riccardo"
+      orcid: "https://orcid.org/0009-0001-5550-317X"
+    - family-names: "Roitero"
+      given-names: "Kevin"
+      orcid: "https://orcid.org/0000-0002-9191-3280"
+    - family-names: "Mizzaro"
+      given-names: "Stefano"
+      orcid: "https://orcid.org/0000-0002-2852-168X"
+references:
+  - type: article
+    title: "Reproduce and Improve: An Evolutionary Approach to Select a Few Good Topics for Information Retrieval Evaluation"
+    authors:
+      - family-names: "Roitero"
+        given-names: "Kevin"
+      - family-names: "Soprano"
+        given-names: "Michael"
+      - family-names: "Brunello"
+        given-names: "Andrea"
+      - family-names: "Mizzaro"
+        given-names: "Stefano"
+    year: 2018
+    journal: "ACM Journal of Data and Information Quality"
+    volume: "10"
+    number: "3"
+    doi: "10.1145/3239573"
+  - type: paper-conference
+    title: "Effectiveness Evaluation with a Subset of Topics: A Practical Approach"
+    authors:
+      - family-names: "Roitero"
+        given-names: "Kevin"
+      - family-names: "Soprano"
+        given-names: "Michael"
+      - family-names: "Mizzaro"
+        given-names: "Stefano"
+    year: 2018
+    collection-title: "SIGIR '18"
+    pages: "1145–1148"
+    doi: "10.1145/3209978.3210108"
