@@ -1,7 +1,8 @@
 # NewBestSub
 
-Efficient topic-set reduction for IR evaluation using a multi-objective evolutionary algorithm (NSGA-II).  
-Select small topic subsets that preserve the **system ranking** induced by the full set.
+NewBestSub is a research tool for efficient topic-set reduction in IR evaluation. Its objective is to identify small subsets of topics that preserve, as closely as possible, the system ranking induced by the full topic set.
+
+The selection task is formulated as a bi-objective optimization—minimizing subset cardinality K while maximizing rank agreement with the full set—solved via NSGA-II. Given a system-by-topic AP matrix and a chosen correlation metric (Pearson or Kendall), the method explores the search space and streams results to CSV/Parquet, including best/worst subsets and percentile summaries. Deterministic execution is supported for reproducibility.
 
 [![Docs](https://img.shields.io/badge/docs-website-blue)](https://miccighel.github.io/NewBestSub/)
 [![CI](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml/badge.svg)](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml)
