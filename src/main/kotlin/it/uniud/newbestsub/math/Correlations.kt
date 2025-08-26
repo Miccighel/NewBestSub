@@ -61,45 +61,6 @@ object Correlations {
     }
 
     // ------------------------------------------------------------------------------------
-    // Pearson (boxed)
-    // ------------------------------------------------------------------------------------
-
-    /**
-     * Computes **Pearson correlation** on boxed arrays ([Array]<[Double]>).
-     *
-     * - Preserved for legacy compatibility (e.g., Average branch).
-     * - Internally performs the same streaming accumulator as the primitive version.
-     *
-     * @param left left-hand boxed vector
-     * @param right right-hand boxed vector
-     * @return Pearson’s r in `[-1.0, +1.0]`, or `0.0` if denominator is `0`
-     */
-    fun fastPearsonBoxed(left: Array<Double>, right: Array<Double>): Double {
-        val n = left.size
-        var sumX = 0.0
-        var sumY = 0.0
-        var sumXX = 0.0
-        var sumYY = 0.0
-        var sumXY = 0.0
-        var i = 0
-        while (i < n) {
-            val x = left[i]
-            val y = right[i]
-            sumX += x
-            sumY += y
-            sumXX += x * x
-            sumYY += y * y
-            sumXY += x * y
-            i++
-        }
-        val num = n * sumXY - sumX * sumY
-        val denX = n * sumXX - sumX * sumX
-        val denY = n * sumYY - sumY * sumY
-        val den = sqrt(denX) * sqrt(denY)
-        return if (den == 0.0) 0.0 else num / den
-    }
-
-    // ------------------------------------------------------------------------------------
     // Kendall τ-b (primitive)
     // ------------------------------------------------------------------------------------
 
@@ -160,20 +121,4 @@ object Correlations {
             else -> { a, b -> fastPearsonPrimitive(a, b) } // default Pearson
         }
 
-    /**
-     * Returns a boxed correlation function for the given [method] token.
-     *
-     * @param method correlation method ([Constants.CORRELATION_PEARSON], [Constants.CORRELATION_KENDALL])
-     * @return function taking two [Array]<[Double]> and returning the correlation
-     */
-    fun makeBoxedCorrelation(method: String): (Array<Double>, Array<Double>) -> Double =
-        when (method) {
-            Constants.CORRELATION_KENDALL -> { a, b ->
-                // Reuse primitive τ-b by copying once (AVERAGE branch is not ultra-hot).
-                val da = DoubleArray(a.size) { i -> a[i] }
-                val db = DoubleArray(b.size) { i -> b[i] }
-                kendallTauBPrimitive(da, db)
-            }
-            else -> { a, b -> fastPearsonBoxed(a, b) } // default Pearson
-        }
 }

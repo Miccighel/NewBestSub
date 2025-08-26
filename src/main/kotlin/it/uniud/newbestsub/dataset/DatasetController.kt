@@ -461,8 +461,6 @@ class DatasetController(
 
         /* ---------- locals & column layout ---------- */
         val referenceModel = datasetModels.first()
-        val topicLabelList = referenceModel.topicLabels
-        val totalNumberOfTopics = topicLabelList.size
         val maximumCardinality = referenceModel.numberOfTopics
 
         /* Extract percentiles from the AVERAGE model if present */
@@ -475,7 +473,7 @@ class DatasetController(
         val totalHeaderColumns = 1 + numberOfTargets + sortedPercentileKeys.size + 2  /* +2: BestTopicsB64, WorstTopicsB64 */
 
         /* Stable decimal formatter with six digits after the decimal point */
-        val decimalFormatter = java.text.DecimalFormat("0.000000", java.text.DecimalFormatSymbols(java.util.Locale.ROOT))
+        val decimalFormatter = java.text.DecimalFormat("0.000000", java.text.DecimalFormatSymbols(Locale.ROOT))
         fun formatSixDecimals(value: Double?): String =
             if (value == null) Constants.CARDINALITY_NOT_AVAILABLE else decimalFormatter.format(value)
 
@@ -662,9 +660,8 @@ class DatasetController(
         val aggregatedDataRowsPerExec = aggregatedTables.map { dataRows(it) }
 
         val alignedCardinalityCount = minDataLen(aggregatedTables)
-        val totalCardinalities = alignedCardinalityCount
 
-        val loggingFactor = maxOf(1, (totalCardinalities * Constants.LOGGING_FACTOR) / 100)
+        val loggingFactor = maxOf(1, (alignedCardinalityCount * Constants.LOGGING_FACTOR) / 100)
         var progressCounter = 0
 
         /* ----------------- 2) per-target per-exec (FUN/VAR/TOP) ----------------- */
@@ -773,9 +770,9 @@ class DatasetController(
         val mergedBestTopSolutions = LinkedList<String>()
         val mergedWorstTopSolutions = LinkedList<String>()
 
-        for (cardIdx in 0 until totalCardinalities) {
-            if ((cardIdx % loggingFactor) == 0 && totalCardinalities > 0) {
-                logger.info("Results merged for cardinality: ${cardIdx + 1}/$totalCardinalities ($progressCounter%) for $numberOfExecutions total executions.")
+        for (cardIdx in 0 until alignedCardinalityCount) {
+            if ((cardIdx % loggingFactor) == 0) {
+                logger.info("Results merged for cardinality: ${cardIdx + 1}/$alignedCardinalityCount ($progressCounter%) for $numberOfExecutions total executions.")
                 progressCounter += Constants.LOGGING_FACTOR
             }
 
@@ -897,7 +894,7 @@ class DatasetController(
             }
         }
 
-        logger.info("Results merged for cardinality: $totalCardinalities/$totalCardinalities (100%) for $numberOfExecutions total executions.")
+        logger.info("Results merged for cardinality: $alignedCardinalityCount/$alignedCardinalityCount (100%) for $numberOfExecutions total executions.")
 
         /* ----------------- 4) merge Info ----------------- */
 

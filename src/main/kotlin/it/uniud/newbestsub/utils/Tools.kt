@@ -7,7 +7,7 @@ import java.security.MessageDigest
 /**
  * Utility helpers for filename sanitization, run-token construction, and deterministic seeding.
  *
- * The functions here are pure and side-effect free. They are used by the CLI and dataset layers
+ * The functions here are pure and side effect free. They are used by the CLI and dataset layers
  * to build stable, human-readable folder names and to derive reproducible seeds from a parameter set.
  */
 object Tools {

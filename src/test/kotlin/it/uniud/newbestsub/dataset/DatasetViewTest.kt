@@ -1,16 +1,15 @@
 package it.uniud.newbestsub.dataset
 
-import it.uniud.newbestsub.dataset.DatasetView
 import it.uniud.newbestsub.dataset.model.CardinalityResult
 import it.uniud.newbestsub.utils.Constants
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.io.File
-import java.util.Locale
+import java.util.*
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Tests for [DatasetView] streaming helpers.
@@ -88,8 +87,8 @@ class DatasetViewTest {
         /**
          * Helper to emit a single improved K row (intentionally out-of-order).
          *
-         * For FUN we use `"K,corr"`, formatted with `Locale.ROOT` to ensure dot-decimal.
-         * For VAR we pass raw forms; CSV view will normalize to Base64 on close.
+         * For FUN, we use `"K,corr"`, formatted with `Locale.ROOT` to ensure dot-decimal.
+         * For VAR, we pass raw forms; CSV view will normalize to Base64 on close.
          */
         fun emit(cardinality: Int, correlation: Double, variableCsvRaw: String) {
             val corrStr = String.format(Locale.ROOT, "%.6f", correlation)
@@ -166,7 +165,7 @@ class DatasetViewTest {
         variableLines.forEachIndexed { idx, line ->
             assertTrue(line.startsWith("B64:"), "VAR line #$idx must start with B64:")
             val payload = line.removePrefix("B64:")
-            java.util.Base64.getDecoder().decode(payload) // throws if invalid
+            Base64.getDecoder().decode(payload) // throws if invalid
         }
 
         /* ===== Assertions: TOP ===== */
@@ -194,7 +193,7 @@ class DatasetViewTest {
 
         assertTrue(firstK1Topics.startsWith("B64:"), "TOP topics must start with B64:")
         val topicsPayload = firstK1Topics.removePrefix("B64:")
-        java.util.Base64.getDecoder().decode(topicsPayload) // throws if invalid
+        Base64.getDecoder().decode(topicsPayload) // throws if invalid
 
         /* Cleanup so the test is repeatable without manual deletes */
         cleanup(functionValuesPath.toFile(), variableValuesPath.toFile(), topSolutionsPath.toFile())

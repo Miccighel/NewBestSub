@@ -6,7 +6,14 @@ import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.utils.Tools
 import it.uniud.newbestsub.utils.LogManager
 import it.uniud.newbestsub.utils.RandomBridge
-import org.apache.commons.cli.*
+import org.apache.commons.cli.CommandLine
+import org.apache.commons.cli.CommandLineParser
+import org.apache.commons.cli.DefaultParser
+import org.apache.commons.cli.Option
+import org.apache.commons.cli.Options
+import org.apache.commons.cli.ParseException
+import org.apache.commons.cli.help.HelpFormatter
+import org.apache.commons.cli.help.TextHelpAppendable
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.Logger
 import org.uma.jmetal.util.errorchecking.JMetalException
@@ -15,46 +22,31 @@ import java.io.FileNotFoundException
 import java.nio.file.FileSystemException
 
 /**
- * Main program entry point for **NewBestSub**.
+ * Main program entry point for NewBestSub.
  *
  * Responsibilities:
  * - Parse CLI arguments and validate them.
  * - Initialize logging: bootstrap log → parameterized log.
  * - Load dataset and build parameter tokens.
- * - Manage deterministic seeding via [RandomBridge].
+ * - Manage deterministic seeding via RandomBridge.
  * - Run experiments according to the target:
- *   - `Best`, `Worst`: NSGA-II evolutionary optimization.
- *   - `Average`: percentile-based evaluation.
- *   - `All`: combined execution of Best/Worst + Average.
- * - Handle expansions (`--expt`, `--exps`) and multi-run merging (`--mrg`).
- * - Optionally copy results into `NewBestSub-Experiments/`.
+ *   - Best, Worst: NSGA-II evolutionary optimization.
+ *   - Average: percentile-based evaluation.
+ *   - All: combined execution of Best/Worst + Average.
+ * - Handle expansions (--expt, --exps) and multi-run merging (--mrg).
+ * - Optionally copy results into NewBestSub-Experiments/.
  * - Catch and log errors (CLI, FS, jMetal, OOM) with hints.
  */
 object Program {
 
     /**
      * Main entry point for the program.
-     *
-     * @param arguments Command line arguments passed to the program.
-     *
-     * Workflow:
-     * 1. Bootstrap logging to a temporary log file.
-     * 2. Parse CLI options and validate values.
-     * 3. Initialize log level and switch to parameterized log file.
-     * 4. Load dataset and metadata via [DatasetController].
-     * 5. Optionally install deterministic RNG ([RandomBridge]).
-     * 6. Execute run(s) depending on selected options:
-     *    - Multi-run merging (`--mrg`)
-     *    - Topic expansion (`--expt`)
-     *    - System expansion (`--exps`)
-     *    - Single run
-     * 7. Optionally copy results into experiments folder.
-     * 8. Log contextual error messages for failures.
      */
     @JvmStatic
     fun main(arguments: Array<String>) {
 
-        println("Program started.")
+        /* Ensure Snappy extracts its native lib under target/tmp-snappy */
+        initSnappyTempDir()
 
         val commandLine: CommandLine
         val parser: CommandLineParser
@@ -80,6 +72,8 @@ object Program {
         val bootstrapLogPath = LogManager.getBootstrapLogFilePath()
         System.setProperty("baseLogFileName", bootstrapLogPath)
         logger = LogManager.updateRootLoggerLevel(Level.INFO)
+
+        logger.info("Program started.")
 
         try {
             parser = DefaultParser()
@@ -203,22 +197,13 @@ object Program {
                     logger.info("Percentiles: ${percentiles.joinToString(", ")}. [Experiment: Average]")
                 }
 
-                /* --------------------------- Deterministic mode ---------------------------
-                 * We support:
-                 *  - --det / --deterministic      → enable reproducibility
-                 *  - --sd <long> / --seed <long> → explicit master seed (implies deterministic)
-                 *
-                 * If deterministic and no seed is provided, we derive a stable seed from the key
-                 * parameters (ignores currentExecution so that multi-run batches share one seed).
-                 * We also install our RNG bridge early so that jMetal’s singleton uses it.
-                 * ------------------------------------------------------------------------ */
+                /* --------------------------- Deterministic mode --------------------------- */
                 val deterministicRequested = commandLine.hasOption("det") || commandLine.hasOption("sd")
                 val seedFromCli: Long? = if (commandLine.hasOption("sd")) {
                     commandLine.getOptionValue("sd")?.toLongOrNull()
                         ?: throw ParseException("Value for the option <<sd>> or <<seed>> is not a valid long. Check the usage section below.")
                 } else null
                 if (seedFromCli != null) System.setProperty("nbs.seed.cli", seedFromCli.toString())
-
 
                 val masterSeed: Long? = if (deterministicRequested) {
                     val seedTemplate = Parameters(
@@ -228,7 +213,7 @@ object Program {
                         numberOfIterations = numberOfIterations,
                         numberOfRepetitions = numberOfRepetitions,
                         populationSize = populationSize,
-                        currentExecution = 0,              /* fixed to avoid changing seed across batch runs */
+                        currentExecution = 0,
                         percentiles = percentiles,
                         deterministic = true,
                         seed = null
@@ -385,62 +370,35 @@ object Program {
             }
 
         } catch (exception: ParseException) {
-
-            /* ParseException
-             * --------------
-             * Bad CLI arguments: log full error + show usage with examples.
-             */
+            /* Bad CLI arguments: log full error + show usage with examples. */
             logger.error("Invalid command line arguments: {}", exception.message ?: "unknown ParseException", exception)
             printNiceHelp(options, exception.message)
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to invalid arguments.")
-
         } catch (exception: FileNotFoundException) {
-
-            /* FileNotFoundException
-             * ---------------------
-             * Missing input or required directory. Include context + stacktrace.
-             */
+            /* Missing input or required directory. Include context + stacktrace. */
             val cwd = File(".").absoluteFile.normalize().path
             logger.error("File not found (cwd: {}): {}", cwd, exception.message ?: "unknown", exception)
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
-
         } catch (exception: FileSystemException) {
-
-            /* FileSystemException
-             * -------------------
-             * IO/FS error: show file, other file (if any) and reason.
-             */
+            /* IO/FS error: show file, other file (if any) and reason. */
             logger.error(
                 "Filesystem error (file='{}', other='{}', reason='{}').",
                 exception.file, exception.otherFile, exception.reason, exception
             )
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
-
         } catch (exception: JMetalException) {
-
-            /* JMetalException
-             * ---------------
-             * Algorithm/runtime error. Keep the full stacktrace and add a small hint when recognizable.
-             */
+            /* Algorithm/runtime error. Keep the full stacktrace and add a small hint when recognizable. */
             logger.error("jMetal error: {}", exception.message ?: "unknown JMetalException", exception)
-
             val msg = exception.message ?: ""
             if (msg.contains("must be greater or equal", ignoreCase = true)) {
                 logger.info("Hint: set -po (population) ≥ number of topics (current dataset topics logged above).")
             }
-
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
-
         } catch (e: OutOfMemoryError) {
-
-            /* OutOfMemoryError
-             * -----------------
-             * Provide a targeted hint based on the error kind + full stacktrace.
-             */
+            /* Provide a targeted hint based on the error kind + full stacktrace. */
             val kindHint = when {
                 e.message?.contains("GC overhead limit exceeded", ignoreCase = true) == true ->
-                    "GC overhead limit exceeded. You can disable it with -XX:-UseGCOverheadLimit, " +
-                            "but it’s usually better to increase -Xmx and/or reduce workload size."
+                    "GC overhead limit exceeded. You can disable it with -XX:-UseGCOverheadLimit, but it is usually better to increase -Xmx and/or reduce workload size."
 
                 e.message?.contains("Metaspace", ignoreCase = true) == true ->
                     "Metaspace exhausted. Increase -XX:MaxMetaspaceSize or reduce dynamic class generation."
@@ -454,35 +412,21 @@ object Program {
                 else ->
                     "Java heap space exhausted. Increase -Xmx or reduce population/iterations/repetitions."
             }
-
             logger.error("${Constants.NEWBESTSUB_NAME} ran out of memory. $kindHint", e)
-
             logger.info(
-                "Try: increase heap (e.g., -Xmx32g), or reduce -po / -i / -r. " +
-                        "Also consider -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof for diagnostics."
+                "Try: increase heap (for example, -Xmx32g), or reduce -po / -i / -r. Also consider -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof for diagnostics."
             )
             logger.info(
-                "Example: java -Xms32g -Xmx32g -XX:+UseG1GC -XX:+UseStringDeduplication " +
-                        "-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof " +
-                        "-jar NewBestSub-2.0-jar-with-dependencies.jar -fi \"mmlu\" -c \"Pearson\" " +
-                        "-po 20000 -i 100000 -r 2000 -t \"All\" -pe 1,100 -log Limited"
+                "Example: java -Xms32g -Xmx32g -XX:+UseG1GC -XX:+UseStringDeduplication -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof -jar NewBestSub-2.0-jar-with-dependencies.jar -fi \"mmlu\" -c \"Pearson\" -po 20000 -i 100000 -r 2000 -t \"All\" -pe 1,100 -log Limited"
             )
-
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to OutOfMemoryError.")
         }
-
     }
 
     /**
      * Build and return the complete set of CLI options.
-     *
-     * The ordering (and the pretty help page) is tuned for clarity. Required options
-     * are marked as such, while conditional/optional ones carry guidance in their descriptions.
-     *
-     * @return the configured [Options] instance.
      */
     fun loadCommandLineOptions(): Options {
-
         val options = Options()
 
         var source = Option.builder("fi").longOpt("fileIn")
@@ -516,7 +460,7 @@ object Program {
         options.addOption(source)
 
         source = Option.builder("po").longOpt("pop")
-            .desc("Size of the initial population to be generated. It must be an integer value. It must be greater or equal than/to of the number of topics of the data set. It must be greater than the value for the option <<mx>> or <<max>> if this one is used.a It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]")
+            .desc("Size of the initial population to be generated. It must be an integer value. It must be greater or equal to the number of topics in the dataset. It must be greater than the value for the option <<mx>> or <<max>> if this one is used. It is mandatory only if the selected target is: Best, Worst, All. [OPTIONAL]")
             .hasArg().argName("Population Size").get()
         options.addOption(source)
 
@@ -546,11 +490,11 @@ object Program {
         options.addOption(source)
 
         source = Option.builder("copy")
-            .desc("NewBestSub should search the folder or NewBestSub-Experiments and copy the results of the current execution inside its data folders. The following structure into filesystem must be respected: \"baseFolder/NewBestSub/..\" and \"baseFolder/NewBestSub-Experiments/..\" otherwise, an exception will be raised. [OPTIONAL]")
+            .desc("Search NewBestSub-Experiments and copy the results of the current execution into its data folders. Folder structure required: baseFolder/NewBestSub/... and baseFolder/NewBestSub-Experiments/.... [OPTIONAL]")
             .get()
         options.addOption(source)
 
-        /* --- Deterministic execution flags (new) --- */
+        /* Deterministic execution flags */
         source = Option.builder("det").longOpt("deterministic")
             .desc("Enable deterministic, reproducible execution. If used without --seed, a stable seed is derived from key parameters. [OPTIONAL]")
             .get()
@@ -565,49 +509,13 @@ object Program {
     }
 
     /**
-     * Pretty help/usage printer.
-     *
-     * - Wider layout, custom option ordering, clear header + example commands.
-     * - Keeps comment style and avoids noisy auto-wrapping of descriptions.
-     *
-     * @return configured [HelpFormatter].
-     */
-    private fun buildHelpFormatter(): org.apache.commons.cli.HelpFormatter {
-        val columns = System.getenv("COLUMNS")?.toIntOrNull()?.coerceIn(100, 160) ?: 120
-        return org.apache.commons.cli.HelpFormatter().apply {
-            // Layout tuning
-            width = columns
-            leftPadding = 2
-            descPadding = 4
-            syntaxPrefix = "Usage: "
-            longOptPrefix = "--"
-            optPrefix = "-"
-
-            // Order: required & core options first, then the rest (stable)
-            val priority = listOf(
-                "fi", "c", "t", "l",     // core required
-                "i", "po",               // iterations/population (Best/Worst/All)
-                "r", "pe",               // repetitions/percentiles (Average/All)
-                "det", "sd",             // deterministic flags
-                "mr", "et", "es", "mx",  // multi-run & expansions
-                "copy"                   // experiments copy
-            )
-            optionComparator = Comparator { a, b ->
-                val ia = priority.indexOf(a.opt).let { if (it == -1) Int.MAX_VALUE else it }
-                val ib = priority.indexOf(b.opt).let { if (it == -1) Int.MAX_VALUE else it }
-                if (ia != ib) ia - ib else a.opt.compareTo(b.opt)
-            }
-        }
-    }
-
-    /**
-     * Print a clean, helpful usage page with a contextual cause and examples.
+     * Pretty help and usage printer using the new Commons CLI help API.
      *
      * @param options CLI options set.
-     * @param cause Optional error cause to show before usage.
+     * @param cause   Optional error cause to show before usage.
      */
     private fun printNiceHelp(options: Options, cause: String?) {
-        val formatter = buildHelpFormatter()
+        val out = TextHelpAppendable(java.io.PrintWriter(System.out, true))
 
         val header = buildString {
             appendLine("NewBestSub – multi-objective best-subset driver")
@@ -645,18 +553,60 @@ object Program {
             appendLine("• Use --det / --seed for reproducible runs.")
         }
 
-        // Wider call signature gives best layout control
-        formatter.printHelp(
-            /* pw   */ java.io.PrintWriter(System.out, true),
-            /* width*/ formatter.width,
-            /* cmd  */ "${Constants.NEWBESTSUB_NAME} [options]",
-            /* hdr  */ header,
-            /* opts */ options,
-            /* lpad */ formatter.leftPadding,
-            /* dpad */ formatter.descPadding,
-            /* ftr  */ footer,
-            /* autoUsage */ true
+        // Priority order for options (same as before)
+        val priority = listOf(
+            "fi", "c", "t", "l",     // core required
+            "i", "po",               // iterations/population (Best/Worst/All)
+            "r", "pe",               // repetitions/percentiles (Average/All)
+            "det", "sd",             // deterministic flags
+            "mr", "et", "es", "mx",  // multi-run and expansions
+            "copy"                   // experiments copy
         )
+        val optionOrder = Comparator<Option> { a, b ->
+            val ia = priority.indexOf(a.opt).let { if (it == -1) Int.MAX_VALUE else it }
+            val ib = priority.indexOf(b.opt).let { if (it == -1) Int.MAX_VALUE else it }
+            if (ia != ib) ia - ib else a.opt.compareTo(b.opt)
+        }
+
+        val formatter = HelpFormatter.builder()
+            .setHelpAppendable(out)
+            .setComparator(optionOrder)
+            .get()
+            .apply { syntaxPrefix = "Usage: " }
+
+        formatter.printHelp(
+            "${Constants.NEWBESTSUB_NAME} [options]",
+            header,
+            options,
+            footer,
+            /* autoUsage = */ true
+        )
+    }
+
+    /**
+     * Initialize Snappy's native temp directory under `target/tmp-snappy`.
+     *
+     * Must be invoked **before** any Parquet/Hadoop/Snappy class is loaded, otherwise the native
+     * library may be extracted into the current working/output directory (e.g., `.../Parquet/tmp-snappy`).
+     *
+     * Idempotent: if `org.xerial.snappy.tempdir` is already set, this is a no-op.
+     *
+     * @see org.xerial.snappy.Snappy
+     */
+    private fun initSnappyTempDir() {
+        val key = "org.xerial.snappy.tempdir"
+        if (System.getProperty(key).isNullOrBlank()) {
+            val dir = java.nio.file.Paths.get(
+                it.uniud.newbestsub.utils.Constants.NEWBESTSUB_PATH,
+                "target", "tmp-snappy"
+            )
+            try {
+                java.nio.file.Files.createDirectories(dir)
+            } catch (_: Throwable) {
+                /* best effort; even if creation fails, we still set the property */
+            }
+            System.setProperty(key, dir.toAbsolutePath().normalize().toString())
+        }
     }
 
 }

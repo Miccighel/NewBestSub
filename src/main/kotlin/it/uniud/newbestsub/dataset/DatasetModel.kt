@@ -150,7 +150,7 @@ class DatasetModel {
     private val repMaskB64ByK = mutableMapOf<Int, String>()
 
     /** Per-K correlation (natural scale), used by aggregate/info helpers. */
-    private val corrByK = java.util.TreeMap<Int, Double>()
+    private val corrByK = TreeMap<Int, Double>()
 
     /** Topic label → index (O(1) presence lookups). */
     private var topicIndexByLabel: Map<String, Int> = emptyMap()
@@ -451,7 +451,7 @@ class DatasetModel {
                     }
 
                     /* Build per-system sums for selected topics */
-                    java.util.Arrays.fill(subsetSumsBySystem, 0.0)
+                    Arrays.fill(subsetSumsBySystem, 0.0)
                     var sel = 0
                     while (sel < currentCardinality) {
                         val t = topicIndexPool[sel]
@@ -485,7 +485,7 @@ class DatasetModel {
                 }
                 val meanCorrelation = sumCorr / repetitions
 
-                java.util.Arrays.sort(correlationSamples, 0, repetitions)
+                Arrays.sort(correlationSamples, 0, repetitions)
                 for ((percentile, collected) in tmpPercentiles.entries) {
                     val pos = kotlin.math.ceil((percentile / 100.0) * repetitions).toInt().coerceIn(1, repetitions)
                     val pVal = correlationSamples[pos - 1]
@@ -559,7 +559,7 @@ class DatasetModel {
                 SequentialSolutionListEvaluator()
 
             /* (1) Track monotone best-so-far correlation per K for streaming decisions. */
-            val bestSeenCorrelationByK = java.util.TreeMap<Int, Double>()
+            val bestSeenCorrelationByK = TreeMap<Int, Double>()
 
             /* (2) Track last sent block signature for -Top replacement semantics. */
             val lastSentTopSignatureByK = mutableMapOf<Int, Int>()
@@ -765,21 +765,6 @@ class DatasetModel {
         corrByK[cardinality.toInt()]
 
     /**
-     * O(1) presence lookup using the cached representative mask per K (decoded on demand).
-     *
-     * @param topicLabel Topic label to check for.
-     * @param cardinality K as a double.
-     * @return `true` if the topic is present in the cached representative for K.
-     */
-    fun isTopicInASolutionOfCardinality(topicLabel: String, cardinality: Double): Boolean {
-        val k = cardinality.toInt()
-        val b64 = repMaskB64ByK[k] ?: return false
-        val idx = topicIndexByLabel[topicLabel] ?: return false
-        val mask = base64ToBooleanMask(b64, numberOfTopics)
-        return mask.getOrNull(idx) ?: false
-    }
-
-    /**
      * Return a **copy** of the representative presence mask for K, or `null` if none cached.
      */
     fun retrieveMaskForCardinality(cardinality: Double): BooleanArray? {
@@ -800,7 +785,7 @@ class DatasetModel {
         if (decoded.size == expectedSize) return decoded
         val out = BooleanArray(expectedSize)
         val n = kotlin.math.min(expectedSize, decoded.size)
-        java.lang.System.arraycopy(decoded, 0, out, 0, n)
+        System.arraycopy(decoded, 0, out, 0, n)
         return out
     }
 
@@ -881,7 +866,7 @@ class DatasetModel {
     private fun booleanMaskToBase64(topicPresenceMask: BooleanArray): String {
         val packedWords = packTopicMaskToLongWords(topicPresenceMask)
         val packedBytes = longWordsToLittleEndianBytes(packedWords)
-        return java.util.Base64.getEncoder().withoutPadding().encodeToString(packedBytes)
+        return Base64.getEncoder().withoutPadding().encodeToString(packedBytes)
     }
 
     /** AVERAGE branch helper: BooleanArray → VAR line (`"B64:<...>"`). */
@@ -902,7 +887,7 @@ class DatasetModel {
      */
     private fun base64ToBooleanMask(b64: String, expectedSize: Int): BooleanArray {
         if (b64.isEmpty()) return BooleanArray(expectedSize)
-        val raw = java.util.Base64.getDecoder().decode(b64)
+        val raw = Base64.getDecoder().decode(b64)
         val out = BooleanArray(expectedSize)
 
         /* We wrote as N * 8 bytes where each 8-byte chunk is a little-endian Long. */
@@ -1002,10 +987,10 @@ class DatasetModel {
                 } else {
                     val slotsRemaining = targetPopulationSize - nextGeneration.size
                     val crowdingDistanceBySolution = computeCrowdingDistances(currentFront)
-                    currentFront.sortWith(java.util.Comparator { a, b ->
+                    currentFront.sortWith(Comparator { a, b ->
                         val da = crowdingDistanceBySolution[a] ?: Double.NEGATIVE_INFINITY
                         val db = crowdingDistanceBySolution[b] ?: Double.NEGATIVE_INFINITY
-                        java.lang.Double.compare(db, da)
+                        db.compareTo(da)
                     })
                     nextGeneration.addAll(currentFront.subList(0, slotsRemaining))
                 }

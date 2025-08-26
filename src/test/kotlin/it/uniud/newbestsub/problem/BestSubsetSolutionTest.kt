@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test
 import org.uma.jmetal.solution.binarysolution.BinarySolution
 import java.util.Random
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * Tests for core operations of [BestSubsetSolution].
@@ -178,8 +177,8 @@ class BestSubsetSolutionTest {
 
         val cloned = testSolution.copy()
         // jMetal's BinarySolution implements equals with value semantics; ensure reflexivity and copy equality
-        assertTrue(cloned == testSolution, "copy must be value-equal to the original")
-        assertTrue(testSolution == testSolution, "solution must be equal to itself (sanity)")
+        assertEquals(cloned, testSolution, "copy must be value-equal to the original")
+        assertEquals(testSolution, testSolution, "solution must be equal to itself (sanity)")
 
         println("[BestSubsetSolutionTest copy] - Test ends.")
     }

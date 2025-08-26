@@ -56,6 +56,7 @@ Select small topic subsets that preserve the **system ranking** induced by the f
 - [CLI options](#cli-options)
 - [Deterministic execution](#deterministic-execution)
 - [Folder naming pattern](#folder-naming-pattern)
+- [Tools](#tools)
 - [Architecture overview](#architecture-overview)
 - [Testing](#testing)
 - [Build and logging](#build-and-logging)
@@ -126,7 +127,6 @@ Instead of building from source, you can download a ready-to-use JAR:
    java -Xmx1g -jar NewBestSub-2.0-jar-with-dependencies.jar -fi samples/toy -c Pearson -t Best -po 50 -i 5000 -log Limited
    ```
 
-
 ---
 
 ## Quick start
@@ -180,8 +180,6 @@ RM3,  0.40, 0.51, 0.26, 0.17, 0.42
 Results are written into a per-run container named from parameters (see Folder naming pattern).
 Each container has `CSV/` and `Parquet/` subfolders.
 
----
-
 ### CSV
 
 - `...-Fun.csv` contains `K corr` (space-separated; `K` integer; `corr` with 6 digits; always natural correlation).
@@ -205,10 +203,6 @@ We pack the topic-presence mask into Base64 as follows:
 - Serialize each 64-bit word as little-endian bytes.
 - Encode the concatenated bytes using Base64 without padding.
 - CSV uses a `B64:` prefix; Parquet stores the bare payload.
-
-This layout is used by:
-- `-Var` rows (one per representative solution)
-- mask-based `-Top-10-Solutions` rows (if the writer is configured that way)
 
 ### Decoding snippets
 
@@ -242,7 +236,7 @@ fun decodeMaskFromBase64(b64OrPrefixed: String, expectedSize: Int): BooleanArray
 }
 ```
 
-**Python** (compatible with the same packing):
+**Python**:
 
 ```python
 import base64
@@ -255,44 +249,26 @@ def decode_mask_from_base64(b64_or_prefixed: str, n_topics: int) -> list[bool]:
     bit_abs = 0
     off = 0
     while off < len(raw) and bit_abs < n_topics:
-        # read little-endian 64-bit word
         w = 0
         for i in range(8):
             if off + i >= len(raw):
                 break
             w |= raw[off + i] << (8 * i)
-
         for bit in range(64):
             if bit_abs >= n_topics:
                 break
             out[bit_abs] = ((w >> bit) & 1) != 0
             bit_abs += 1
-
         off += 8
     return out
 ```
 
 ### Additional notes
 
-- **FUN**  
-  - Contains the history of *best-so-far improvements* for each K.  
-  - BEST/WORST: only written when the incumbent improves → few, strictly monotone rows.  
-  - AVERAGE: exactly one row per K (no incumbent concept).  
-
-- **VAR**  
-  - Genotypes aligned 1:1 with FUN rows (same number of lines).  
-  - BEST/WORST: written only on improvement.  
-  - AVERAGE: exactly one line per K.  
-
-- **TOP**  
-  - Maintains a per-K pool of best solutions, replaced as new ones are found.  
-  - May contain multiple rows per K (≤ 10).  
-  - Downstream readers should select the extremum: max for BEST, min for WORST.  
-
-- **Negative correlations**  
-  - Valid and expected for WORST (objective = minimize correlation).  
-  - Can also appear in AVERAGE at small K, if many random subsets invert the ranking.  
-  - Not a bug — reflects genuine inversions of system orderings.
+- **FUN**: improvements-only for Best/Worst, one row per K for Average.  
+- **VAR**: aligned with FUN rows.  
+- **TOP**: up to 10 rows per K, replaced atomically.  
+- **Negative correlations**: expected for Worst, possible at small K in Average.
 
 ---
 
@@ -324,7 +300,7 @@ def decode_mask_from_base64(b64_or_prefixed: str, n_topics: int) -> list[bool]:
 ## Deterministic execution
 
 - `--seed <long>` sets the master seed explicitly.
-- `--deterministic` enables reproducibility. If `--seed` is absent, a stable seed is derived from core parameters.
+- `--deterministic` enables reproducibility. If `--seed` is absent, a stable seed is derived.
 - The effective seed is logged and embedded in the output folder name.
 
 ---
@@ -338,21 +314,49 @@ AH99-Pearson-top50-sys129-po1000-i10000-r2000-time2025-08-22-19-19-40
 
 Pattern:
 ```
-<DATASET>-<CORR>-top<Topics>-sys<Systems>-po<Population>-i<Iterations>[-r<Repetitions>]
-[-exec<Executions>][-seed<Seed>][-det]-time<YYYY-MM-DD-HH-mm-ss>
+<DATASET>-<CORR>-top<Topics>-sys<Systems>-po<Population>-i<Iterations>[-r<Repetitions>][-exec<Executions>][-seed<Seed>][-det]-time<YYYY-MM-DD-HH-mm-ss>
+```
+
+---
+
+## Tools
+
+### parse_run_name.py
+
+Located in `tools/parse_run_name.py`. Parses run folder names back into a parameter dictionary.
+
+Example:
+
+```bash
+python tools/parse_run_name.py "mmlu-Pearson-top18955-sys34-po20000-i100000-r2000-time2025-08-24-17-15-53" --pretty
+```
+
+Output:
+
+```json
+{
+  "dataset": "mmlu",
+  "correlation": "Pearson",
+  "topics": 18955,
+  "systems": 34,
+  "population": 20000,
+  "iterations": 100000,
+  "repetitions": 2000,
+  "executions": null,
+  "seed": null,
+  "deterministic": false,
+  "timestamp": "2025-08-24-17-15-53"
+}
 ```
 
 ---
 
 ## Architecture overview
 
-- DatasetModel: loads data, wires correlation and targets, runs NSGA-II, emits streaming events:
-  - `CardinalityResult` leads to FUN and VAR append
-  - `TopKReplaceBatch` leads to block replace for TOP
-  - `RunCompleted` leads to finalize and close writers
+- DatasetModel: loads data, wires correlation and targets, runs NSGA-II, emits streaming events.
 - Streaming NSGA-II wrapper: calls a per-generation hook and uses MNDS plus crowding in replacement.
-- Incremental evaluation: maintains `cachedSumsBySystem` and `lastEvaluatedMask`; applies swap-delta or mask diff; computes correlation (Pearson or Kendall) vs full-set means.
-- Operators: `BinaryPruningCrossover` (length-safe, non-empty repairs), `FixedKSwapMutation` (fixed K with hints).
+- Incremental evaluation: cached per-system sums and swap deltas.
+- Operators: BinaryPruningCrossover, FixedKSwapMutation.
 
 ---
 
@@ -379,22 +383,23 @@ Logging:
 
 ## Troubleshooting
 
-- OutOfMemoryError: increase `-Xmx`, or reduce `-po`, `-i`, or `-r`. Consider `-XX:+HeapDumpOnOutOfMemoryError`.
-- Population smaller than number of topics: Best, Worst, and All require `-po >= #topics`.
-- TOP seems incomplete: blocks are emitted only when enough entries are available; small runs may delay some Ks.
-- Multiple SLF4J bindings: project uses Log4j2; avoid extra SLF4J bindings on the classpath.
+- OutOfMemoryError: increase `-Xmx`, or reduce `-po`, `-i`, or `-r`.
+- Population smaller than topics: ensure `-po >= #topics`.
+- TOP incomplete: blocks are emitted only when filled; small runs may delay some Ks.
+- Multiple SLF4J bindings: use Log4j2 only.
 
 ---
 
 ## Changelog
 
 **2025-08-22**
-- jMetal 6.9.x and Kotlin 2.2 upgrade, Java 22 toolchain
-- Streaming NSGA-II with per-generation progress
-- MNDS environmental selection plus crowding
-- Step-3 incremental evaluation (subset-mean deltas with swap hints)
-- Compact VAR and TOP Base64 mask format
-- Standardized 6-digit correlation precision
+- Java 22 + Kotlin 2.2 toolchain
+- jMetal 6.9.1 upgrade
+- Streaming NSGA-II with progress hooks
+- MNDS environmental selection
+- Incremental evaluation with swap hints
+- Compact VAR/TOP Base64 masks
+- 6-digit correlation precision standard
 
 ---
 

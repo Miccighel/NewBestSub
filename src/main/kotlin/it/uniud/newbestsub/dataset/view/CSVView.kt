@@ -138,12 +138,12 @@ class CSVView {
     /* --------- Lightweight formatting & parsing --------- */
 
     /** Precompiled splitter for `"K corr"` / `"K,corr"` / any mix of commas/whitespace. */
-    private val FUN_SPLIT = Regex("[,\\s]+")
+    private val funSplitter = Regex("[,\\s]+")
 
     /** Locale‑stable double format (dot decimal, 6 digits). */
-    private val DF = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
+    private val decimalFormat = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
     /** Format a double to 6 decimals with `Locale.ROOT`. */
-    private fun fmt(x: Double): String = DF.format(x)
+    private fun fmt(x: Double): String = decimalFormat.format(x)
 
     /** Throttle streaming flushes to reduce I/O overhead (configurable). */
     private val flushEvery: Int = System.getProperty("nbs.csv.flushEvery", "256").toIntOrNull()?.coerceAtLeast(1) ?: 256
@@ -249,7 +249,7 @@ class CSVView {
     }
 
     /**
-     * Open and cache large‑buffer appenders for FUN/VAR of the current run/target.
+     * Open and cache large‑buffer appender for FUN/VAR of the current run/target.
      *
      * Ensures clean files exist, then returns append‑mode writers.
      *
@@ -270,7 +270,7 @@ class CSVView {
             val funPath = getFunctionValuesFilePath(model)
             val varPath = getVariableValuesFilePath(model)
 
-            /* Ensure clean files, then open large-buffer appenders */
+            /* Ensure clean files, then open large-buffer appender */
             openFresh(funPath).use { }
             openFresh(varPath).use { }
             val funWriter = openAppend(funPath).buffered(writerBufferSize)
@@ -286,7 +286,7 @@ class CSVView {
      * @return `(K, corr)` if parsed, else `null`.
      */
     private fun parseFunLine(line: String): Pair<Int, Double>? {
-        val parts = line.trim().split(FUN_SPLIT)
+        val parts = line.trim().split(funSplitter)
         if (parts.size < 2) return null
         val k = parts[0].toDoubleOrNull()?.toInt() ?: return null
         val corr = parts[1].toDoubleOrNull() ?: return null
@@ -385,9 +385,9 @@ class CSVView {
             val sortStart = System.nanoTime()
             val sorted = when (model.targetToAchieve) {
                 Constants.TARGET_WORST ->
-                    rows.sortedWith(compareBy<FunVarRow>({ it.k }, { -it.corr }))  /* K asc, corr desc */
+                    rows.sortedWith(compareBy({ it.k }, { -it.corr }))  /* K asc, corr desc */
                 else ->
-                    rows.sortedWith(compareBy<FunVarRow>({ it.k }, { it.corr }))   /* K asc, corr asc  */
+                    rows.sortedWith(compareBy({ it.k }, { it.corr }))   /* K asc, corr asc  */
             }
             val sortEnd = System.nanoTime()
 
@@ -404,13 +404,12 @@ class CSVView {
             val writeEnd = System.nanoTime()
 
             logger.info(
-                "[CSVView.closeStreams] writersClosed={}ms sort={}ms write={}ms rows={}",
+                "writersClosed={}ms sort={}ms write={}ms rows={}",
                 (t1 - t0) / 1_000_000, (sortEnd - sortStart) / 1_000_000,
                 (writeEnd - writeStart) / 1_000_000, sorted.size
             )
         } else {
-            logger.info(
-                "[CSVView.closeStreams] writersClosed={}ms finalRewrite={}; bufferedRows={}",
+            logger.info("writersClosed={}ms finalRewrite={}; bufferedRows={}",
                 (t1 - t0) / 1_000_000, doFinalRewrite, rows?.size ?: 0
             )
         }

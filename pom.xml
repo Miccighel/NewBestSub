@@ -6,7 +6,8 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>it.uniud.newbestsub</groupId>
     <artifactId>NewBestSub</artifactId>
-    <version>2.0</version>
+    <version>2.0.2</version>
+    <url>https://github.com/Miccighel/NewBestSub</url>
 
     <organization>
         <name>Uniud</name>
@@ -84,8 +85,6 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-
-        <!-- JVM toolchain -->
         <maven.compiler.source>22</maven.compiler.source>
         <maven.compiler.target>22</maven.compiler.target>
 
@@ -101,13 +100,11 @@
         <junit.jupiter.version>5.13.4</junit.jupiter.version>
 
         <!-- Docs -->
-        <!-- Upgrade Dokka to dev build that understands Kotlin 2.2.x metadata -->
         <dokka.version>2.0.20-dev-383</dokka.version>
-        <!-- Default, Windows-safe, plain path for Dokka output -->
         <dokka.output.dir>${project.build.directory}/dokka</dokka.output.dir>
 
         <!-- Libraries -->
-        <apache.commons.version>3.6.1</apache.commons.version> <!-- commons-math3 -->
+        <apache.commons.version>3.6.1</apache.commons.version>
         <apache.commons.cli>1.10.0</apache.commons.cli>
 
         <!-- Log4j2 / SLF4J -->
@@ -131,15 +128,17 @@
 
         <jansi.version>2.4.2</jansi.version>
 
-        <!-- NEW: pin Yetus to silence old transitive POM warnings -->
+        <!-- Pin Yetus to silence old transitive POM warnings -->
         <yetus.audience.version>0.15.1</yetus.audience.version>
+
+        <!-- Fixed distribution tag for assembly artifact names -->
+        <dist.version>2.0</dist.version>
     </properties>
 
     <profiles>
         <profile>
             <id>pages</id>
             <properties>
-                <!-- When this profile is active, write docs into /docs so GitHub Pages can serve them -->
                 <dokka.output.dir>${project.basedir}/docs</dokka.output.dir>
             </properties>
         </profile>
@@ -154,8 +153,6 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
-            <!-- NEW: Pin old transitive org.apache.yetus:audience-annotations -->
             <dependency>
                 <groupId>org.apache.yetus</groupId>
                 <artifactId>audience-annotations</artifactId>
@@ -170,14 +167,11 @@
             <artifactId>commons-math3</artifactId>
             <version>${apache.commons.version}</version>
         </dependency>
-
         <dependency>
             <groupId>commons-cli</groupId>
             <artifactId>commons-cli</artifactId>
             <version>${apache.commons.cli}</version>
         </dependency>
-
-        <!-- Log4j2 API + Core + SLF4J bridge -->
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-api</artifactId>
@@ -193,19 +187,16 @@
             <artifactId>log4j-slf4j-impl</artifactId>
             <version>${log4j.api.version}</version>
         </dependency>
-        <!-- Optional: bridge java.util.logging to SLF4J -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>jul-to-slf4j</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
-
         <dependency>
             <groupId>com.opencsv</groupId>
             <artifactId>opencsv</artifactId>
             <version>${opencsv.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-core</artifactId>
@@ -221,48 +212,40 @@
             <artifactId>jmetal-component</artifactId>
             <version>${jmetal.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-test</artifactId>
             <version>${kotlin.test.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>org.jetbrains.kotlinx</groupId>
             <artifactId>kotlinx-coroutines-core</artifactId>
             <version>${kotlin.coroutines.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
             <version>${junit.jupiter.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
             <version>${junit.jupiter.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-stdlib</artifactId>
             <version>${kotlin.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.fusesource.jansi</groupId>
             <artifactId>jansi</artifactId>
             <version>${jansi.version}</version>
             <scope>runtime</scope>
         </dependency>
-
-        <!-- Parquet core + Hadoop integration -->
         <dependency>
             <groupId>org.apache.parquet</groupId>
             <artifactId>parquet-hadoop</artifactId>
@@ -282,8 +265,6 @@
                 </exclusion>
             </exclusions>
         </dependency>
-
-        <!-- Hadoop classes used by Parquet (Configuration, Path) -->
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-common</artifactId>
@@ -303,36 +284,35 @@
                 </exclusion>
             </exclusions>
         </dependency>
-
-        <!-- Snappy codec used by Parquet -->
         <dependency>
             <groupId>org.xerial.snappy</groupId>
             <artifactId>snappy-java</artifactId>
             <version>${snappy.version}</version>
         </dependency>
-
-        <!-- NEW: lightweight direct dep to make resolution deterministic -->
         <dependency>
             <groupId>org.apache.yetus</groupId>
             <artifactId>audience-annotations</artifactId>
             <version>${yetus.audience.version}</version>
             <optional>true</optional>
         </dependency>
-
     </dependencies>
 
     <build>
 
+        <finalName>${project.artifactId}-${dist.version}</finalName>
+
         <sourceDirectory>src/main/kotlin</sourceDirectory>
         <testSourceDirectory>src/test/kotlin</testSourceDirectory>
-
         <plugins>
 
+            <!-- Fixed-name fat jars using dist.version -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
                 <version>${maven.assembly-plugin.version}</version>
                 <configuration>
+                    <finalName>${project.artifactId}-${dist.version}</finalName>
+                    <appendAssemblyId>true</appendAssemblyId>
                     <archive>
                         <manifest>
                             <mainClass>it.uniud.newbestsub.program.Program</mainClass>
@@ -398,7 +378,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Kotlin (align to property, jvmTarget=22) -->
+            <!-- Kotlin (jvmTarget=22) -->
             <plugin>
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-maven-plugin</artifactId>
@@ -407,16 +387,12 @@
                     <execution>
                         <id>compile</id>
                         <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
+                        <goals><goal>compile</goal></goals>
                     </execution>
                     <execution>
                         <id>test-compile</id>
                         <phase>test-compile</phase>
-                        <goals>
-                            <goal>test-compile</goal>
-                        </goals>
+                        <goals><goal>test-compile</goal></goals>
                     </execution>
                 </executions>
                 <configuration>
@@ -424,14 +400,14 @@
                 </configuration>
             </plugin>
 
-            <!-- Surefire 3.x natively supports JUnit 5 -->
+            <!-- Surefire 3.x (JUnit 5 support) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven.surefire-plugin.version}</version>
             </plugin>
 
-            <!-- Dokka: Kotlin 2.2.x-compatible, Windows-safe output path -->
+            <!-- Dokka bound to verify so classes exist -->
             <plugin>
                 <groupId>org.jetbrains.dokka</groupId>
                 <artifactId>dokka-maven-plugin</artifactId>
@@ -439,10 +415,8 @@
                 <executions>
                     <execution>
                         <id>dokka-site</id>
-                        <phase>site</phase>
-                        <goals>
-                            <goal>dokka</goal>
-                        </goals>
+                        <phase>verify</phase>
+                        <goals><goal>dokka</goal></goals>
                     </execution>
                 </executions>
                 <configuration>
@@ -452,12 +426,12 @@
                     </sourceDirectories>
                     <moduleName>NewBestSub</moduleName>
                     <includes>
-                        <include>documentation/module.md</include>
-                        <include>documentation/packages/it.uniud.newbestsub.dataset.md</include>
-                        <include>documentation/packages/it.uniud.newbestsub.math.md</include>
-                        <include>documentation/packages/it.uniud.newbestsub.problem.md</include>
-                        <include>documentation/packages/it.uniud.newbestsub.program.md</include>
-                        <include>documentation/packages/it.uniud.newbestsub.utils.md</include>
+                        <include>src/docs/module.md</include>
+                        <include>src/docs/packages/it.uniud.newbestsub.dataset.md</include>
+                        <include>src/docs/packages/it.uniud.newbestsub.math.md</include>
+                        <include>src/docs/packages/it.uniud.newbestsub.problem.md</include>
+                        <include>src/docs/packages/it.uniud.newbestsub.program.md</include>
+                        <include>src/docs/packages/it.uniud.newbestsub.utils.md</include>
                     </includes>
                     <documentedVisibilities>
                         <visibility>PUBLIC</visibility>
@@ -480,7 +454,34 @@
             </plugin>
 
         </plugins>
-
     </build>
+
+    <reporting>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-project-info-reports-plugin</artifactId>
+                <version>3.9.0</version>
+                <reportSets>
+                    <reportSet>
+                        <reports>
+                            <report>index</report>
+                            <report>summary</report>
+                            <report>licenses</report>
+                            <report>scm</report>
+                            <report>plugins</report>
+                            <report>plugin-management</report>
+                            <report>dependencies</report>
+                            <report>dependency-management</report>
+                            <!-- omit dependency-info -->
+                            <report>team</report>
+                            <report>ci-management</report>
+                            <report>issue-management</report>
+                        </reports>
+                    </reportSet>
+                </reportSets>
+            </plugin>
+        </plugins>
+    </reporting>
 
 </project>

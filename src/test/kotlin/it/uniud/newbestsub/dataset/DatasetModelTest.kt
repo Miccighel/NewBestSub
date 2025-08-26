@@ -172,7 +172,7 @@ class DatasetModelTest {
         for (k in 1..n) {
             // correlation must exist and be finite for each K
             val corr = model.findCorrelationForCardinality(k.toDouble())
-            assertTrue(corr != null && corr!!.isFinite(), "Expected a finite correlation for K=$k.")
+            assertTrue(corr != null && corr.isFinite(), "Expected a finite correlation for K=$k.")
 
             // representative mask must exist, be size N, and have exactly K bits set
             val mask = model.retrieveMaskForCardinality(k.toDouble())

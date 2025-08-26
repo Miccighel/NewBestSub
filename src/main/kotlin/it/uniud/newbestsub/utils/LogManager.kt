@@ -171,7 +171,7 @@ object LogManager {
                 Files.deleteIfExists(sourcePath)
             }
         } catch (_: Exception) {
-            // Intentionally ignored — logging must not fail due to cleanup.
+            // Intentionally ignored — logging must not fail due to clean up.
         }
     }
 }

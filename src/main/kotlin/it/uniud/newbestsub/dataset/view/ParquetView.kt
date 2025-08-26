@@ -122,17 +122,17 @@ class ParquetView {
 
     /* ---------------- Schemas (annotate all string-like as UTF‑8) ---------------- */
 
-    private val SCHEMA_FUN: MessageType = Types.buildMessage()
+    private val schemaFun: MessageType = Types.buildMessage()
         .required(INT32).named("K")
         .required(DOUBLE).named("Correlation")
         .named("Fun")
 
-    private val SCHEMA_VAR: MessageType = Types.buildMessage()
+    private val schemaVar: MessageType = Types.buildMessage()
         .required(INT32).named("K")
         .required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named("TopicsB64")
         .named("Var")
 
-    private val SCHEMA_TOP: MessageType = Types.buildMessage()
+    private val schemaTop: MessageType = Types.buildMessage()
         .required(INT32).named("K")
         .required(DOUBLE).named("Correlation")
         .required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named("TopicsB64")
@@ -182,7 +182,7 @@ class ParquetView {
         val candidates = listOfNotNull(
             runCatching { Paths.get(outPathStr).parent?.resolve("tmp-snappy") }.getOrNull(),
             runCatching { Paths.get(System.getProperty("java.io.tmpdir", "")).resolve("tmp-snappy") }.getOrNull(),
-            runCatching { Paths.get(System.getProperty("user.home", "."))?.resolve(".snappy") }.getOrNull()
+            runCatching { Paths.get(System.getProperty("user.home", ".")).resolve(".snappy") }.getOrNull()
         )
         for (p in candidates) {
             try {
@@ -276,12 +276,12 @@ class ParquetView {
     /** Round to 6 fractional digits. */
     private fun round6(x: Double): Double = round(x * 1_000_000.0) / 1_000_000.0
 
-    private val DEC_FMT = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
+    private val decimalFormat = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
     /** Format with 6 fractional digits (Locale.ROOT). */
-    private fun fmt6(x: Double): String = DEC_FMT.format(x)
+    private fun fmt6(x: Double): String = decimalFormat.format(x)
 
-    private val NON_ALNUM_UNDERSCORE = Regex("[^A-Za-z0-9_]")
-    private val TOKEN_SPLIT = Regex("[,;\\s|]+")
+    private val nonAlNumbersUnderscoreRegex = Regex("[^A-Za-z0-9_]")
+    private val tokenSplitRegex = Regex("[,;\\s|]+")
 
     /**
      * Normalize a cell:
@@ -306,7 +306,7 @@ class ParquetView {
     private fun sanitizeAndUniq(rawNames: List<String>): List<String> {
         val used = mutableSetOf<String>()
         return rawNames.map { raw ->
-            var base = raw.trim().ifEmpty { "col" }.replace(NON_ALNUM_UNDERSCORE, "_")
+            var base = raw.trim().ifEmpty { "col" }.replace(nonAlNumbersUnderscoreRegex, "_")
             if (base.firstOrNull()?.isDigit() == true) base = "_$base"
             var name = base
             var idx = 2
@@ -344,7 +344,7 @@ class ParquetView {
         if (t.startsWith("B64:")) return t
         return try {
             if (t.any { it == '|' || it == ';' || it == ',' || it == ' ' || it == '[' }) {
-                val tokens = t.removePrefix("[").removeSuffix("]").split(TOKEN_SPLIT).filter { it.isNotBlank() }
+                val tokens = t.removePrefix("[").removeSuffix("]").split(tokenSplitRegex).filter { it.isNotBlank() }
                 val byLabel = indexByLabel(labels)
                 val mask = BooleanArray(labels.size)
                 var matched = 0
@@ -425,15 +425,15 @@ class ParquetView {
         actualTarget: String
     ) {
         if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) {
-            logger.info("[ParquetView] disabled via -Dnbs.parquet.enabled=false (printSnapshot skipped)")
+            logger.info("disabled via -Dnbs.parquet.enabled=false (printSnapshot skipped)")
             return
         }
 
         runCatching {
-            val funFactory = SimpleGroupFactory(SCHEMA_FUN)
-            val varFactory = SimpleGroupFactory(SCHEMA_VAR)
-            openWriter(funParquetPath(model), SCHEMA_FUN).use { funW ->
-                openWriter(varParquetPath(model), SCHEMA_VAR).use { varW ->
+            val funFactory = SimpleGroupFactory(schemaFun)
+            val varFactory = SimpleGroupFactory(schemaVar)
+            openWriter(funParquetPath(model), schemaFun).use { funW ->
+                openWriter(varParquetPath(model), schemaVar).use { varW ->
                     for (s in allSolutions) {
                         val k = s.getCardinality().toInt()
                         val corr = round6(s.getCorrelation())
@@ -447,8 +447,8 @@ class ParquetView {
 
         if (actualTarget != Constants.TARGET_AVERAGE) {
             runCatching {
-                val factory = SimpleGroupFactory(SCHEMA_TOP)
-                openWriter(topParquetPath(model), SCHEMA_TOP).use { w ->
+                val factory = SimpleGroupFactory(schemaTop)
+                openWriter(topParquetPath(model), schemaTop).use { w ->
                     for (s in topSolutions) {
                         val bss = s as BestSubsetSolution
                         w.write(
@@ -518,7 +518,7 @@ class ParquetView {
         if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) {
             val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
             funVarBuffers.remove(viewKey); topBlocks.remove(viewKey); indexCache.clear()
-            logger.info("[ParquetView.closeStreams] skipped (disabled).")
+            logger.info("skipped (disabled).")
             return
         }
 
@@ -532,9 +532,9 @@ class ParquetView {
             else {
                 val cmp =
                     if (model.targetToAchieve == Constants.TARGET_WORST)
-                        compareBy<FunVarRow>({ it.k }).thenByDescending { it.corrExternal }
+                        compareBy<FunVarRow> { it.k }.thenByDescending { it.corrExternal }
                     else
-                        compareBy<FunVarRow>({ it.k }).thenBy { it.corrExternal }
+                        compareBy<FunVarRow> { it.k }.thenBy { it.corrExternal }
                 rows.sortedWith(cmp)
             }
         }
@@ -542,17 +542,17 @@ class ParquetView {
 
         val funVarStart = System.nanoTime()
         runCatching {
-            val funFactory = SimpleGroupFactory(SCHEMA_FUN)
-            val varFactory = SimpleGroupFactory(SCHEMA_VAR)
-            openWriter(funParquetPath(model), SCHEMA_FUN).use { funW ->
-                openWriter(varParquetPath(model), SCHEMA_VAR).use { varW ->
+            val funFactory = SimpleGroupFactory(schemaFun)
+            val varFactory = SimpleGroupFactory(schemaVar)
+            openWriter(funParquetPath(model), schemaFun).use { funW ->
+                openWriter(varParquetPath(model), schemaVar).use { varW ->
                     var count = 0
                     for (r in orderedRows) {
                         funW.write(funFactory.newGroup().append("K", r.k).append("Correlation", round6(r.corrExternal)))
                         varW.write(varFactory.newGroup().append("K", r.k).append("TopicsB64", r.topicsB64))
                         count++
                     }
-                    logger.info("[ParquetView.closeStreams] FUN/VAR rows={} writeOk", count)
+                    logger.info("FUN/VAR rows={} writeOk", count)
                 }
             }
         }.onFailure { logger.warn("FUN/VAR Parquet write (streamed) failed", it) }
@@ -562,9 +562,9 @@ class ParquetView {
         if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
             runCatching {
                 val cache = topBlocks[viewKey].orEmpty().toSortedMap()
-                val factory = SimpleGroupFactory(SCHEMA_TOP)
+                val factory = SimpleGroupFactory(schemaTop)
                 var count = 0
-                openWriter(topParquetPath(model), SCHEMA_TOP).use { w ->
+                openWriter(topParquetPath(model), schemaTop).use { w ->
                     for ((_, block) in cache) {
                         for (row in block) {
                             w.write(
@@ -577,7 +577,7 @@ class ParquetView {
                         }
                     }
                 }
-                logger.info("[ParquetView.closeStreams] TOP rows={} writeOk", count)
+                logger.info("TOP rows={} writeOk", count)
             }.onFailure { logger.warn("TOP Parquet write (streamed) failed", it) }
         }
         val topEnd = System.nanoTime()
@@ -589,7 +589,7 @@ class ParquetView {
 
         val totEnd = System.nanoTime()
         logger.info(
-            "[ParquetView.closeStreams] sort={}ms FUN+VAR={}ms TOP={}ms TOTAL={}ms",
+            "sort={}ms FUN+VAR={}ms TOP={}ms TOTAL={}ms",
             (sortEnd - sortStart) / 1_000_000,
             (funVarEnd - funVarStart) / 1_000_000,
             (topEnd - topStart) / 1_000_000,
@@ -612,11 +612,11 @@ class ParquetView {
     fun writeTable(rows: List<Array<String>>, outPath: String) {
         if (rows.isEmpty()) return
         if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) {
-            logger.info("[ParquetView.writeTable] skipped (disabled): {}", outPath)
+            logger.info("skipped (disabled): {}", outPath)
             return
         }
 
-        val header = rows.first().map { it ?: "" }
+        val header = rows.first().map { it }
         val dataRows = rows.drop(1)
         val colNames = sanitizeAndUniq(header)
 

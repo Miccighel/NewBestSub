@@ -1,5 +1,6 @@
 package it.uniud.newbestsub.utils
 
+import java.nio.file.FileSystems
 import java.nio.file.Paths
 import java.text.SimpleDateFormat
 import java.util.*
@@ -22,7 +23,7 @@ object Constants {
     // -----------------------------------------------------------------------------------------------------------------
 
     /** System-dependent path separator (e.g., "/" on Unix, "\\" on Windows). */
-    val PATH_SEPARATOR: String = System.getProperty("file.separator").toString()
+    val PATH_SEPARATOR: String = FileSystems.getDefault().separator.toString()
 
     /** Parent directory of the current working directory (absolute). */
     val BASE_PATH: String = "${Paths.get("").toAbsolutePath().parent}$PATH_SEPARATOR"
@@ -43,7 +44,7 @@ object Constants {
     // Experiments folder structure
     // -----------------------------------------------------------------------------------------------------------------
 
-    /** Base name of the experiments folder. */
+    /** Base name of the experiments' folder. */
     const val NEWBESTSUB_EXPERIMENTS_NAME: String = "NewBestSub-Experiments"
 
     /** Absolute path to the experiments folder (`<base>/<NewBestSub-Experiments>/`). */
@@ -123,7 +124,7 @@ object Constants {
     const val TOP_SOLUTIONS_NUMBER: Int = 10
 
     /** Suffix for top solutions files (`Top-<N>-Solutions`). */
-    val TOP_SOLUTIONS_FILE_SUFFIX: String = "Top-$TOP_SOLUTIONS_NUMBER-Solutions"
+    const val TOP_SOLUTIONS_FILE_SUFFIX: String = "Top-$TOP_SOLUTIONS_NUMBER-Solutions"
 
     /** Suffix for aggregated data files. */
     const val AGGREGATED_DATA_FILE_SUFFIX: String = "Final"

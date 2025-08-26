@@ -11,7 +11,7 @@ import org.uma.jmetal.problem.binaryproblem.BinaryProblem
 import org.uma.jmetal.solution.binarysolution.BinarySolution
 
 /**
- * jMetal [BinaryProblem] implementation for the **best subset selection** task.
+ * jMetal [BinaryProblem] implementation for the ** the best subset selection** task.
  *
  * The problem receives a precomputed bundle of AP values per (system, topic) and evaluates
  * binary masks over topics by computing a correlation between:
@@ -165,17 +165,6 @@ class BestSubsetProblem(
     /** Top solutions per K (public lists are preserved for writer compatibility). */
     val topSolutions = linkedMapOf<Int, MutableList<BinarySolution>>()
 
-    /** Internal small bin kept per K for fast de‑duplication and bounded top‑N storage. */
-    private data class TopBin(
-        /** Deduplicate by genotype string. */
-        val bestGenotypes: HashSet<String>,
-        /** Top solutions kept sorted by natural correlation. */
-        val topList: MutableList<BinarySolution>
-    )
-
-    /** K → [TopBin] map (internal). */
-    private val topBins = HashMap<Int, TopBin>()
-
     private var iterationCounter = 0
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
     private var progressCounter = 0
@@ -214,7 +203,7 @@ class BestSubsetProblem(
      * Creates a new solution:
      * - For the first `N-1` creations, generates masks with increasing fixed cardinalities
      *   `K = 1, 2, …, N-1` to prime the population with diverse sizes.
-     * - Afterwards, generates a random non‑empty mask.
+     * - Afterward, generates a random non‑empty mask.
      */
     override fun createSolution(): BinarySolution {
         return if (cardinalityToGenerate < numberOfTopics) {
