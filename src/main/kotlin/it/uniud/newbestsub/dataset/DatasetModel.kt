@@ -368,6 +368,7 @@ class DatasetModel {
         datasetName = parameters.datasetName
         currentExecution = parameters.currentExecution
         populationSize = parameters.populationSize
+        numberOfIterations = parameters.numberOfIterations
         numberOfRepetitions = parameters.numberOfRepetitions
         correlationMethod = parameters.correlationMethod
 
@@ -536,7 +537,6 @@ class DatasetModel {
             if (populationSize < numberOfTopics) throw ParseException(
                 "Value for the option <<p>> or <<po>> must be greater or equal than/to $numberOfTopics. Current value is $populationSize. Check the usage section below."
             )
-            numberOfIterations = parameters.numberOfIterations
 
             /* Construct the problem via the primitive precomputed bundle. */
             problem = BestSubsetProblem(

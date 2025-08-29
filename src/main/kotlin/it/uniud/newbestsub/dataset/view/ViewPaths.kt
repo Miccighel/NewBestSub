@@ -18,6 +18,7 @@ import java.io.File
  *   - CSV → `<container>/CSV/`
  *   - Parquet → `<container>/Parquet/`
  * - Generate deterministic, timestamp-free filenames that include the executed target token.
+ *   - **AVERAGE mode**: filenames intentionally **omit** the iteration token (`i…`), even if provided.
  * - Append `"sd<seed>"` to filenames if an explicit CLI seed (`--seed`) was provided.
  *
  * ## Safety
@@ -56,7 +57,7 @@ object ViewPaths {
             numberOfTopics = model.numberOfTopics,
             numberOfSystems = model.numberOfSystems,
             populationSize = model.populationSize,
-            numberOfIterations = model.numberOfIterations,
+            numberOfIterations = model.numberOfIterations, // container keeps -i… if > 0
             numberOfRepetitions = model.numberOfRepetitions,
             expansionCoefficient = model.expansionCoefficient,
             includePercentiles = (model.targetToAchieve == Constants.TARGET_AVERAGE),
@@ -64,8 +65,8 @@ object ViewPaths {
         )
 
         val out = Constants.NEWBESTSUB_PATH +
-            "res" + Constants.PATH_SEPARATOR +
-            containerFolder + Constants.PATH_SEPARATOR
+                "res" + Constants.PATH_SEPARATOR +
+                containerFolder + Constants.PATH_SEPARATOR
 
         File(out).mkdirs()
         cachedOutDirPath = out
@@ -99,6 +100,11 @@ object ViewPaths {
     /**
      * Assemble the core parts of a base filename for a given run and target.
      *
+     * Rules:
+     * - Always include `target` (BEST/WORST/AVERAGE).
+     * - Include tokens only when their numeric value is `> 0`.
+     * - **AVERAGE** filenames **omit** the iteration token (`i…`), even if provided.
+     *
      * @param model The dataset model.
      * @param target Target identifier (`BEST`, `WORST`, or `AVERAGE`).
      * @return Array of string tokens that form the deterministic filename base.
@@ -117,7 +123,12 @@ object ViewPaths {
         if (model.numberOfTopics > 0) parts += "top${model.numberOfTopics}"
         if (model.numberOfSystems > 0) parts += "sys${model.numberOfSystems}"
         if (model.populationSize > 0) parts += "po${model.populationSize}"
-        if (model.numberOfIterations > 0) parts += "i${model.numberOfIterations}"
+
+        // Omit -i… for AVERAGE filenames by design
+        if (target != Constants.TARGET_AVERAGE && model.numberOfIterations > 0) {
+            parts += "i${model.numberOfIterations}"
+        }
+
         if (model.numberOfRepetitions > 0) parts += "r${model.numberOfRepetitions}"
         if (model.expansionCoefficient > 0) parts += "mx${model.expansionCoefficient}"
         if (model.currentExecution > 0) parts += "ex${model.currentExecution}"
@@ -150,7 +161,7 @@ object ViewPaths {
      */
     fun csvNameNoTsMerged(baseParts: Array<String>, suffix: String): String =
         folderBaseName(*baseParts) + Constants.FILE_NAME_SEPARATOR + suffix +
-            Constants.FILE_NAME_SEPARATOR + Constants.MERGED_RESULT_FILE_SUFFIX + Constants.CSV_FILE_EXTENSION
+                Constants.FILE_NAME_SEPARATOR + Constants.MERGED_RESULT_FILE_SUFFIX + Constants.CSV_FILE_EXTENSION
 
     /**
      * Build a Parquet filename (without timestamp).
