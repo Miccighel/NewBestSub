@@ -29,273 +29,278 @@ import java.nio.file.FileSystemException
  * - Initialize logging: bootstrap log → parameterized log.
  * - Load dataset and build parameter tokens.
  * - Manage deterministic seeding via RandomBridge.
- * - Run experiments according to the target:
- *   - Best, Worst: NSGA-II evolutionary optimization.
- *   - Average: percentile-based evaluation.
- *   - All: combined execution of Best/Worst + Average.
- * - Handle expansions (--expt, --exps) and multi-run merging (--mrg).
- * - Optionally copy results into NewBestSub-Experiments/.
- * - Catch and log errors (CLI, FS, jMetal, OOM) with hints.
+ * - Run experiments (Best/Worst/Average/All), expansions, and merging.
+ * - Copy results into NewBestSub-Experiments/ when requested.
+ * - Catch and log errors (CLI, FS, runtime validation, jMetal, OOM) with actionable hints.
  */
 object Program {
 
-    /**
-     * Main entry point for the program.
-     */
     @JvmStatic
     fun main(arguments: Array<String>) {
 
         /* Ensure Snappy extracts its native lib under target/tmp-snappy */
         initSnappyTempDir()
 
-        val commandLine: CommandLine
-        val parser: CommandLineParser
         val options = loadCommandLineOptions()
-        val datasetController: DatasetController
-        val datasetPath: String
-        val datasetName: String
-        val correlationMethod: String
-        val targetToAchieve: String
-        var numberOfIterations: Int
-        var numberOfRepetitions: Int
-        var populationSize: Int
-        var percentiles: List<Int>
-        val topicExpansionCoefficient: Int
-        val systemExpansionCoefficient: Int
-        val topicMaximumExpansionCoefficient: Int
-        val systemMaximumExpansionCoefficient: Int
-        val numberOfExecutions: Int
-        val loggingLevel: Level
-        var logger: Logger
 
         /* -------- Bootstrap logging to a timestamped file (no params yet) -------- */
         val bootstrapLogPath = LogManager.getBootstrapLogFilePath()
         System.setProperty("baseLogFileName", bootstrapLogPath)
-        logger = LogManager.updateRootLoggerLevel(Level.INFO)
+        var logger: Logger = LogManager.updateRootLoggerLevel(Level.INFO)
 
-        logger.info("Program started.")
+        /* -------- Catch uncaught exceptions from worker threads (e.g., coroutines) -------- */
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            when (e) {
+                is ParseException -> {
+                    // Runtime validation-style ParseException (e.g., -po too small)
+                    logger.error("Runtime configuration error on thread {}: {}", t.name, e.message ?: "ParseException", e)
+                    if (e.message?.contains("<<p>>", true) == true || e.message?.contains("<<po>>", true) == true) {
+                        logger.info("Hint: set -po (population) ≥ number of topics (see dataset header / logs).")
+                    }
+                    logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to configuration error.")
+                }
+                else -> {
+                    logger.error("Uncaught exception on thread {}: {}", t.name, e.message ?: "unknown", e)
+                    logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
+                }
+            }
+        }
 
         try {
-            parser = DefaultParser()
-            commandLine = parser.parse(options, arguments)
-            datasetName = commandLine.getOptionValue("fi")
-            datasetPath = "${Constants.NEWBESTSUB_INPUT_PATH}$datasetName.csv"
+            /* --------------------------- 1) CLI parsing --------------------------- */
+            val parser: CommandLineParser = DefaultParser()
+            val commandLine: CommandLine = parser.parse(options, arguments)
 
-            if (!File(datasetPath).exists()) throw FileNotFoundException("Dataset file does not exists Path: \"$datasetPath\"") else {
+            val datasetName = commandLine.getOptionValue("fi")
+            val datasetPath = "${Constants.NEWBESTSUB_INPUT_PATH}$datasetName.csv"
 
-                /* LogManager level */
-                loggingLevel = when (commandLine.getOptionValue("l")) {
-                    "Verbose" -> Level.DEBUG
-                    "Limited" -> Level.INFO
-                    "Off" -> Level.OFF
-                    else -> throw ParseException("Value for the option <<l>> or <<log>> is wrong. Check the usage section below.")
+            if (!File(datasetPath).exists()) {
+                throw FileNotFoundException("Dataset file does not exists Path: \"$datasetPath\"")
+            }
+
+            /* LogManager level */
+            val loggingLevel: Level = when (commandLine.getOptionValue("l")) {
+                "Verbose" -> Level.DEBUG
+                "Limited" -> Level.INFO
+                "Off"     -> Level.OFF
+                else -> throw ParseException("Value for the option <<l>> or <<log>> is wrong. Check the usage section below.")
+            }
+            logger = LogManager.updateRootLoggerLevel(loggingLevel)
+
+            /* Correlation method */
+            val correlationMethod: String = when (commandLine.getOptionValue("c")) {
+                Constants.CORRELATION_PEARSON, Constants.CORRELATION_KENDALL -> commandLine.getOptionValue("c")
+                else -> throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
+            }
+
+            /* Target */
+            val targetToAchieve: String = when (commandLine.getOptionValue("t")) {
+                Constants.TARGET_BEST, Constants.TARGET_WORST, Constants.TARGET_AVERAGE, Constants.TARGET_ALL -> commandLine.getOptionValue("t")
+                else -> throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
+            }
+
+            /* Defaults (filled depending on target) */
+            var numberOfIterations = 0
+            var populationSize = 0
+            var numberOfRepetitions = 0
+            var percentiles: List<Int> = emptyList()
+
+            if (targetToAchieve != Constants.TARGET_AVERAGE) {
+                if (!commandLine.hasOption("i")) throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
+                numberOfIterations = commandLine.getOptionValue("i").toIntOrNull()
+                    ?: throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
+                if (numberOfIterations <= 0) throw ParseException("Value for the option <<i>> or <<iter>> must be a positive value.")
+
+                if (!commandLine.hasOption("po")) throw ParseException("Value for the option <<po>> or <<pop>> is missing. Check the usage section below.")
+                populationSize = commandLine.getOptionValue("po").toIntOrNull()
+                    ?: throw ParseException("Value for the option <<po>> or <<pop>> is not an integer. Check the usage section below")
+                if (populationSize <= 0) throw ParseException("Value for the option <<po>> or <<pop>> must be a positive value.")
+            }
+
+            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
+                if (!commandLine.hasOption("r")) throw ParseException("Value for the option <<r>> or <<rep>> is missing. Check the usage section below.")
+                numberOfRepetitions = commandLine.getOptionValue("r").toIntOrNull()
+                    ?: throw ParseException("Value for the option <<r>> or <<rep>> is not an integer. Check the usage section below")
+                if (numberOfRepetitions <= 0) throw ParseException("Value for the option <<r>> or <<rep>> must be a positive value.")
+
+                if (!commandLine.hasOption("pe")) throw ParseException("Value for the option <<pe>> or <<perc>> is missing. Check the usage section below.")
+                val percentilesToParse = commandLine.getOptionValues("pe").toList()
+                if (percentilesToParse.size > 2) throw ParseException("Value for the option <<pe>> or <<perc>> is wrong. Check the usage section below.")
+                try {
+                    val firstPercentile = percentilesToParse[0].toInt()
+                    val lastPercentile  = percentilesToParse[1].toInt()
+                    percentiles = (firstPercentile..lastPercentile).toList()
+                } catch (_: NumberFormatException) {
+                    throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
                 }
+            }
 
-                /* Correlation method */
-                correlationMethod = when (commandLine.getOptionValue("c")) {
-                    Constants.CORRELATION_PEARSON, Constants.CORRELATION_KENDALL -> commandLine.getOptionValue("c")
-                    else -> throw ParseException("Value for the option <<c>> or <<corr>> is wrong. Check the usage section below.")
-                }
+            /* --------------------------- 2) Controller + dataset load --------------------------- */
+            val datasetController = DatasetController(targetToAchieve)
+            datasetController.load(datasetPath)
 
-                /* Target */
-                targetToAchieve = when (commandLine.getOptionValue("t")) {
-                    Constants.TARGET_BEST, Constants.TARGET_WORST, Constants.TARGET_AVERAGE, Constants.TARGET_ALL ->
-                        commandLine.getOptionValue("t")
-
-                    else -> throw ParseException("Value for the option <<t>> or <<target>> is wrong. Check the usage section below.")
-                }
-
-                /* Defaults (filled depending on target) */
-                numberOfIterations = 0
-                populationSize = 0
-                numberOfRepetitions = 0
-                percentiles = emptyList()
-
+            /* PRE-VALIDATE: for Best/Worst/All, enforce -po ≥ #topics (fail early on main thread) */
+            run {
                 if (targetToAchieve != Constants.TARGET_AVERAGE) {
-                    if (!commandLine.hasOption("i")) throw ParseException("Value for the option <<i>> or <<iter>> is missing. Check the usage section below.")
-                    numberOfIterations = commandLine.getOptionValue("i").toIntOrNull()
-                        ?: throw ParseException("Value for the option <<i>> or <<iter>> is not an integer. Check the usage section below")
-                    if (numberOfIterations <= 0) throw ParseException("Value for the option <<i>> or <<iter>> must be a positive value.")
-
-                    if (!commandLine.hasOption("po")) throw ParseException("Value for the option <<po>> or <<pop>> is missing. Check the usage section below.")
-                    populationSize = commandLine.getOptionValue("po").toIntOrNull()
-                        ?: throw ParseException("Value for the option <<po>> or <<pop>> is not an integer. Check the usage section below")
-                    if (populationSize <= 0) throw ParseException("Value for the option <<po>> or <<pop>> must be a positive value.")
-                }
-
-                if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
-                    if (!commandLine.hasOption("r")) throw ParseException("Value for the option <<r>> or <<rep>> is missing. Check the usage section below.")
-                    numberOfRepetitions = commandLine.getOptionValue("r").toIntOrNull()
-                        ?: throw ParseException("Value for the option <<r>> or <<rep>> is not an integer. Check the usage section below")
-                    if (numberOfRepetitions <= 0) throw ParseException("Value for the option <<r>> or <<rep>> must be a positive value.")
-
-                    if (!commandLine.hasOption("pe")) throw ParseException("Value for the option <<pe>> or <<perc>> is missing. Check the usage section below.")
-                    val percentilesToParse = commandLine.getOptionValues("pe").toList()
-                    if (percentilesToParse.size > 2) throw ParseException("Value for the option <<pe>> or <<perc>> is wrong. Check the usage section below.")
-                    try {
-                        val firstPercentile = percentilesToParse[0].toInt()
-                        val lastPercentile = percentilesToParse[1].toInt()
-                        percentiles = (firstPercentile..lastPercentile).toList()
-                    } catch (_: NumberFormatException) {
-                        throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
-                    }
-                }
-
-                /* Apply requested logging level (still pointing to bootstrap file) */
-                logger = LogManager.updateRootLoggerLevel(loggingLevel)
-
-                /* Controller + dataset load (to know topics/systems/etc.) */
-                datasetController = DatasetController(targetToAchieve)
-                datasetController.load(datasetPath)
-
-                /* Build the final log filename with params (percentiles only for Average) and switch to it */
-                run {
-                    val model = datasetController.models[0]
-                    val paramsToken = Tools.buildParamsToken(
-                        datasetName = datasetName,
-                        correlationMethod = correlationMethod,
-                        numberOfTopics = model.numberOfTopics,
-                        numberOfSystems = model.numberOfSystems,
-                        populationSize = populationSize,
-                        numberOfIterations = numberOfIterations,
-                        numberOfRepetitions = numberOfRepetitions,
-                        expansionCoefficient = model.expansionCoefficient,
-                        includePercentiles = (targetToAchieve == Constants.TARGET_AVERAGE),
-                        percentiles = percentiles
-                    )
-                    LogManager.promoteBootstrapToParameterizedLog(paramsToken, loggingLevel)
-                }
-
-                logger.info("${Constants.NEWBESTSUB_NAME} execution started.")
-                logger.info("Base path:")
-                logger.info("\"${Constants.BASE_PATH}\"")
-                logger.info("${Constants.NEWBESTSUB_NAME} path:")
-                logger.info("\"${Constants.NEWBESTSUB_PATH}\"")
-                logger.info("${Constants.NEWBESTSUB_NAME} input path:")
-                logger.info("\"${Constants.NEWBESTSUB_INPUT_PATH}\"")
-                logger.info("${Constants.NEWBESTSUB_NAME} output path:")
-                logger.info("\"${Constants.NEWBESTSUB_OUTPUT_PATH}\"")
-                logger.info("${Constants.NEWBESTSUB_NAME} log path (directory):")
-                logger.info("\"${Constants.NEWBESTSUB_PATH}log${Constants.PATH_SEPARATOR}\"")
-
-                if (commandLine.hasOption("copy")) {
-                    logger.info("${Constants.NEWBESTSUB_EXPERIMENTS_NAME} path:")
-                    logger.info("\"${Constants.NEWBESTSUB_EXPERIMENTS_PATH}\"")
-                    logger.info("${Constants.NEWBESTSUB_EXPERIMENTS_NAME} input path:")
-                    logger.info("\"${Constants.NEWBESTSUB_EXPERIMENTS_INPUT_PATH}\"")
-
-                    logger.info("Checking if ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} exists.")
-
-                    val errorMessage =
-                        "${Constants.NEWBESTSUB_EXPERIMENTS_NAME} not found. Please, place its folder the same one where ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} is located. Path: \"${Constants.BASE_PATH}\""
-                    if (!File(Constants.NEWBESTSUB_EXPERIMENTS_PATH).exists()) throw FileNotFoundException(errorMessage) else {
-                        logger.info("${Constants.NEWBESTSUB_EXPERIMENTS_NAME} detected.")
-                    }
-                }
-
-                if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
-                    logger.info("Percentiles: ${percentiles.joinToString(", ")}. [Experiment: Average]")
-                }
-
-                /* --------------------------- Deterministic mode --------------------------- */
-                val deterministicRequested = commandLine.hasOption("det") || commandLine.hasOption("sd")
-                val seedFromCli: Long? = if (commandLine.hasOption("sd")) {
-                    commandLine.getOptionValue("sd")?.toLongOrNull()
-                        ?: throw ParseException("Value for the option <<sd>> or <<seed>> is not a valid long. Check the usage section below.")
-                } else null
-                if (seedFromCli != null) System.setProperty("nbs.seed.cli", seedFromCli.toString())
-
-                val masterSeed: Long? = if (deterministicRequested) {
-                    val seedTemplate = Parameters(
-                        datasetName = datasetName,
-                        correlationMethod = correlationMethod,
-                        targetToAchieve = targetToAchieve,
-                        numberOfIterations = numberOfIterations,
-                        numberOfRepetitions = numberOfRepetitions,
-                        populationSize = populationSize,
-                        currentExecution = 0,
-                        percentiles = percentiles,
-                        deterministic = true,
-                        seed = null
-                    )
-                    val derived = seedFromCli ?: Tools.stableSeedFrom(seedTemplate)
-                    RandomBridge.installDeterministic(derived)
-                    logger.info("Deterministic mode: ON (masterSeed=$derived)")
-                    derived
-                } else {
-                    logger.info("Deterministic mode: OFF")
-                    null
-                }
-
-                if (commandLine.hasOption("mr")) {
-
-                    try {
-                        numberOfExecutions = Integer.parseInt(commandLine.getOptionValue("mr"))
-                        if (numberOfExecutions <= 0) throw ParseException("Value for the option <<me>> or <<mrg>> must be a positive value. Check the usage section below")
-                    } catch (_: NumberFormatException) {
-                        throw ParseException("Value for the option <<mr>> or <<mrg>> is not an integer. Check the usage section below")
-                    }
-
-                    (1..numberOfExecutions).forEach { currentExecution ->
-                        logger.info("Execution number: $currentExecution/$numberOfExecutions")
-                        datasetController.solve(
-                            Parameters(
-                                datasetName,
-                                correlationMethod,
-                                targetToAchieve,
-                                numberOfIterations,
-                                numberOfRepetitions,
-                                populationSize,
-                                currentExecution,
-                                percentiles,
-                                deterministicRequested,
-                                masterSeed
-                            )
+                    val topics = datasetController.models[0].numberOfTopics
+                    if (populationSize < topics) {
+                        // Mirror the message style thrown deeper to keep consistency
+                        throw ParseException(
+                            "Value for the option <<p>> or <<po>> must be greater or equal than/to $topics. " +
+                            "Current value is $populationSize. Check the usage section below."
                         )
                     }
-
-                    datasetController.merge(numberOfExecutions)
                 }
+            }
 
-                val parseMaximumExpansionCoefficient = {
-                    val maximumExpansionCoefficient: Int
+            /* Build the final log filename with params and switch to it */
+            run {
+                val model = datasetController.models[0]
+                val paramsToken = Tools.buildParamsToken(
+                    datasetName = datasetName,
+                    correlationMethod = correlationMethod,
+                    numberOfTopics = model.numberOfTopics,
+                    numberOfSystems = model.numberOfSystems,
+                    populationSize = populationSize,
+                    numberOfIterations = numberOfIterations,
+                    numberOfRepetitions = numberOfRepetitions,
+                    expansionCoefficient = model.expansionCoefficient,
+                    includePercentiles = (targetToAchieve == Constants.TARGET_AVERAGE),
+                    percentiles = percentiles
+                )
+                LogManager.promoteBootstrapToParameterizedLog(paramsToken, loggingLevel)
+            }
 
-                    if (!commandLine.hasOption("mx")) throw ParseException("Value for the option <<mx>> or <<max>> is missing. Check the usage section below.")
-                    try {
-                        maximumExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("mx"))
-                        if (maximumExpansionCoefficient <= 0) throw ParseException("Value for the option <<mx>> or <<max>> must be a positive value. Check the usage section below")
-                    } catch (_: NumberFormatException) {
-                        throw ParseException("Value for the option <<m>> or <<max>> is not an integer. Check the usage section below")
+            logger.info("${Constants.NEWBESTSUB_NAME} execution started.")
+            logger.info("Base path:\n\"${Constants.BASE_PATH}\"")
+            logger.info("${Constants.NEWBESTSUB_NAME} input path:\n\"${Constants.NEWBESTSUB_INPUT_PATH}\"")
+            logger.info("${Constants.NEWBESTSUB_NAME} output path:\n\"${Constants.NEWBESTSUB_OUTPUT_PATH}\"")
+            logger.info("${Constants.NEWBESTSUB_NAME} log path (directory):\n\"${Constants.NEWBESTSUB_PATH}log${Constants.PATH_SEPARATOR}\"")
+
+            if (commandLine.hasOption("copy")) {
+                logger.info("${Constants.NEWBESTSUB_EXPERIMENTS_NAME} path:\n\"${Constants.NEWBESTSUB_EXPERIMENTS_PATH}\"")
+                logger.info("${Constants.NEWBESTSUB_EXPERIMENTS_NAME} input path:\n\"${Constants.NEWBESTSUB_EXPERIMENTS_INPUT_PATH}\"")
+                val errorMessage =
+                    "${Constants.NEWBESTSUB_EXPERIMENTS_NAME} not found. Please, place its folder the same one where ${Constants.NEWBESTSUB_EXPERIMENTS_NAME} is located. Path: \"${Constants.BASE_PATH}\""
+                if (!File(Constants.NEWBESTSUB_EXPERIMENTS_PATH).exists()) throw FileNotFoundException(errorMessage)
+                logger.info("${Constants.NEWBESTSUB_EXPERIMENTS_NAME} detected.")
+            }
+
+            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
+                logger.info("Percentiles: ${percentiles.joinToString(", ")}. [Experiment: Average]")
+            }
+
+            /* --------------------------- Deterministic mode --------------------------- */
+            val deterministicRequested = commandLine.hasOption("det") || commandLine.hasOption("sd")
+            val seedFromCli: Long? = if (commandLine.hasOption("sd")) {
+                commandLine.getOptionValue("sd")?.toLongOrNull()
+                    ?: throw ParseException("Value for the option <<sd>> or <<seed>> is not a valid long. Check the usage section below.")
+            } else null
+            if (seedFromCli != null) System.setProperty("nbs.seed.cli", seedFromCli.toString())
+
+            val masterSeed: Long? = if (deterministicRequested) {
+                val seedTemplate = Parameters(
+                    datasetName = datasetName,
+                    correlationMethod = correlationMethod,
+                    targetToAchieve = targetToAchieve,
+                    numberOfIterations = numberOfIterations,
+                    numberOfRepetitions = numberOfRepetitions,
+                    populationSize = populationSize,
+                    currentExecution = 0,
+                    percentiles = percentiles,
+                    deterministic = true,
+                    seed = null
+                )
+                val derived = seedFromCli ?: Tools.stableSeedFrom(seedTemplate)
+                RandomBridge.installDeterministic(derived)
+                logger.info("Deterministic mode: ON (masterSeed=$derived)")
+                derived
+            } else {
+                logger.info("Deterministic mode: OFF")
+                null
+            }
+
+            /* --------------------------- Helpers --------------------------- */
+            val resultCleaner = {
+                logger.info("Cleaning of useless results from last expansion started.")
+                datasetController.clean(datasetController.aggregatedDataResultPaths, "Cleaning aggregated data at paths:")
+                datasetController.clean(datasetController.functionValuesResultPaths, "Cleaning function values at paths:")
+                datasetController.clean(datasetController.variableValuesResultPaths, "Cleaning variable values at paths:")
+                datasetController.clean(datasetController.topSolutionsResultPaths, "Cleaning top solutions at paths:")
+                logger.info("Cleaning completed.")
+            }
+
+            val parseMaximumExpansionCoefficient = {
+                val maximumExpansionCoefficient: Int
+                if (!options.hasOption("mx") && !options.hasLongOption("max")) {
+                    // This lambda is only called when CLI had -mx; keep old error string for consistency.
+                }
+                if (!commandLine.hasOption("mx")) throw ParseException("Value for the option <<mx>> or <<max>> is missing. Check the usage section below.")
+                try {
+                    maximumExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("mx"))
+                    if (maximumExpansionCoefficient <= 0) throw ParseException("Value for the option <<mx>> or <<max>> must be a positive value. Check the usage section below")
+                } catch (_: NumberFormatException) {
+                    throw ParseException("Value for the option <<m>> or <<max>> is not an integer. Check the usage section below")
+                }
+                if (populationSize <= maximumExpansionCoefficient) {
+                    throw ParseException("Value for the option <<p>> or <<pop>> must be greater than value for the option <<mx>> or <<max>>. Check the usage section below")
+                }
+                maximumExpansionCoefficient
+            }
+
+            /* --------------------------- 3) Run modes --------------------------- */
+            if (commandLine.hasOption("mr")) {
+                val numberOfExecutions = try {
+                    Integer.parseInt(commandLine.getOptionValue("mr")).also {
+                        if (it <= 0) throw ParseException("Value for the option <<me>> or <<mrg>> must be a positive value. Check the usage section below")
                     }
-
-                    if (populationSize <= maximumExpansionCoefficient) throw ParseException("Value for the option <<p>> or <<pop>> must be greater than value for the option <<mx>> or <<max>>. Check the usage section below")
-
-                    maximumExpansionCoefficient
+                } catch (_: NumberFormatException) {
+                    throw ParseException("Value for the option <<mr>> or <<mrg>> is not an integer. Check the usage section below")
                 }
 
-                val resultCleaner = {
-                    logger.info("Cleaning of useless results from last expansion started.")
-                    datasetController.clean(datasetController.aggregatedDataResultPaths, "Cleaning aggregated data at paths:")
-                    datasetController.clean(datasetController.functionValuesResultPaths, "Cleaning function values at paths:")
-                    datasetController.clean(datasetController.variableValuesResultPaths, "Cleaning variable values at paths:")
-                    datasetController.clean(datasetController.topSolutionsResultPaths, "Cleaning top solutions at paths:")
-                    logger.info("Cleaning completed.")
+                (1..numberOfExecutions).forEach { currentExecution ->
+                    logger.info("Execution number: $currentExecution/$numberOfExecutions")
+                    runSolveWithRuntimeValidationHints(
+                        datasetController, logger,
+                        Parameters(
+                            datasetName, correlationMethod, targetToAchieve,
+                            numberOfIterations, numberOfRepetitions, populationSize,
+                            currentExecution, percentiles, deterministicRequested, masterSeed
+                        )
+                    )
                 }
+                datasetController.merge(numberOfExecutions)
+            }
 
-                if (commandLine.hasOption("et")) {
+            if (commandLine.hasOption("et")) {
+                val topicExpansionCoefficient = try {
+                    Integer.parseInt(commandLine.getOptionValue("et"))
+                } catch (_: NumberFormatException) {
+                    throw ParseException("Value for the option <<et>> or <<expt>> is not an integer. Check the usage section below")
+                }
+                val topicMaximumExpansionCoefficient = parseMaximumExpansionCoefficient.invoke()
+                val trueTopicNumber = datasetController.models[0].numberOfTopics
 
-                    try {
-                        topicExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("et"))
-                    } catch (_: NumberFormatException) {
-                        throw ParseException("Value for the option <<et>> or <<expt>> is not an integer. Check the usage section below")
-                    }
+                logger.info("Base execution (true data)")
+                runSolveWithRuntimeValidationHints(
+                    datasetController, logger,
+                    Parameters(
+                        datasetName, correlationMethod, targetToAchieve,
+                        numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles,
+                        deterministicRequested, masterSeed
+                    )
+                )
+                resultCleaner.invoke()
 
-                    topicMaximumExpansionCoefficient = parseMaximumExpansionCoefficient.invoke()
-                    val trueTopicNumber = datasetController.models[0].numberOfTopics
-
-                    logger.info("Base execution (true data)")
-
-                    datasetController.solve(
+                while (datasetController.models[0].numberOfTopics + topicExpansionCoefficient <= topicMaximumExpansionCoefficient) {
+                    logger.info(
+                        "Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + topicExpansionCoefficient}, " +
+                        "Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $topicExpansionCoefficient, " +
+                        "Maximum Expansion: $topicMaximumExpansionCoefficient, True Topic Number: $trueTopicNumber>"
+                    )
+                    datasetController.expandTopics(topicExpansionCoefficient)
+                    runSolveWithRuntimeValidationHints(
+                        datasetController, logger,
                         Parameters(
                             datasetName, correlationMethod, targetToAchieve,
                             numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles,
@@ -303,112 +308,102 @@ object Program {
                         )
                     )
                     resultCleaner.invoke()
-                    while (datasetController.models[0].numberOfTopics + topicExpansionCoefficient <= topicMaximumExpansionCoefficient) {
-                        logger.info("Data expansion: <New Topic Number: ${datasetController.models[0].numberOfTopics + topicExpansionCoefficient}, Earlier Topic Number: ${datasetController.models[0].numberOfTopics}, Expansion Coefficient: $topicExpansionCoefficient, Maximum Expansion: $topicMaximumExpansionCoefficient, True Topic Number: $trueTopicNumber>")
-                        datasetController.expandTopics(topicExpansionCoefficient)
-                        datasetController.solve(
-                            Parameters(
-                                datasetName, correlationMethod, targetToAchieve,
-                                numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles,
-                                deterministicRequested, masterSeed
-                            )
-                        )
-                        resultCleaner.invoke()
-                    }
                 }
-
-                if (commandLine.hasOption("es")) {
-
-                    try {
-                        systemExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("es"))
-                    } catch (_: NumberFormatException) {
-                        throw ParseException("Value for the option <<es>> or <<exps> is not an integer. Check the usage section below")
-                    }
-
-                    systemMaximumExpansionCoefficient = parseMaximumExpansionCoefficient.invoke()
-                    val trueNumberOfSystems = datasetController.models[0].numberOfSystems
-
-                    datasetController.models.forEach { model ->
-                        model.numberOfSystems = 0
-                    }
-
-                    logger.info("Base execution (true data)")
-
-                    while (datasetController.models[0].numberOfSystems + systemExpansionCoefficient <= systemMaximumExpansionCoefficient) {
-                        logger.info("Data expansion: <New System Number: ${datasetController.models[0].numberOfSystems + systemExpansionCoefficient}, Earlier System Number: ${datasetController.models[0].numberOfSystems}, Expansion Coefficient: $systemExpansionCoefficient, Maximum Expansion: $systemMaximumExpansionCoefficient, Initial System Number: $systemExpansionCoefficient, True System Number: $trueNumberOfSystems>")
-                        datasetController.expandSystems(systemExpansionCoefficient, trueNumberOfSystems)
-                        datasetController.solve(
-                            Parameters(
-                                datasetName, correlationMethod, targetToAchieve,
-                                numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles,
-                                deterministicRequested, masterSeed
-                            )
-                        )
-                        resultCleaner.invoke()
-                    }
-                }
-
-                if (!commandLine.hasOption("et") && !commandLine.hasOption("es") && !commandLine.hasOption("mr")) {
-                    datasetController.solve(
-                        Parameters(
-                            datasetName,
-                            correlationMethod,
-                            targetToAchieve,
-                            numberOfIterations,
-                            numberOfRepetitions,
-                            populationSize,
-                            0,
-                            percentiles,
-                            deterministicRequested,
-                            masterSeed
-                        )
-                    )
-                }
-                if (commandLine.hasOption("copy")) datasetController.copy()
-
-                logger.info("NewBestSub execution terminated.")
             }
 
+            if (commandLine.hasOption("es")) {
+                val systemExpansionCoefficient = try {
+                    Integer.parseInt(commandLine.getOptionValue("es"))
+                } catch (_: NumberFormatException) {
+                    throw ParseException("Value for the option <<es>> or <<exps> is not an integer. Check the usage section below")
+                }
+                val systemMaximumExpansionCoefficient = parseMaximumExpansionCoefficient.invoke()
+                val trueNumberOfSystems = datasetController.models[0].numberOfSystems
+
+                datasetController.models.forEach { model -> model.numberOfSystems = 0 }
+                logger.info("Base execution (true data)")
+
+                while (datasetController.models[0].numberOfSystems + systemExpansionCoefficient <= systemMaximumExpansionCoefficient) {
+                    logger.info(
+                        "Data expansion: <New System Number: ${datasetController.models[0].numberOfSystems + systemExpansionCoefficient}, " +
+                        "Earlier System Number: ${datasetController.models[0].numberOfSystems}, Expansion Coefficient: $systemExpansionCoefficient, " +
+                        "Maximum Expansion: $systemMaximumExpansionCoefficient, Initial System Number: $systemExpansionCoefficient, True System Number: $trueNumberOfSystems>"
+                    )
+                    datasetController.expandSystems(systemExpansionCoefficient, trueNumberOfSystems)
+                    runSolveWithRuntimeValidationHints(
+                        datasetController, logger,
+                        Parameters(
+                            datasetName, correlationMethod, targetToAchieve,
+                            numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles,
+                            deterministicRequested, masterSeed
+                        )
+                    )
+                    resultCleaner.invoke()
+                }
+            }
+
+            if (!commandLine.hasOption("et") && !commandLine.hasOption("es") && !commandLine.hasOption("mr")) {
+                runSolveWithRuntimeValidationHints(
+                    datasetController, logger,
+                    Parameters(
+                        datasetName, correlationMethod, targetToAchieve,
+                        numberOfIterations, numberOfRepetitions, populationSize, 0, percentiles,
+                        deterministicRequested, masterSeed
+                    )
+                )
+            }
+
+            if (commandLine.hasOption("copy")) datasetController.copy()
+            logger.info("NewBestSub execution terminated.")
+
         } catch (exception: ParseException) {
-            /* Bad CLI arguments: log full error + show usage with examples. */
-            logger.error("Invalid command line arguments: {}", exception.message ?: "unknown ParseException", exception)
-            printNiceHelp(options, exception.message)
-            logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to invalid arguments.")
+            /* Distinguish CLI parse vs runtime validation by message heuristics. */
+            val msg = exception.message ?: ""
+            val looksLikeRuntimeConfig =
+                msg.contains("<<p>>", true) || msg.contains("<<po>>", true) ||
+                msg.contains("greater or equal", true) || msg.contains("greater than", true)
+
+            if (looksLikeRuntimeConfig) {
+                // Runtime validation error (e.g., -po too small for #topics)
+                logger.error("Configuration error: {}", msg, exception)
+                if (msg.contains("<<p>>", true) || msg.contains("<<po>>", true)) {
+                    logger.info("Hint: set -po (population) ≥ number of topics of the dataset.")
+                }
+                logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to configuration error.")
+            } else {
+                // Genuine CLI parse error → pretty help
+                logger.error("Invalid command line arguments: {}", msg.ifBlank { "unknown ParseException" }, exception)
+                printNiceHelp(options, exception.message)
+                logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to invalid arguments.")
+            }
+
         } catch (exception: FileNotFoundException) {
-            /* Missing input or required directory. Include context + stacktrace. */
             val cwd = File(".").absoluteFile.normalize().path
             logger.error("File not found (cwd: {}): {}", cwd, exception.message ?: "unknown", exception)
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
         } catch (exception: FileSystemException) {
-            /* IO/FS error: show file, other file (if any) and reason. */
             logger.error(
                 "Filesystem error (file='{}', other='{}', reason='{}').",
                 exception.file, exception.otherFile, exception.reason, exception
             )
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
         } catch (exception: JMetalException) {
-            /* Algorithm/runtime error. Keep the full stacktrace and add a small hint when recognizable. */
             logger.error("jMetal error: {}", exception.message ?: "unknown JMetalException", exception)
             val msg = exception.message ?: ""
-            if (msg.contains("must be greater or equal", ignoreCase = true)) {
+            if (msg.contains("must be greater or equal", true)) {
                 logger.info("Hint: set -po (population) ≥ number of topics (current dataset topics logged above).")
             }
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
         } catch (e: OutOfMemoryError) {
-            /* Provide a targeted hint based on the error kind + full stacktrace. */
             val kindHint = when {
-                e.message?.contains("GC overhead limit exceeded", ignoreCase = true) == true ->
+                e.message?.contains("GC overhead limit exceeded", true) == true ->
                     "GC overhead limit exceeded. You can disable it with -XX:-UseGCOverheadLimit, but it is usually better to increase -Xmx and/or reduce workload size."
-
-                e.message?.contains("Metaspace", ignoreCase = true) == true ->
+                e.message?.contains("Metaspace", true) == true ->
                     "Metaspace exhausted. Increase -XX:MaxMetaspaceSize or reduce dynamic class generation."
-
-                e.message?.contains("Direct buffer memory", ignoreCase = true) == true ->
+                e.message?.contains("Direct buffer memory", true) == true ->
                     "Direct buffer memory exhausted. Increase -XX:MaxDirectMemorySize or reduce off-heap buffers."
-
-                e.message?.contains("Requested array size exceeds VM limit", ignoreCase = true) == true ->
+                e.message?.contains("Requested array size exceeds VM limit", true) == true ->
                     "Requested array size exceeds VM limit. Reduce problem size or chunk processing."
-
                 else ->
                     "Java heap space exhausted. Increase -Xmx or reduce population/iterations/repetitions."
             }
@@ -424,8 +419,33 @@ object Program {
     }
 
     /**
-     * Build and return the complete set of CLI options.
+     * Run `solve` with a small try/catch that turns model-time ParseExceptions
+     * into friendly hints, without invoking the CLI help printer.
      */
+    private fun runSolveWithRuntimeValidationHints(
+        controller: DatasetController,
+        logger: Logger,
+        params: Parameters
+    ) {
+        try {
+            controller.solve(params)
+        } catch (e: ParseException) {
+            val msg = e.message ?: "ParseException"
+            val poCase = msg.contains("<<p>>", true) || msg.contains("<<po>>", true)
+            if (poCase) {
+                logger.error("Configuration error during solve: {}", msg, e)
+                logger.info("Hint: -po (population) must be ≥ number of topics for this dataset.")
+                logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
+            } else {
+                // Unknown runtime ParseException → still log cleanly.
+                logger.error("Runtime ParseException during solve: {}", msg, e)
+                logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
+            }
+            // Stop further workflow after a hard validation failure.
+            throw e
+        }
+    }
+
     fun loadCommandLineOptions(): Options {
         val options = Options()
 
@@ -508,20 +528,14 @@ object Program {
         return options
     }
 
-    /**
-     * Pretty help and usage printer using the new Commons CLI help API.
-     *
-     * @param options CLI options set.
-     * @param cause   Optional error cause to show before usage.
-     */
+    /** Pretty help and usage printer using the new Commons CLI help API. */
     private fun printNiceHelp(options: Options, cause: String?) {
         val out = TextHelpAppendable(java.io.PrintWriter(System.out, true))
 
         val header = buildString {
-            appendLine("NewBestSub – multi-objective best-subset driver")
+            appendLine("NewBestSub")
             if (!cause.isNullOrBlank()) {
-                appendLine()
-                appendLine("Cause: $cause")
+                appendLine(); appendLine("Cause: $cause")
             }
             appendLine()
             appendLine("Targets:")
@@ -553,14 +567,13 @@ object Program {
             appendLine("• Use --det / --seed for reproducible runs.")
         }
 
-        // Priority order for options (same as before)
         val priority = listOf(
-            "fi", "c", "t", "l",     // core required
-            "i", "po",               // iterations/population (Best/Worst/All)
-            "r", "pe",               // repetitions/percentiles (Average/All)
-            "det", "sd",             // deterministic flags
-            "mr", "et", "es", "mx",  // multi-run and expansions
-            "copy"                   // experiments copy
+            "fi", "c", "t", "l",
+            "i", "po",
+            "r", "pe",
+            "det", "sd",
+            "mr", "et", "es", "mx",
+            "copy"
         )
         val optionOrder = Comparator<Option> { a, b ->
             val ia = priority.indexOf(a.opt).let { if (it == -1) Int.MAX_VALUE else it }
@@ -583,30 +596,16 @@ object Program {
         )
     }
 
-    /**
-     * Initialize Snappy's native temp directory under `target/tmp-snappy`.
-     *
-     * Must be invoked **before** any Parquet/Hadoop/Snappy class is loaded, otherwise the native
-     * library may be extracted into the current working/output directory (e.g., `.../Parquet/tmp-snappy`).
-     *
-     * Idempotent: if `org.xerial.snappy.tempdir` is already set, this is a no-op.
-     *
-     * @see org.xerial.snappy.Snappy
-     */
+    /** Initialize Snappy's native temp directory under `target/tmp-snappy`. */
     private fun initSnappyTempDir() {
         val key = "org.xerial.snappy.tempdir"
         if (System.getProperty(key).isNullOrBlank()) {
             val dir = java.nio.file.Paths.get(
-                it.uniud.newbestsub.utils.Constants.NEWBESTSUB_PATH,
+                Constants.NEWBESTSUB_PATH,
                 "target", "tmp-snappy"
             )
-            try {
-                java.nio.file.Files.createDirectories(dir)
-            } catch (_: Throwable) {
-                /* best effort; even if creation fails, we still set the property */
-            }
+            try { java.nio.file.Files.createDirectories(dir) } catch (_: Throwable) { /* best effort */ }
             System.setProperty(key, dir.toAbsolutePath().normalize().toString())
         }
     }
-
 }

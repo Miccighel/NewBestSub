@@ -167,32 +167,54 @@ class DatasetModel {
      *
      * BEST stores `-corr`; WORST stores `+corr`. This returns the natural (positive-is-better) value.
      */
-    private fun naturalCorrOf(s: BestSubsetSolution): Double {
+    fun naturalCorrOf(s: BestSubsetSolution): Double {
         val internal = s.getCorrelation() // BEST: -corr, WORST: +corr
         return if (targetToAchieve == Constants.TARGET_BEST) -internal else internal
     }
 
+
     /**
      * Build CSV lines for the TOP pool of a given K.
-     * Lines are `"K,Correlation,B64:<mask>"`, ordered by correlation (desc for BEST, asc for WORST),
-     * limited to [Constants.TOP_SOLUTIONS_NUMBER].
      *
-     * Downstream readers that require a single value per K should pick:
+     * Output:
+     * - One line per entry: `"K,Correlation,B64:<mask>"`.
+     * - Ordered by **NATURAL** correlation:
+     *     - BEST  → descending (higher is better)
+     *     - WORST → ascending  (lower is better)
+     * - **NaN handling:** degenerate/undefined correlations (`NaN`) are always ranked **after** all
+     *   finite values to keep deterministic ordering; ties are broken by the Base64 mask.
+     * - Limited to [Constants.TOP_SOLUTIONS_NUMBER] entries.
+     *
+     * Readers that need a single value per K should pick:
      *   - BEST  → the first line (max corr)
      *   - WORST → the first line (min corr)
-     * or compute the extremum across lines if multiple are present.
+     * or compute the extremum over all lines if multiple exist.
      */
     private fun buildTopLinesFromPool(k: Int): List<String> {
         val pool = topPoolByK[k] ?: return emptyList()
-        val ordered = if (targetToAchieve == Constants.TARGET_BEST) {
-            pool.values.sortedWith(compareByDescending<TopEntry> { it.natural }.thenBy { it.maskB64 })
-        } else {
-            pool.values.sortedWith(compareBy<TopEntry> { it.natural }.thenBy { it.maskB64 })
-        }
-        return ordered.take(Constants.TOP_SOLUTIONS_NUMBER).map { e ->
-            "$k,${e.natural},B64:${e.maskB64}"
-        }
+
+        // Rank helpers: map NaN to extremes so they always end up last.
+        fun rankForBest(v: Double): Double = if (v.isNaN()) Double.NEGATIVE_INFINITY else v
+        fun rankForWorst(v: Double): Double = if (v.isNaN()) Double.POSITIVE_INFINITY else v
+
+        val ordered =
+            if (targetToAchieve == Constants.TARGET_BEST) {
+                pool.values.sortedWith(
+                    compareByDescending<TopEntry> { rankForBest(it.natural) }
+                        .thenBy { it.maskB64 }
+                )
+            } else {
+                pool.values.sortedWith(
+                    compareBy<TopEntry> { rankForWorst(it.natural) }
+                        .thenBy { it.maskB64 }
+                )
+            }
+
+        return ordered
+            .take(Constants.TOP_SOLUTIONS_NUMBER)
+            .map { e -> "$k,${e.natural},B64:${e.maskB64}" }
     }
+
 
     /* ------------------------------ Data loading/expansion ------------------------------ */
 
@@ -590,8 +612,8 @@ class DatasetModel {
                     val cand = nat(bs)
                     val prev = bestSeenCorrelationByK[k]
                     val improved = (prev == null) || (
-                        if (targetToAchieve == Constants.TARGET_WORST) cand < prev - 1e-12 else cand > prev + 1e-12
-                    )
+                            if (targetToAchieve == Constants.TARGET_WORST) cand < prev - 1e-12 else cand > prev + 1e-12
+                            )
                     if (improved) {
                         bestSeenCorrelationByK[k] = cand
                         improvedRows += k to bs

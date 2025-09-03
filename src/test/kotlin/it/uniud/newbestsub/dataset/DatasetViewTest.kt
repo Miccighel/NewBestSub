@@ -28,6 +28,17 @@ import kotlin.test.assertTrue
 @DisplayName("DatasetView – streaming helpers (FUN/VAR sort + TOP batch replace)")
 class DatasetViewTest {
 
+    /** Run a block with a system property set, restoring the previous value afterwards. */
+    private inline fun <T> withSystemProp(key: String, value: String, block: () -> T): T {
+        val old = System.getProperty(key)
+        try {
+            System.setProperty(key, value)
+            return block()
+        } finally {
+            if (old == null) System.clearProperty(key) else System.setProperty(key, old)
+        }
+    }
+
     /*
      * Build a minimal model that satisfies DatasetView path computation.
      * Provides topic labels so conversions have a label universe.
@@ -68,137 +79,139 @@ class DatasetViewTest {
      */
     @Test
     @DisplayName("Streaming: FUN/VAR global sort + TOP replace-batch")
-    fun testViewStreaming() {
+    fun testViewStreaming() = withSystemProp("nbs.csv.finalRewrite", "true") {
+        withSystemProp("nbs.csv.top.live", "true") {
 
-        println("[DatasetViewTest] - Test begins.")
+            println("[DatasetViewTest] - Test begins.")
 
-        /* Arrange */
-        val view = DatasetView()
-        val model = stubModel(targetToAchieve = Constants.TARGET_BEST, currentExecution = 1)
+            /* Arrange (construct AFTER props are set) */
+            val view = DatasetView()
+            val model = stubModel(targetToAchieve = Constants.TARGET_BEST, currentExecution = 1)
 
-        /* Resolve output paths exactly as the View will write them */
-        val functionValuesPath = Paths.get(view.getFunctionValuesFilePath(model))
-        val variableValuesPath = Paths.get(view.getVariableValuesFilePath(model))
-        val topSolutionsPath = Paths.get(view.getTopSolutionsFilePath(model))
-        Files.createDirectories(functionValuesPath.parent)
+            /* Resolve output paths exactly as the View will write them */
+            val functionValuesPath = Paths.get(view.getFunctionValuesFilePath(model))
+            val variableValuesPath = Paths.get(view.getVariableValuesFilePath(model))
+            val topSolutionsPath = Paths.get(view.getTopSolutionsFilePath(model))
+            Files.createDirectories(functionValuesPath.parent)
 
-        // NOTE: do NOT call view.openStreams(model) — streaming opens lazily on first append.
+            // NOTE: do NOT call view.openStreams(model) — streaming opens lazily on first append.
 
-        /**
-         * Helper to emit a single improved K row (intentionally out-of-order).
-         *
-         * For FUN, we use `"K,corr"`, formatted with `Locale.ROOT` to ensure dot-decimal.
-         * For VAR, we pass raw forms; CSV view will normalize to Base64 on close.
-         */
-        fun emit(cardinality: Int, correlation: Double, variableCsvRaw: String) {
-            val corrStr = String.format(Locale.ROOT, "%.6f", correlation)
-            val event = CardinalityResult(
-                target = model.targetToAchieve,
-                threadName = Thread.currentThread().name,
-                cardinality = cardinality,
-                correlation = correlation,
-                functionValuesCsvLine = "$cardinality,$corrStr",
-                variableValuesCsvLine = variableCsvRaw
+            /**
+             * Helper to emit a single improved K row (intentionally out-of-order).
+             *
+             * For FUN, we use `"K,corr"`, formatted with `Locale.ROOT` to ensure dot-decimal.
+             * For VAR, we pass raw forms; CSV view will normalize to Base64 on close.
+             */
+            fun emit(cardinality: Int, correlation: Double, variableCsvRaw: String) {
+                val corrStr = String.format(Locale.ROOT, "%.6f", correlation)
+                val event = CardinalityResult(
+                    target = model.targetToAchieve,
+                    threadName = Thread.currentThread().name,
+                    cardinality = cardinality,
+                    correlation = correlation,
+                    functionValuesCsvLine = "$cardinality,$corrStr",
+                    variableValuesCsvLine = variableCsvRaw
+                )
+                view.appendCardinality(model, event)
+                println("[DatasetViewTest] - append FUN/VAR -> K=$cardinality corr=$corrStr")
+            }
+
+            /* Intentionally emit out-of-order FUN/VAR rows */
+            emit(2, 0.70, "1 1 0 0")
+            emit(1, 0.90, "1 0 0 0")
+            emit(2, 0.60, "0 1 0 0")
+            emit(1, 0.80, "1 1 1 0")
+
+            /**
+             * Helper to create a 10-row TOP block for a given K with ascending correlations.
+             */
+            fun topBlock(cardinality: Int, baseCorrelation: Double): List<String> =
+                (0 until 10).map { i -> "$cardinality,${String.format(Locale.ROOT, "%.2f", baseCorrelation + i * 0.01)},topicA|topicB|topicC" }
+
+            /* First TOP batch: K=1 and K=2 */
+            val firstBatch = mapOf(
+                1 to topBlock(1, 0.10),
+                2 to topBlock(2, 0.20)
             )
-            view.appendCardinality(model, event)
-            println("[DatasetViewTest] - append FUN/VAR -> K=$cardinality corr=$corrStr")
+            view.replaceTopBatch(model, firstBatch)
+            println("[DatasetViewTest] - replaceTopBatch -> K=1,2 (initial)")
+
+            /* Second TOP batch: replace only K=1 */
+            val secondBatch = mapOf(1 to topBlock(1, 0.30))
+            view.replaceTopBatch(model, secondBatch)
+            println("[DatasetViewTest] - replaceTopBatch -> K=1 (new content)")
+
+            /* Closing triggers global FUN/VAR sort and canonical write of all streams */
+            view.closeStreams(model)
+            println("[DatasetViewTest] - closeStreams -> FUN/VAR globally sorted & rewritten")
+
+            /* ===== Assertions: FUN ===== */
+            val functionLines = Files.readAllLines(functionValuesPath).filter { it.isNotBlank() }
+            val expectedFunctionPairs = listOf(
+                1 to 0.80, 1 to 0.90, 2 to 0.60, 2 to 0.70
+            ).sortedWith(compareBy<Pair<Int, Double>> { it.first }.thenBy { it.second })
+
+            val computedFunctionPairs = functionLines.map { line ->
+                val parts = line.trim().split(Regex("[,;\\s]+"), limit = 2)
+                require(parts.size == 2) { "Bad FUN line: '$line'" }
+                val k = parts[0].toInt()
+                val corr = parts[1].toDouble()
+                k to corr
+            }
+
+            println("[DatasetViewTest] - FUN expected vs computed:")
+            expectedFunctionPairs.zip(computedFunctionPairs).forEach { (expected, computed) ->
+                println("  expected=$expected, computed=$computed")
+            }
+            assertEquals(expectedFunctionPairs.size, computedFunctionPairs.size)
+            for (index in expectedFunctionPairs.indices) {
+                assertEquals(expectedFunctionPairs[index].first, computedFunctionPairs[index].first)
+                assertEquals(expectedFunctionPairs[index].second, computedFunctionPairs[index].second, 1e-12)
+            }
+
+            /* ===== Assertions: VAR ===== */
+            val variableLines = Files.readAllLines(variableValuesPath).filter { it.isNotBlank() }
+            println("[DatasetViewTest] - VAR line count -> expected=${functionLines.size}, computed=${variableLines.size}")
+            assertEquals(functionLines.size, variableLines.size)
+
+            variableLines.forEachIndexed { idx, line ->
+                assertTrue(line.startsWith("B64:"), "VAR line #$idx must start with B64:")
+                val payload = line.removePrefix("B64:")
+                Base64.getDecoder().decode(payload) // throws if invalid
+            }
+
+            /* ===== Assertions: TOP ===== */
+            val topLines = Files.readAllLines(topSolutionsPath).filter { it.isNotBlank() }
+            println("[DatasetViewTest] - TOP total lines (including header): ${topLines.size}")
+            assertEquals(1 + 20, topLines.size)
+
+            val header = topLines.first()
+            println("[DatasetViewTest] - TOP header: $header")
+            assertEquals("Cardinality,Correlation,TopicsB64", header)
+
+            val dataRows = topLines.drop(1)
+            val kColumn = dataRows.map { it.substringBefore(',').toInt() }
+
+            println("[DatasetViewTest] - TOP first 10 K values: ${kColumn.take(10)}")
+            println("[DatasetViewTest] - TOP last  10 K values: ${kColumn.drop(10)}")
+            for (i in 0 until 10) assertEquals(1, kColumn[i])
+            for (i in 10 until 20) assertEquals(2, kColumn[i])
+
+            val firstK1 = dataRows.first().split(',', limit = 3)
+            val firstK1Correlation = firstK1[1].toDouble()
+            val firstK1Topics = firstK1[2]
+            println("[DatasetViewTest] - TOP K=1 first corr (expected 0.30): $firstK1Correlation")
+            assertEquals(0.30, firstK1Correlation, 1e-12)
+
+            assertTrue(firstK1Topics.startsWith("B64:"), "TOP topics must start with B64:")
+            val topicsPayload = firstK1Topics.removePrefix("B64:")
+            Base64.getDecoder().decode(topicsPayload) // throws if invalid
+
+            /* Cleanup so the test is repeatable without manual deletes */
+            cleanup(functionValuesPath.toFile(), variableValuesPath.toFile(), topSolutionsPath.toFile())
+
+            println("[DatasetViewTest] - Test ends.")
         }
-
-        /* Intentionally emit out-of-order FUN/VAR rows */
-        emit(2, 0.70, "1 1 0 0")
-        emit(1, 0.90, "1 0 0 0")
-        emit(2, 0.60, "0 1 0 0")
-        emit(1, 0.80, "1 1 1 0")
-
-        /**
-         * Helper to create a 10-row TOP block for a given K with ascending correlations.
-         */
-        fun topBlock(cardinality: Int, baseCorrelation: Double): List<String> =
-            (0 until 10).map { i -> "$cardinality,${baseCorrelation + i * 0.01},topicA|topicB|topicC" }
-
-        /* First TOP batch: K=1 and K=2 */
-        val firstBatch = mapOf(
-            1 to topBlock(1, 0.10),
-            2 to topBlock(2, 0.20)
-        )
-        view.replaceTopBatch(model, firstBatch)
-        println("[DatasetViewTest] - replaceTopBatch -> K=1,2 (initial)")
-
-        /* Second TOP batch: replace only K=1 */
-        val secondBatch = mapOf(1 to topBlock(1, 0.30))
-        view.replaceTopBatch(model, secondBatch)
-        println("[DatasetViewTest] - replaceTopBatch -> K=1 (new content)")
-
-        /* Closing triggers global FUN/VAR sort and canonical write of all streams */
-        view.closeStreams(model)
-        println("[DatasetViewTest] - closeStreams -> FUN/VAR globally sorted & rewritten")
-
-        /* ===== Assertions: FUN ===== */
-        val functionLines = Files.readAllLines(functionValuesPath).filter { it.isNotBlank() }
-        val expectedFunctionPairs = listOf(
-            1 to 0.80, 1 to 0.90, 2 to 0.60, 2 to 0.70
-        ).sortedWith(compareBy<Pair<Int, Double>> { it.first }.thenBy { it.second })
-
-        val computedFunctionPairs = functionLines.map { line ->
-            val parts = line.trim().split(Regex("[,;\\s]+"), limit = 2)
-            require(parts.size == 2) { "Bad FUN/VAR line: '$line'" }
-            val k = parts[0].toInt()
-            val corr = parts[1].toDouble()
-            k to corr
-        }
-
-        println("[DatasetViewTest] - FUN expected vs computed:")
-        expectedFunctionPairs.zip(computedFunctionPairs).forEach { (expected, computed) ->
-            println("  expected=$expected, computed=$computed")
-        }
-        assertEquals(expectedFunctionPairs.size, computedFunctionPairs.size)
-        for (index in expectedFunctionPairs.indices) {
-            assertEquals(expectedFunctionPairs[index].first, computedFunctionPairs[index].first)
-            assertEquals(expectedFunctionPairs[index].second, computedFunctionPairs[index].second, 1e-12)
-        }
-
-        /* ===== Assertions: VAR ===== */
-        val variableLines = Files.readAllLines(variableValuesPath).filter { it.isNotBlank() }
-        println("[DatasetViewTest] - VAR line count -> expected=${functionLines.size}, computed=${variableLines.size}")
-        assertEquals(functionLines.size, variableLines.size)
-
-        variableLines.forEachIndexed { idx, line ->
-            assertTrue(line.startsWith("B64:"), "VAR line #$idx must start with B64:")
-            val payload = line.removePrefix("B64:")
-            Base64.getDecoder().decode(payload) // throws if invalid
-        }
-
-        /* ===== Assertions: TOP ===== */
-        val topLines = Files.readAllLines(topSolutionsPath).filter { it.isNotBlank() }
-        println("[DatasetViewTest] - TOP total lines (including header): ${topLines.size}")
-        assertEquals(1 + 20, topLines.size)
-
-        val header = topLines.first()
-        println("[DatasetViewTest] - TOP header: $header")
-        assertEquals("Cardinality,Correlation,TopicsB64", header)
-
-        val dataRows = topLines.drop(1)
-        val kColumn = dataRows.map { it.substringBefore(',').toInt() }
-
-        println("[DatasetViewTest] - TOP first 10 K values: ${kColumn.take(10)}")
-        println("[DatasetViewTest] - TOP last  10 K values: ${kColumn.drop(10)}")
-        for (i in 0 until 10) assertEquals(1, kColumn[i])
-        for (i in 10 until 20) assertEquals(2, kColumn[i])
-
-        val firstK1 = dataRows.first().split(',', limit = 3)
-        val firstK1Correlation = firstK1[1].toDouble()
-        val firstK1Topics = firstK1[2]
-        println("[DatasetViewTest] - TOP K=1 first corr (expected 0.30): $firstK1Correlation")
-        assertEquals(0.30, firstK1Correlation, 1e-12)
-
-        assertTrue(firstK1Topics.startsWith("B64:"), "TOP topics must start with B64:")
-        val topicsPayload = firstK1Topics.removePrefix("B64:")
-        Base64.getDecoder().decode(topicsPayload) // throws if invalid
-
-        /* Cleanup so the test is repeatable without manual deletes */
-        cleanup(functionValuesPath.toFile(), variableValuesPath.toFile(), topSolutionsPath.toFile())
-
-        println("[DatasetViewTest] - Test ends.")
     }
 
     /**

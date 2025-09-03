@@ -271,7 +271,7 @@ class DatasetController(
                                     is RunCompleted -> {
                                         cnt[2]++
                                         logger.info(
-                                            "[printer] RunCompleted received for target {} → closing streams ({} fun/var appends, {} top batches, {} ms).",
+                                            "RunCompleted received for target {} → closing streams ({} fun/var appends, {} top batches, {} ms).",
                                             ev.target, cnt[0], cnt[1], (System.nanoTime() - t0) / 1_000_000
                                         )
                                         view.closeStreams(model) // Parquet write happens here
@@ -281,7 +281,7 @@ class DatasetController(
                                 // light heartbeat each ~10k events
                                 val total = cnt[0] + cnt[1] + cnt[2]
                                 if (total % 10_000 == 0 && total > 0) {
-                                    logger.info("[printer] heartbeat events: funVar={}, top={}, done={}", cnt[0], cnt[1], cnt[2])
+                                    logger.info("heartbeat events: funVar={}, top={}, done={}", cnt[0], cnt[1], cnt[2])
                                 }
                             }
                         }
