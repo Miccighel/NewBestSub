@@ -108,7 +108,7 @@ target/NewBestSub-2.0-test-jar-with-dependencies.jar
 
 ## Release artifacts & versioning
 
-We pin the **distribution filenames** to a *major/minor* track for stable scripting, while the Maven **project version** keeps full semver (including patches).
+We pin the **distribution filenames** to a *major/minor* track for stable scripting, while the Maven **project version** keeps full semver (including patches). The latest release is **2.0.4**.
 
 - **Release assets (fat & test-fat jars)**  
   Produced by the Assembly plugin using a pinned `dist.version` →  
@@ -120,12 +120,12 @@ We pin the **distribution filenames** to a *major/minor* track for stable script
   `target/NewBestSub-2.0.jar`
 
 - **Why this pinning?**  
-  Patch bumps (2.0.1, 2.0.2, …) won’t break scripts or docs that reference the
+  Patch bumps (2.0.1, 2.0.2, 2.0.3, 2.0.4, …) won’t break scripts or docs that reference the
   stable `NewBestSub-2.0*.jar` names.
 
 - **Coordinates remain precise**  
-  If you depend via Maven/Gradle, you still pull the full project version (e.g. `2.0.2`):  
-  `it.uniud.newbestsub:NewBestSub:2.0.2`
+  If you depend via Maven/Gradle, you still pull the full project version (e.g. `2.0.4`):  
+  `it.uniud.newbestsub:NewBestSub:2.0.4`
 
 - **Override the label (optional)**  
   ```bash
@@ -219,12 +219,21 @@ Each container has `CSV/` and `Parquet/` subfolders.
 
 ### CSV
 
-- `...-Fun.csv` contains `K corr` (space-separated; `K` integer; `corr` with 6 digits; always natural correlation).
+- `...-Fun.csv` contains `K corr` (space-separated; `K` integer; `corr` with 6 digits; always **natural** correlation).
 - `...-Var.csv` contains `K B64:<payload>` where `<payload>` is the packed Base64 mask.
 - `...-Top-10-Solutions.csv` is either:
   - `K,Correlation,B64:<payload>` (mask-based), or
   - `K,Correlation,topic1;topic2;...` (label-based), depending on the view configuration.
 - `...-Final.csv` and `...-Info.csv` contain summaries and metadata.
+
+**Selection recipes** (per K):
+
+- **FUN** (after the view’s final rewrite)
+  - BEST  → file is `(K asc, corr asc)` → **pick LAST** (max).
+  - WORST → file is `(K asc, corr desc)` → **pick LAST** (min).
+- **TOP**
+  - BEST  → lines are **descending** → **pick FIRST** (max).
+  - WORST → lines are **ascending**  → **pick FIRST** (min).
 
 ### Parquet
 
@@ -239,7 +248,7 @@ We pack the topic-presence mask into Base64 as follows:
 - Pack bits into 64-bit words, LSB-first within each word (bit 0 becomes topic 0).
 - Serialize each 64-bit word as little-endian bytes.
 - Encode the concatenated bytes using Base64 without padding.
-- CSV uses a `B64:` prefix; Parquet stores the bare payload.
+- CSV uses a `B64:` prefix; Parquet stores the **bare** payload.
 
 ### Decoding snippets
 
@@ -390,10 +399,10 @@ Output:
 
 ## Architecture overview
 
-- DatasetModel: loads data, wires correlation and targets, runs NSGA-II, emits streaming events.
-- Streaming NSGA-II wrapper: calls a per-generation hook and uses MNDS plus crowding in replacement.
-- Incremental evaluation: cached per-system sums and swap deltas.
-- Operators: BinaryPruningCrossover, FixedKSwapMutation.
+- **DatasetModel**: loads data, wires correlation and targets, runs NSGA-II, emits streaming events.
+- **Streaming NSGA-II wrapper**: calls a per-generation hook and uses MNDS plus crowding in replacement.
+- **Incremental evaluation**: cached per-system sums and swap deltas.
+- **Operators**: BinaryPruningCrossover, FixedKSwapMutation.
 
 ---
 
@@ -403,6 +412,12 @@ JUnit 5 with Surefire 3.x:
 ```bash
 mvn -DskipTests=false -Dmaven.test.skip=false -Dsurefire.printSummary=true test
 ```
+
+Key test areas (2.0.4):
+- Views (CSV/Parquet) with BEST/WORST, including negative/mixed correlations.
+- Model AVERAGE path: one representative per K; percentile completeness.
+- Operators: FixedKSwap mutation (fixed-K swap/repair); BinaryPruning crossover (AND/OR + feasibility repair).
+- Bitmask encoding/decoding round trips and edge cases across 64-bit boundaries.
 
 ---
 
@@ -420,23 +435,32 @@ Logging:
 
 ## Troubleshooting
 
-- OutOfMemoryError: increase `-Xmx`, or reduce `-po`, `-i`, or `-r`.
-- Population smaller than topics: ensure `-po >= #topics`.
-- TOP incomplete: blocks are emitted only when filled; small runs may delay some Ks.
-- Multiple SLF4J bindings: use Log4j2 only.
+- **OutOfMemoryError**: increase `-Xmx`, or reduce `-po`, `-i`, or `-r`.
+- **Population smaller than topics**: ensure `-po >= #topics`.
+- **TOP incomplete**: blocks are emitted only when filled; small runs may delay some Ks.
+- **Multiple SLF4J bindings**: use Log4j2 only.
 
 ---
 
 ## Changelog
 
-**2025-08-22**
-- Java 22 + Kotlin 2.2 toolchain
-- jMetal 6.9.1 upgrade
-- Streaming NSGA-II with progress hooks
-- MNDS environmental selection
-- Incremental evaluation with swap hints
-- Compact VAR/TOP Base64 masks
-- 6-digit correlation precision standard
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
+
+**2.0.4 — 2025‑09‑03**
+- NATURAL vs INTERNAL clarified; selection rules for FUN/TOP documented.
+- AVERAGE percentile interpretation documented with selection recipe.
+- Program: early `-po ≥ #topics` validation + friendlier runtime error handling.
+- Tests: BEST/WORST view goldens (incl. negative/mixed); operator tests.
+
+**2.0.3 — 2025‑08‑29**
+- Container folder names now include the iteration token when provided by CLI.
+- AVERAGE CSV/Parquet filenames omit the iteration token by design.
+- `numberOfIterations` assigned at start of `DatasetModel.solve()` for consistent naming.
+
+**2.0.0 — 2025‑08‑24**
+- Java 22 + Kotlin 2.2 toolchain; jMetal 6.9.1.
+- Streaming NSGA‑II + MNDS; incremental evaluation with swap hints.
+- Compact VAR/TOP Base64 masks; 6‑digit correlation precision.
 
 ---
 
