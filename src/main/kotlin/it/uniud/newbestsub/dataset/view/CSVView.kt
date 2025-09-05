@@ -17,25 +17,26 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Base64
 import java.util.Locale
+import kotlin.math.min
 
 /**
  * CSVView
  * =======
  *
- * Streaming‑first CSV writer mirroring the Parquet view.
+ * Streaming-first CSV writer mirroring the Parquet view.
  *
  * ## Responsibilities
- * - **FUN/VAR streaming**: append live into buffered writers; keep an in‑memory buffer for a final rewrite
+ * - **FUN/VAR streaming**: append live into buffered writers; keep an in-memory buffer for a final rewrite
  * - **Final rewrite** (optional): globally sort by `(K, correlation)` and rewrite both files aligned
  *   - BEST  → `(K asc, corr asc)`
  *   - WORST → `(K asc, corr desc)`
- *   - AVERAGE rows are one‑per‑K; effective order is `K asc`
- * - **Topics** in `-Var` and `-Top`: base64‑packed masks as `"B64:<base64>"` (no padding)
- * - **Top solutions**: replace‑batch semantics; header announces `TopicsB64`
+ *   - AVERAGE rows are one-per-K; effective order is `K asc`
+ * - **Topics** in `-Var` and `-Top`: base64-packed masks as `"B64:<base64>"` (no padding)
+ * - **Top solutions**: replace-batch semantics; header announces `TopicsB64`
  *   - Set `-Dnbs.csv.top.live=false` to buffer all batches and write once on close
  *
  * ## Filesystem
- * - Files live under the per‑run **CSV** subdirectory returned by [ViewPaths.ensureCsvDir]
+ * - Files live under the per-run **CSV** subdirectory returned by [ViewPaths.ensureCsvDir]
  *
  * ## Toggles
  * - `-Dnbs.csv.top.live` (default `true`): live write of `-Top` on each batch
@@ -43,7 +44,6 @@ import java.util.Locale
  * - `-Dnbs.csv.flushEvery` (default `256`): throttled flush frequency
  * - `-Dnbs.csv.buffer` (default `262144`): writer buffer size in bytes
  */
-
 class CSVView {
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
@@ -114,8 +114,6 @@ class CSVView {
 
     /* --------- Lightweight formatting & parsing --------- */
 
-    private val funSplitter = Regex("[,\\s]+")
-
     private val decimalFormat = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
     private fun fmt(x: Double): String = decimalFormat.format(x)
 
@@ -143,42 +141,69 @@ class CSVView {
 
     /**
      * Normalize topics field to canonical "B64:<...>".
-     * Accepts: already "B64:", label list, numeric indices, or bitstring.
+     * Accepts: already "B64:", label list, numeric indices, or bitstring ("101001…").
      */
     private fun fieldToB64(raw: String, labels: Array<String>): String {
         val t = raw.trim()
+        if (t.isEmpty()) return "B64:"
         if (t.startsWith("B64:")) return t
-        return try {
-            if (t.any { it == '|' || it == ';' || it == ',' || it == ' ' || it == '[' }) {
-                val tokens = t.removePrefix("[").removeSuffix("]")
-                    .split(Regex("[,;\\s|]+"))
-                    .filter { it.isNotBlank() }
-                val byLabel = indexByLabel(labels)
-                val mask = BooleanArray(labels.size)
-                var matched = 0
-                for (token in tokens) {
-                    val idx = byLabel[token] ?: token.toIntOrNull()
-                    if (idx != null && idx in 0 until mask.size) {
-                        mask[idx] = true; matched++
-                    }
+
+        // Fast path: pure bitstring (no separators, only [01])
+        var bitstring = true
+        run {
+            var i = 0
+            while (i < t.length) {
+                val c = t[i]
+                if (c != '0' && c != '1') {
+                    bitstring = false; break
                 }
-                if (matched == 0) {
-                    logger.warn(
-                        "CSVView fieldToB64] topics field did not match labels/indices; emitting empty mask. raw='{}'",
-                        raw
-                    )
-                }
-                "B64:" + base64Encoder.encodeToString(packMaskToLEBytes(mask))
-            } else {
-                val mask = BooleanArray(labels.size)
-                val n = minOf(labels.size, t.length)
-                for (i in 0 until n) mask[i] = (t[i] == '1')
-                "B64:" + base64Encoder.encodeToString(packMaskToLEBytes(mask))
+                i++
             }
-        } catch (_: Exception) {
-            logger.warn("CSVView fieldToB64] parse failed; emitting empty mask. raw='{}'", raw)
-            "B64:"
         }
+        if (bitstring) {
+            val mask = BooleanArray(labels.size)
+            val n = min(labels.size, t.length)
+            var i = 0
+            while (i < n) {
+                mask[i] = (t[i] == '1'); i++
+            }
+            return "B64:" + base64Encoder.encodeToString(packMaskToLEBytes(mask))
+        }
+
+        // Token list path (labels and/or numeric indices)
+        // Accept separators: comma, semicolon, whitespace, pipe; allow optional [..] wrapper
+        val tokens = t.removePrefix("[").removeSuffix("]")
+            .split(Regex("[,;\\s|]+"))
+            .filter { it.isNotBlank() }
+
+        if (tokens.isEmpty()) return "B64:"
+
+        // If all tokens are numeric, skip label map
+        val allNumeric = tokens.all { tok -> tok.all { ch -> ch in '0'..'9' } }
+        val mask = BooleanArray(labels.size)
+        var matched = 0
+
+        if (allNumeric) {
+            for (tok in tokens) {
+                val idx = tok.toIntOrNull()
+                if (idx != null && idx in 0 until mask.size && !mask[idx]) {
+                    mask[idx] = true; matched++
+                }
+            }
+        } else {
+            val byLabel = indexByLabel(labels)
+            for (tok in tokens) {
+                val idx = byLabel[tok] ?: tok.toIntOrNull()
+                if (idx != null && idx in 0 until mask.size && !mask[idx]) {
+                    mask[idx] = true; matched++
+                }
+            }
+        }
+
+        if (matched == 0) {
+            logger.warn("CSVView fieldToB64] topics field did not match labels/indices; emitting empty mask. raw='{}'", raw)
+        }
+        return "B64:" + base64Encoder.encodeToString(packMaskToLEBytes(mask))
     }
 
     /** Pack a boolean mask into little-endian longs and return raw bytes. */
@@ -188,33 +213,70 @@ class CSVView {
         var bitInWord = 0
         var wIdx = 0
         var acc = 0L
-        for (i in mask.indices) {
+        var i = 0
+        while (i < mask.size) {
             if (mask[i]) acc = acc or (1L shl bitInWord)
             bitInWord++
             if (bitInWord == 64) {
                 packed[wIdx++] = acc; acc = 0L; bitInWord = 0
             }
+            i++
         }
         if (bitInWord != 0) packed[wIdx] = acc
+
         val out = ByteArray(words * java.lang.Long.BYTES)
         var off = 0
         for (word in packed) {
             var x = word
-            for (i in 0 until java.lang.Long.BYTES) {
-                out[off + i] = (x and 0xFF).toByte(); x = x ushr 8
+            var b = 0
+            while (b < java.lang.Long.BYTES) {
+                out[off + b] = (x and 0xFF).toByte()
+                x = x ushr 8
+                b++
             }
             off += java.lang.Long.BYTES
         }
         return out
     }
 
-    /** Robust FUN line parser: accepts "K corr" / "K,corr" / any mix of commas/whitespace. */
+    /** Robust FUN line parser without regex or String.split. Expects "K,corr" or "K corr". */
     private fun parseFunLine(line: String): Pair<Int, Double>? {
-        val parts = line.trim().split(funSplitter)
-        if (parts.size < 2) return null
-        val k = parts[0].toDoubleOrNull()?.toInt() ?: return null
-        val corrNatural = parts[1].toDoubleOrNull() ?: return null
-        return k to corrNatural
+        val s = line.trim()
+        if (s.isEmpty()) return null
+
+        var i = 0
+        val n = s.length
+        // parse K (int)
+        var sign = 1
+        if (i < n && (s[i] == '+' || s[i] == '-')) {
+            if (s[i] == '-') sign = -1; i++
+        }
+        var kVal = 0
+        var haveK = false
+        while (i < n) {
+            val c = s[i]
+            if (c in '0'..'9') {
+                kVal = kVal * 10 + (c.code - 48); haveK = true; i++
+            } else break
+        }
+        if (!haveK) return null
+        kVal *= sign
+
+        // skip separators
+        while (i < n && (s[i] == ',' || s[i].isWhitespace())) i++
+        if (i >= n) return null
+
+        // parse corr (double)
+        val start = i
+        // allow signs, digits, dot, exp notation
+        while (i < n) {
+            val c = s[i]
+            if (c.isWhitespace()) break
+            i++
+        }
+        val corrStr = s.substring(start, i)
+        val corr = corrStr.toDoubleOrNull() ?: return null
+        return kVal to corr
     }
 
     /**
@@ -254,7 +316,9 @@ class CSVView {
         val handles = openStreams(model)
         val key = TopKey(model.datasetName, model.currentExecution, model.targetToAchieve)
 
-        val (k, naturalCorr) = parseFunLine(ev.functionValuesCsvLine) ?: return
+        val parsed = parseFunLine(ev.functionValuesCsvLine) ?: return
+        val k = parsed.first
+        val naturalCorr = parsed.second
 
         // Canonical CSV output. If we’ll do a final rewrite, avoid fmt() in the hot path.
         val funLine = if (doFinalRewrite) buildString(24) {

@@ -9,37 +9,27 @@ import it.uniud.newbestsub.utils.Constants
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.problem.binaryproblem.BinaryProblem
 import org.uma.jmetal.solution.binarysolution.BinarySolution
+import org.uma.jmetal.util.binarySet.BinarySet
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.LongAdder
+import kotlin.math.min
 
 /**
- * jMetal [BinaryProblem] implementation for the ** the best subset selection** task.
+ * jMetal [BinaryProblem] for the **best subset selection** task.
  *
- * The problem receives a precomputed bundle of AP values per (system, topic) and evaluates
- * binary masks over topics by computing a correlation between:
+ * Correlates, per-system:
+ * - **X**: mean AP over the currently selected topics (subset means, built via incremental SUMS)
+ * - **Y**: mean AP over the full topic set (precomputed once)
  *
- * - **X**: per-system *means* of AP over the currently selected topics (subset means).
- * - **Y**: per-system *full-set* mean AP (precomputed once).
+ * Correlation backends:
+ * - Pearson (default): via SUMS+K path [correlationFromSums], internally vectorized when enabled
+ * - Kendall τ-b: via [Correlations.kendallTauBPrimitive] (ordering invariant to positive scaling)
  *
- * Correlation backend:
- * - `Pearson` (default) via [Correlations.fastPearsonPrimitive]
- * - `Kendall τ-b` via [Correlations.kendallTauBPrimitive]
- *
- * Performance considerations:
- * - Uses incremental subset SUMS (`DoubleArray`) with an in-place *diff* update against
- *   the last evaluated mask or fixed‑K swap hints from [BestSubsetSolution].
- * - Per-thread `DoubleArray` buffers for X means are stored in a `ThreadLocal`
- *   to be parallel-safe and GC‑friendly.
- * - The problem **does not** retain clones for streaming; writers/streaming are handled
- *   outside in the dataset layer.
- *
- * Objective encoding is delegated via [targetStrategy], which sets objectives in the
- * underlying [BestSubsetSolution] according to the selected target (e.g., BEST/WORST).
- *
- * @property parameters Run parameters (target, iterations, etc.)
- * @property numberOfTopics Number of topics (bitset length).
- * @property precomputedData Precomputed AP data and views (systems × topics).
- * @property topicLabels Human-readable labels per topic, forwarded to solutions.
- * @property legacyBoxedCorrelation Kept for ctor API compatibility; not used when [precomputedData] is supplied.
- * @property targetStrategy Function that installs objective values into a solution given the natural correlation.
+ * Hot-path notes:
+ * - Keeps per-solution SUMS (`DoubleArray`) and a bitset snapshot; updates via XOR diff or fixed-K swap hints
+ * - First-time accumulation touches **only set bits** (O(K)), not all N topics
+ * - Uses a tiny in-place **AXPY** kernel for column add/sub to reduce loop overhead
+ * - Objective encoding is delegated to [targetStrategy]
  */
 class BestSubsetProblem(
     private val parameters: Parameters,
@@ -52,22 +42,13 @@ class BestSubsetProblem(
 ) : BinaryProblem {
 
     /**
-     * Secondary constructor kept for **API compatibility** with older boxed‑array call sites.
-     * It converts boxed AP rows to primitives and builds [PrecomputedData] internally.
-     *
-     * @param parameters Run parameters.
-     * @param numberOfTopics Number of topics.
-     * @param averagePrecisions Map: systemId → AP vector (boxed `Double`).
-     * @param meanAveragePrecisions Historical/compatibility param (unused; see warning).
-     * @param topicLabels Human‑readable topic labels.
-     * @param correlationStrategy Old boxed correlation `(Array<Double>, Array<Double>) -> Double`.
-     * @param targetStrategy Objective installer for the selected target.
+     * Secondary constructor kept for **API compatibility** with older boxed-array call sites.
      */
     constructor(
         parameters: Parameters,
         numberOfTopics: Int,
         averagePrecisions: MutableMap<String, Array<Double>>,
-        meanAveragePrecisions: Array<Double>, /* kept for API compat only */
+        meanAveragePrecisions: Array<Double>,
         topicLabels: Array<String>,
         correlationStrategy: (Array<Double>, Array<Double>) -> Double,
         targetStrategy: (BinarySolution, Double) -> BinarySolution
@@ -83,7 +64,6 @@ class BestSubsetProblem(
         },
         targetStrategy = targetStrategy
     ) {
-        /* meanAveragePrecisions may differ from the precomputed bundle; rely on PrecomputedData instead. */
         val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
         if (meanAveragePrecisions.size != precomputedData.numberOfSystems) {
             logger.warn(
@@ -95,116 +75,43 @@ class BestSubsetProblem(
 
     /* ====================================================================================
      * Correlation strategy (delegated to Correlations)
-     *  - We fill a reusable buffer with subset MEANS from per-system SUMS, then call
-     *    Correlations.fastPearsonPrimitive or Correlations.kendallTauBPrimitive.
-     *  - Buffers are kept in ThreadLocal to be parallel-eval safe without GC churn.
      * ==================================================================================== */
 
-    /** Strategy interface: compute corr(X_means, Y_means) from subset SUMS and selected K. */
-    private interface CorrelationFromSums {
-        /** @return correlation value for the current subset (natural sign). */
-        fun correlationFromSums(sumsBySystem: DoubleArray, kSelected: Int): Double
-    }
+    private val yMeans: DoubleArray = precomputedData.fullSetMeanAPBySystem
+    private val yStats: Correlations.CorrelationYStats = Correlations.precomputeYStats(yMeans)
+    private val correlationFromSums: (DoubleArray, Int) -> Double =
+        Correlations.makeCorrelationFromSums(parameters.correlationMethod, yStats)
 
-    /* ---- Thread-safe buffer store (one DoubleArray per worker thread) ---- */
-    private val xMeansBufferTL = ThreadLocal.withInitial { DoubleArray(precomputedData.numberOfSystems) }
+    /* --------------------- Streaming / bookkeeping --------------------- */
 
-    /**
-     * Pearson correlation strategy.
-     *
-     * Fills the per-thread `xMeans` buffer with SUMS/K and calls
-     * [Correlations.fastPearsonPrimitive] against the fixed [yMeans].
-     */
-    private inner class PearsonCorr : CorrelationFromSums {
-        private val systemsCount = precomputedData.numberOfSystems
-        private val yMeans: DoubleArray = precomputedData.fullSetMeanAPBySystem
-        override fun correlationFromSums(sumsBySystem: DoubleArray, kSelected: Int): Double {
-            if (kSelected <= 0) return 0.0
-            val xMeans = xMeansBufferTL.get()
-            val invK = 1.0 / kSelected
-            var s = 0
-            while (s < systemsCount) {
-                xMeans[s] = sumsBySystem[s] * invK
-                s++
-            }
-            return Correlations.fastPearsonPrimitive(xMeans, yMeans)
-        }
-    }
-
-    /**
-     * Kendall τ-b correlation strategy.
-     *
-     * Fills the per-thread `xMeans` buffer with SUMS/K and calls
-     * [Correlations.kendallTauBPrimitive] against the fixed [yMeans].
-     */
-    private inner class KendallCorr : CorrelationFromSums {
-        private val systemsCount = precomputedData.numberOfSystems
-        private val yMeans: DoubleArray = precomputedData.fullSetMeanAPBySystem
-        override fun correlationFromSums(sumsBySystem: DoubleArray, kSelected: Int): Double {
-            if (kSelected <= 0) return 0.0
-            val xMeans = xMeansBufferTL.get()
-            val invK = 1.0 / kSelected
-            var s = 0
-            while (s < systemsCount) {
-                xMeans[s] = sumsBySystem[s] * invK
-                s++
-            }
-            return Correlations.kendallTauBPrimitive(xMeans, yMeans)
-        }
-    }
-
-    /** Concrete correlation strategy chosen once per run based on [parameters.correlationMethod]. */
-    private val correlationFromSums: CorrelationFromSums =
-        if (parameters.correlationMethod == Constants.CORRELATION_KENDALL) KendallCorr() else PearsonCorr()
-
-    /* --------------------- Streaming / bookkeeping & ctor-calculated values --------------------- */
-
-    /** Dominated solutions per K (kept only for compatibility with existing writers). */
     val dominatedSolutions = linkedMapOf<Int, BinarySolution>()
-
-    /** Top solutions per K (public lists are preserved for writer compatibility). */
     val topSolutions = linkedMapOf<Int, MutableList<BinarySolution>>()
 
-    private var iterationCounter = 0
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
-    private var progressCounter = 0
-    private var cardinalityToGenerate = 1
     private val systemsCount = precomputedData.numberOfSystems
+    private val columnByTopic: Array<DoubleArray> = precomputedData.topicColumnViewByTopic
 
-    /** Precomputed progress logging cadence (every LOGGING_FACTOR%). */
-    private val loggingEvery: Int = run {
-        val step = (parameters.numberOfIterations * Constants.LOGGING_FACTOR) / 100
+    private val totalEvaluations: Int = parameters.numberOfIterations
+    private val logStrideEvaluations: Int = run {
+        val step = (totalEvaluations * Constants.LOGGING_FACTOR) / 100
         if (step <= 0) Int.MAX_VALUE else step
     }
+    private val evalCounter = LongAdder()
+    private val nextLogAt = AtomicInteger(logStrideEvaluations)
 
-    // -----------------------------------------------------------------------------------------
-    // BinaryProblem / Problem API
-    // -----------------------------------------------------------------------------------------
+    private companion object {
+        const val SNAPSHOT_ATTR = "nbsub:lastBitsetSnapshot"
+    }
+    private val diffBitsetTL = ThreadLocal.withInitial { BinarySet(numberOfTopics) }
 
-    /** Problem name. */
     override fun name(): String = "BestSubsetProblem"
-
-    /** Single binary variable (topic mask). */
     override fun numberOfVariables(): Int = 1
-
-    /** Two objectives (K and correlation with target-dependent signs). */
     override fun numberOfObjectives(): Int = 2
-
-    /** No constraints. */
     override fun numberOfConstraints(): Int = 0
-
-    /** Total number of bits equals number of topics. */
     override fun totalNumberOfBits(): Int = numberOfTopics
-
-    /** Bits per variable (single variable with [numberOfTopics] bits). */
     override fun numberOfBitsPerVariable(): List<Int> = listOf(numberOfTopics)
 
-    /**
-     * Creates a new solution:
-     * - For the first `N-1` creations, generates masks with increasing fixed cardinalities
-     *   `K = 1, 2, …, N-1` to prime the population with diverse sizes.
-     * - Afterward, generates a random non‑empty mask.
-     */
+    private var cardinalityToGenerate = 1
     override fun createSolution(): BinarySolution {
         return if (cardinalityToGenerate < numberOfTopics) {
             BestSubsetSolution(1, 2, numberOfTopics, topicLabels, forcedCardinality = cardinalityToGenerate++)
@@ -213,124 +120,126 @@ class BestSubsetProblem(
         }
     }
 
-    /**
-     * Evaluates a solution by computing the **natural correlation** from the current subset
-     * and delegating objective encoding to [targetStrategy].
-     *
-     * Steps:
-     * 1. **Throttled progress logging** every [loggingEvery] iterations.
-     * 2. **Incremental SUMS update**:
-     *    - Cold start: compute Σ_t AP[s][t] directly from the bitset.
-     *    - Warm path: apply fixed‑K swap hints or generic diffs vs last mask.
-     * 3. **Correlation from SUMS**:
-     *    - Fill per-thread means buffer `xMeans = SUMS / K`.
-     *    - Call Pearson or Kendall τ‑b backend.
-     * 4. **Objective encoding** via [targetStrategy] (e.g., BEST encodes `+K, -corr`).
-     * 5. **Streaming bookkeeping** is handled elsewhere (no retention here).
-     *
-     * @param solution The solution to evaluate (must be a [BestSubsetSolution]).
-     * @return The same [solution] instance, after objectives are set.
-     */
     override fun evaluate(solution: BinarySolution): BinarySolution {
-        val bs = solution as BestSubsetSolution
+        val bestSubsetSolution = solution as BestSubsetSolution
 
-        // ---------- Progress logging with debounce message ----------
-        if ((iterationCounter % loggingEvery) == 0 && iterationCounter <= parameters.numberOfIterations) {
-            logger.info(
-                "Completed iterations: {}/{} ({}%) for evaluations on \"{}\" with target {}.",
-                iterationCounter, parameters.numberOfIterations, progressCounter,
-                Thread.currentThread().name, parameters.targetToAchieve
-            )
-            logger.debug(
-                "/* debounce */ log messages throttled every {} iterations ({}% of total).",
-                loggingEvery, Constants.LOGGING_FACTOR
-            )
-            progressCounter += Constants.LOGGING_FACTOR
+        // ---------- progress logging (debounced) ----------
+        evalCounter.increment()
+        val completedEvaluations = evalCounter.sum().toInt()
+        if (completedEvaluations >= nextLogAt.get()) {
+            var loggedThisStride = false
+            while (!loggedThisStride) {
+                val threshold = nextLogAt.get()
+                if (completedEvaluations < threshold) break
+                if (nextLogAt.compareAndSet(threshold, threshold + logStrideEvaluations)) {
+                    val shownCompleted = min(completedEvaluations, totalEvaluations)
+                    val shownPercent =
+                        if (totalEvaluations > 0) ((completedEvaluations * 100L) / totalEvaluations).toInt().coerceIn(0, 100)
+                        else 0
+                    logger.info(
+                        "Completed evaluations: {}/{} ({}%) on \"{}\" with target {}.",
+                        shownCompleted, totalEvaluations, shownPercent,
+                        Thread.currentThread().name, parameters.targetToAchieve
+                    )
+                    logger.debug(
+                        "/* Debounce */ progress logs every {} evaluations (~{}%).",
+                        logStrideEvaluations, Constants.LOGGING_FACTOR
+                    )
+                    loggedThisStride = true
+                }
+            }
         }
 
-        // ----------------------------- Incremental per-system SUMS (zero-copy) -----------------------------
-        val bits = bs.variables()[0] as org.uma.jmetal.util.binarySet.BinarySet
-        val selectedTopicCount = bs.numberOfSelectedTopics
+        val currentBitset = bestSubsetSolution.variables()[0] as BinarySet
+        val selectedTopicCount = bestSubsetSolution.numberOfSelectedTopics
 
-        var sumsBySystem = bs.cachedSumsBySystem
-        val lastMask = bs.lastEvaluatedMask
+        var sumsBySystem = bestSubsetSolution.cachedSumsBySystem
+        var lastSnapshot = bestSubsetSolution.attributes()[SNAPSHOT_ATTR] as? BinarySet
+        var lastEvaluatedMask = bestSubsetSolution.lastEvaluatedMask
 
-        if (sumsBySystem == null || lastMask == null) {
-            // Cold start: compute Σ_t AP[s][t] from scratch using current bitset.
-            val fresh = DoubleArray(systemsCount)
-            var t = 0
-            while (t < numberOfTopics) {
-                if (bits.get(t)) {
-                    val col = precomputedData.topicColumnViewByTopic[t]
-                    var s = 0
-                    while (s < systemsCount) {
-                        fresh[s] += col[s]; s++
-                    }
-                }
-                t++
+        if (sumsBySystem == null || lastSnapshot == null || lastEvaluatedMask == null) {
+            // ---------------- First-time build for this solution ----------------
+            val freshSums = DoubleArray(systemsCount)
+            val snapshotBitset = BinarySet(numberOfTopics)
+            val reusableMask = bestSubsetSolution.ensureReusableLastMaskBuffer()
+
+            // Iterate only set bits: O(K)
+            var idx = currentBitset.nextSetBit(0)
+            while (idx >= 0) {
+                snapshotBitset.set(idx, true)
+                reusableMask[idx] = true
+                axpyInPlace(freshSums, columnByTopic[idx], +1.0)
+                idx = currentBitset.nextSetBit(idx + 1)
             }
-            sumsBySystem = fresh
-        } else {
-            // Warm path: apply fixed-K swap hints when available, otherwise generic diff vs lastMask.
-            val usedSwapHints =
-                bs.lastMutationWasFixedKSwap &&
-                        (bs.lastSwapOutIndex != null || bs.lastSwapInIndex != null)
 
-            if (usedSwapHints) {
-                bs.lastSwapOutIndex?.let { outIdx ->
-                    val col = precomputedData.topicColumnViewByTopic[outIdx]
-                    var s = 0
-                    while (s < systemsCount) {
-                        sumsBySystem[s] -= col[s]; s++
-                    }
+            sumsBySystem = freshSums
+            bestSubsetSolution.cachedSumsBySystem = freshSums
+            bestSubsetSolution.lastEvaluatedMask = reusableMask
+            bestSubsetSolution.attributes()[SNAPSHOT_ATTR] = snapshotBitset
+
+        } else {
+            // ---------------- Incremental update (swap hints or generic diff) ----------------
+            val hasSwapHints =
+                bestSubsetSolution.lastMutationWasFixedKSwap &&
+                        (bestSubsetSolution.lastSwapOutIndex != null || bestSubsetSolution.lastSwapInIndex != null)
+
+            if (hasSwapHints) {
+                // Targeted updates with swap hints
+                bestSubsetSolution.lastSwapOutIndex?.let { outIndex ->
+                    axpyInPlace(sumsBySystem!!, columnByTopic[outIndex], -1.0)
+                    lastEvaluatedMask!![outIndex] = false
+                    lastSnapshot!!.set(outIndex, false)
                 }
-                bs.lastSwapInIndex?.let { inIdx ->
-                    val col = precomputedData.topicColumnViewByTopic[inIdx]
-                    var s = 0
-                    while (s < systemsCount) {
-                        sumsBySystem[s] += col[s]; s++
-                    }
+                bestSubsetSolution.lastSwapInIndex?.let { inIndex ->
+                    axpyInPlace(sumsBySystem!!, columnByTopic[inIndex], +1.0)
+                    lastEvaluatedMask!![inIndex] = true
+                    lastSnapshot!!.set(inIndex, true)
                 }
             } else {
-                var t = 0
-                while (t < numberOfTopics) {
-                    val isSel = bits.get(t)
-                    val was = lastMask[t]
-                    if (was != isSel) {
-                        val col = precomputedData.topicColumnViewByTopic[t]
-                        val sign = if (isSel) +1.0 else -1.0
-                        var s = 0
-                        while (s < systemsCount) {
-                            sumsBySystem[s] += sign * col[s]; s++
-                        }
-                    }
-                    t++
+                // XOR diff against previous snapshot: touch only changed bits
+                val diff = diffBitsetTL.get()
+                diff.clear()
+                diff.or(lastSnapshot)
+                diff.xor(currentBitset)
+
+                var i = diff.nextSetBit(0)
+                while (i >= 0) {
+                    val nowSelected = currentBitset.get(i)
+                    val alpha = if (nowSelected) +1.0 else -1.0
+                    axpyInPlace(sumsBySystem!!, columnByTopic[i], alpha)
+                    lastEvaluatedMask!![i] = nowSelected
+                    lastSnapshot!!.set(i, nowSelected)
+                    i = diff.nextSetBit(i + 1)
                 }
             }
+
+            bestSubsetSolution.cachedSumsBySystem = sumsBySystem
+            bestSubsetSolution.clearLastMutationFlags()
         }
 
-        // Persist incremental state for the next evaluation (no new arrays).
-        bs.cachedSumsBySystem = sumsBySystem
-        run {
-            // Refresh lastEvaluatedMask by filling the reusable buffer directly from the bitset.
-            val target = bs.ensureReusableLastMaskBuffer()
-            var i = 0
-            while (i < numberOfTopics) {
-                target[i] = bits.get(i); i++
-            }
-            bs.lastEvaluatedMask = target
-            bs.clearLastMutationFlags()
+        val naturalCorrelationValue = correlationFromSums(sumsBySystem!!, selectedTopicCount)
+        targetStrategy(bestSubsetSolution, naturalCorrelationValue)
+        return bestSubsetSolution
+    }
+
+    /**
+     * In-place AXPY micro-kernel: dst[i] += alpha * src[i]
+     * - Unrolled by 4 to reduce loop overhead
+     * - Works for +/-1 alpha and general doubles
+     */
+    private fun axpyInPlace(dst: DoubleArray, src: DoubleArray, alpha: Double) {
+        var i = 0
+        val n = dst.size
+        while (i + 3 < n) {
+            dst[i    ] += alpha * src[i    ]
+            dst[i + 1] += alpha * src[i + 1]
+            dst[i + 2] += alpha * src[i + 2]
+            dst[i + 3] += alpha * src[i + 3]
+            i += 4
         }
-
-        // ----------------------------- Correlation from SUMS (single call site) -----------------------------
-        val naturalCorrelation = correlationFromSums.correlationFromSums(sumsBySystem, selectedTopicCount)
-
-        // Internal objective encoding (BEST: +K, -corr) (WORST: -K, +corr).
-        targetStrategy(bs, naturalCorrelation)
-
-        // Streaming / Top-K maintenance is now handled in DatasetModel.onGeneration.
-
-        iterationCounter++
-        return bs
+        while (i < n) {
+            dst[i] += alpha * src[i]
+            i++
+        }
     }
 }

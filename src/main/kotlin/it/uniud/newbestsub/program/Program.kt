@@ -117,22 +117,39 @@ object Program {
                 if (populationSize <= 0) throw ParseException("Value for the option <<po>> or <<pop>> must be a positive value.")
             }
 
+            /* Average/All: -r and -pe required (pe must have exactly two ints; order-agnostic) */
             if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
-                if (!commandLine.hasOption("r")) throw ParseException("Value for the option <<r>> or <<rep>> is missing. Check the usage section below.")
+                if (!commandLine.hasOption("r")) {
+                    throw ParseException("Value for the option <<r>> or <<rep>> is missing. Check the usage section below.")
+                }
                 numberOfRepetitions = commandLine.getOptionValue("r").toIntOrNull()
                     ?: throw ParseException("Value for the option <<r>> or <<rep>> is not an integer. Check the usage section below")
-                if (numberOfRepetitions <= 0) throw ParseException("Value for the option <<r>> or <<rep>> must be a positive value.")
-
-                if (!commandLine.hasOption("pe")) throw ParseException("Value for the option <<pe>> or <<perc>> is missing. Check the usage section below.")
-                val percentilesToParse = commandLine.getOptionValues("pe").toList()
-                if (percentilesToParse.size > 2) throw ParseException("Value for the option <<pe>> or <<perc>> is wrong. Check the usage section below.")
-                try {
-                    val firstPercentile = percentilesToParse[0].toInt()
-                    val lastPercentile  = percentilesToParse[1].toInt()
-                    percentiles = (firstPercentile..lastPercentile).toList()
-                } catch (_: NumberFormatException) {
-                    throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
+                if (numberOfRepetitions <= 0) {
+                    throw ParseException("Value for the option <<r>> or <<rep>> must be a positive value.")
                 }
+
+                if (!commandLine.hasOption("pe")) {
+                    throw ParseException("Value for the option <<pe>> or <<perc>> is missing. Check the usage section below.")
+                }
+                val raw = commandLine.getOptionValues("pe")?.toList().orEmpty()
+                if (raw.size != 2) {
+                    throw ParseException("Value for the option <<pe>> or <<perc>> must contain exactly two comma-separated integers (e.g., -pe 1,100).")
+                }
+                val a = raw[0].toIntOrNull()
+                    ?: throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
+                val b = raw[1].toIntOrNull()
+                    ?: throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
+
+                // Normalize (and clamp to 1..100 if your workflow expects percentile bounds)
+                val lo = minOf(a, b).coerceAtLeast(1)
+                val hi = maxOf(a, b).coerceAtMost(100)
+                if (a > b) {
+                    logger.info("Percentiles reversed ({}>{}). Normalizing to {}..{}.", a, b, lo, hi)
+                }
+                if (lo > hi) {
+                    throw ParseException("Value for the option <<pe>> or <<perc>> defines an empty range. Check the usage section below.")
+                }
+                percentiles = (lo..hi).toList()
             }
 
             /* --------------------------- 2) Controller + dataset load --------------------------- */
@@ -231,21 +248,15 @@ object Program {
             }
 
             val parseMaximumExpansionCoefficient = {
-                val maximumExpansionCoefficient: Int
-                if (!options.hasOption("mx") && !options.hasLongOption("max")) {
-                    // This lambda is only called when CLI had -mx; keep old error string for consistency.
+                val value = commandLine.getOptionValue("mx")?.toIntOrNull()
+                    ?: throw ParseException("Value for the option <<mx>> or <<max>> is missing. Check the usage section below.")
+                if (value <= 0) {
+                    throw ParseException("Value for the option <<mx>> or <<max>> must be a positive value. Check the usage section below")
                 }
-                if (!commandLine.hasOption("mx")) throw ParseException("Value for the option <<mx>> or <<max>> is missing. Check the usage section below.")
-                try {
-                    maximumExpansionCoefficient = Integer.parseInt(commandLine.getOptionValue("mx"))
-                    if (maximumExpansionCoefficient <= 0) throw ParseException("Value for the option <<mx>> or <<max>> must be a positive value. Check the usage section below")
-                } catch (_: NumberFormatException) {
-                    throw ParseException("Value for the option <<m>> or <<max>> is not an integer. Check the usage section below")
-                }
-                if (populationSize <= maximumExpansionCoefficient) {
+                if (populationSize <= value) {
                     throw ParseException("Value for the option <<p>> or <<pop>> must be greater than value for the option <<mx>> or <<max>>. Check the usage section below")
                 }
-                maximumExpansionCoefficient
+                value
             }
 
             /* --------------------------- 3) Run modes --------------------------- */
@@ -412,7 +423,7 @@ object Program {
                 "Try: increase heap (for example, -Xmx32g), or reduce -po / -i / -r. Also consider -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof for diagnostics."
             )
             logger.info(
-                "Example: java -Xms32g -Xmx32g -XX:+UseG1GC -XX:+UseStringDeduplication -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof -jar NewBestSub-2.0-jar-with-dependencies.jar -fi \"mmlu\" -c \"Pearson\" -po 20000 -i 100000 -r 2000 -t \"All\" -pe 1,100 -log Limited"
+                "Example: java -Xms32g -Xmx32g -XX:+UseG1GC -XX:+UseStringDeduplication -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof -jar NewBestSub-2.0-jar-with-dependencies.jar -fi \"mmlu\" -c \"Pearson\" -po 20000 -i 100000 -r 2000 -t \"All\" -pe 1,100 -l Limited"
             )
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to OutOfMemoryError.")
         }

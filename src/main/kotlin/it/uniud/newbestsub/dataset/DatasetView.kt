@@ -1,10 +1,10 @@
 package it.uniud.newbestsub.dataset
 
 import it.uniud.newbestsub.dataset.model.CardinalityResult
-import it.uniud.newbestsub.utils.Constants
 import it.uniud.newbestsub.dataset.view.CSVView
 import it.uniud.newbestsub.dataset.view.ParquetView
 import it.uniud.newbestsub.dataset.view.ViewPaths
+import it.uniud.newbestsub.utils.Constants
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.solution.binarysolution.BinarySolution
 
@@ -13,13 +13,13 @@ import org.uma.jmetal.solution.binarysolution.BinarySolution
  *
  * Composite façade that fans out output operations to two independent backends:
  *
- * - [CSVView] — streaming‑first CSV (owns buffering + canonical sort/rewrite).
- * - [ParquetView] — streaming‑first Parquet (keeps its own buffers + final write).
+ * - [CSVView] — streaming-first CSV (owns buffering + canonical sort/rewrite).
+ * - [ParquetView] — streaming-first Parquet (keeps its own buffers + final write).
  *
  * ## Public surface
  * - [print] — final snapshot writer (CSV + Parquet).
- * - [appendCardinality] — streaming append of per‑generation cardinalities (FUN/VAR).
- * - [replaceTopBatch] — streaming update of top‑solutions blocks (TOP).
+ * - [appendCardinality] — streaming append of per-generation cardinalities (FUN/VAR).
+ * - [replaceTopBatch] — streaming update of top-solutions blocks (TOP).
  * - [closeStreams] — finalize and write sorted/merged artifacts for both backends.
  *
  * ## Path helpers
@@ -35,25 +35,25 @@ class DatasetView {
     private val parquetView = ParquetView()
 
     // -------------------------------------------------------------------------------------
-    // Public CSV path helpers (per‑run, under /CSV/)
+    // Public CSV path helpers (per-run, under /CSV/)
     // -------------------------------------------------------------------------------------
 
-    /** @return Absolute path to the per‑run CSV with function/objective values (FUN). */
+    /** @return Absolute path to the per-run CSV with function/objective values (FUN). */
     fun getFunctionValuesFilePath(model: DatasetModel): String =
         csvView.getFunctionValuesFilePath(model)
 
-    /** @return Absolute path to the per‑run CSV with variable values (VAR). */
+    /** @return Absolute path to the per-run CSV with variable values (VAR). */
     fun getVariableValuesFilePath(model: DatasetModel): String =
         csvView.getVariableValuesFilePath(model)
 
-    /** @return Absolute path to the per‑run CSV with top solutions (TOP). */
+    /** @return Absolute path to the per-run CSV with top solutions (TOP). */
     fun getTopSolutionsFilePath(model: DatasetModel): String =
         csvView.getTopSolutionsFilePath(model)
 
     /**
      * @param model Dataset context used to compute the base parts.
      * @param isTargetAll When `true`, uses the `ALL` token instead of the model’s target.
-     * @return Absolute path to the per‑run CSV with run metadata (INFO).
+     * @return Absolute path to the per-run CSV with run metadata (INFO).
      */
     fun getInfoFilePath(model: DatasetModel, isTargetAll: Boolean = false): String =
         csvView.getInfoFilePath(model, isTargetAll)
@@ -61,7 +61,7 @@ class DatasetView {
     /**
      * @param model Dataset context used to compute the base parts.
      * @param isTargetAll When `true`, uses the `ALL` token instead of the model’s target.
-     * @return Absolute path to the per‑run CSV with aggregated/final table.
+     * @return Absolute path to the per-run CSV with aggregated/final table.
      */
     fun getAggregatedDataFilePath(model: DatasetModel, isTargetAll: Boolean = false): String =
         csvView.getAggregatedDataFilePath(model, isTargetAll)
@@ -123,10 +123,10 @@ class DatasetView {
     }
 
     // -------------------------------------------------------------------------------------
-    // Public Parquet path helpers (per‑run, under /Parquet/)
+    // Public Parquet path helpers (per-run, under /Parquet/)
     // -------------------------------------------------------------------------------------
 
-    /** @return Absolute path to the per‑run Parquet FUN file. */
+    /** @return Absolute path to the per-run Parquet FUN file. */
     fun getFunctionValuesParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
             ViewPaths.parquetNameNoTs(
@@ -134,7 +134,7 @@ class DatasetView {
                 Constants.FUNCTION_VALUES_FILE_SUFFIX
             )
 
-    /** @return Absolute path to the per‑run Parquet VAR file. */
+    /** @return Absolute path to the per-run Parquet VAR file. */
     fun getVariableValuesParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
             ViewPaths.parquetNameNoTs(
@@ -142,7 +142,7 @@ class DatasetView {
                 Constants.VARIABLE_VALUES_FILE_SUFFIX
             )
 
-    /** @return Absolute path to the per‑run Parquet TOP file. */
+    /** @return Absolute path to the per-run Parquet TOP file. */
     fun getTopSolutionsParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
             ViewPaths.parquetNameNoTs(
@@ -152,10 +152,6 @@ class DatasetView {
 
     /**
      * Mirrors the CSV FINAL table location under `/Parquet/`.
-     *
-     * @param model Dataset context used to compute the base parts.
-     * @param isTargetAll When `true`, uses the `ALL` token instead of the model’s target.
-     * @return Absolute path to the per‑run Parquet FINAL table.
      */
     fun getAggregatedDataParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
@@ -168,10 +164,6 @@ class DatasetView {
 
     /**
      * Mirrors the CSV INFO table location under `/Parquet/`.
-     *
-     * @param model Dataset context used to compute the base parts.
-     * @param isTargetAll When `true`, uses the `ALL` token instead of the model’s target.
-     * @return Absolute path to the per‑run Parquet INFO table.
      */
     fun getInfoParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
@@ -186,11 +178,6 @@ class DatasetView {
     // Public Parquet merged path helpers (under /Parquet/)
     // -------------------------------------------------------------------------------------
 
-    /**
-     * @param model Dataset context used to compute the base parts.
-     * @param isTargetAll When `true`, uses the `ALL` token instead of the model’s target.
-     * @return Absolute path to the **merged** Parquet FINAL table.
-     */
     fun getAggregatedDataMergedParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         val base = ViewPaths.fileBaseParts(model, targetToken)
@@ -199,11 +186,6 @@ class DatasetView {
         return ViewPaths.ensureParquetDir(model) + ViewPaths.parquetNameNoTs(base, suffixWithMerged)
     }
 
-    /**
-     * @param model Dataset context used to compute the base parts.
-     * @param isTargetAll When `true`, uses the `ALL` token instead of the model’s target.
-     * @return Absolute path to the **merged** Parquet INFO table.
-     */
     fun getInfoMergedParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val targetToken = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         val base = ViewPaths.fileBaseParts(model, targetToken)
@@ -237,7 +219,7 @@ class DatasetView {
     }
 
     // -------------------------------------------------------------------------------------
-    // Snapshot print (final, non‑streamed)
+    // Snapshot print (final, non-streamed)
     // -------------------------------------------------------------------------------------
 
     /**
@@ -247,7 +229,6 @@ class DatasetView {
      *  - **first** = all solutions evaluated,
      *  - **second** = selected top solutions,
      *  - **third** = `(actualTarget, threadName, computingTimeMs)`.
-     * @param model Dataset context providing naming and path layout.
      */
     fun print(
         runResult: Triple<List<BinarySolution>, List<BinarySolution>, Triple<String, String, Long>>,
@@ -257,8 +238,8 @@ class DatasetView {
         val (actualTarget, threadName, computingTimeMs) = executionInfo
 
         logger.info(
-            "Starting to print result for execution on \"$threadName\" with target " +
-                "\"$actualTarget\" completed in ${computingTimeMs}ms."
+            "Starting to print result for execution on \"{}\" with target \"{}\" completed in {} ms.",
+            threadName, actualTarget, computingTimeMs
         )
 
         // CSV snapshot
@@ -267,19 +248,14 @@ class DatasetView {
         // Parquet snapshot
         parquetView.printSnapshot(model, allSolutions, topSolutions, actualTarget)
 
-        logger.info("Print completed for target \"$actualTarget\".")
+        logger.info("Print completed for target \"{}\".", actualTarget)
     }
 
     // -------------------------------------------------------------------------------------
-    // Streaming fan‑out (CSV + Parquet)
+    // Streaming fan-out (CSV + Parquet)
     // -------------------------------------------------------------------------------------
 
-    /**
-     * Stream one **cardinality** event into both CSV and Parquet backends.
-     *
-     * @param model Dataset context.
-     * @param event Cardinality record produced during the run.
-     */
+    /** Stream one **cardinality** event into both CSV and Parquet backends. */
     fun appendCardinality(model: DatasetModel, event: CardinalityResult) {
         csvView.onAppendCardinality(model, event)
         parquetView.onAppendCardinality(model, event)
@@ -288,8 +264,8 @@ class DatasetView {
     /**
      * Replace a batch of **top solutions** blocks (per K) in both CSV and Parquet backends.
      *
-     * @param model Dataset context.
-     * @param blocks Map `K → listOf(csvLine)`; each list must be exactly 10 pre‑sorted rows.
+     * @param blocks Map `K → listOf(csvLine)`; each list should contain up to
+     *               [Constants.TOP_SOLUTIONS_NUMBER] pre-ordered rows.
      */
     fun replaceTopBatch(model: DatasetModel, blocks: Map<Int, List<String>>) {
         csvView.onReplaceTopBatch(model, blocks)
@@ -302,14 +278,9 @@ class DatasetView {
      * - **Parquet**: sort & write FUN/VAR, finalize TOP blocks from its own buffers.
      *
      * Backends are **decoupled** and maintain independent state.
-     *
-     * @param model Dataset context to resolve output paths and buffers.
      */
     fun closeStreams(model: DatasetModel) {
-        // 1) finalize CSV files
         csvView.closeStreams(model)
-
-        // 2) finalize Parquet independently
         parquetView.closeStreams(model)
     }
 
@@ -317,24 +288,11 @@ class DatasetView {
     // Controller convenience (CSV/Parquet table writers)
     // -------------------------------------------------------------------------------------
 
-    /**
-     * Thin CSV passthrough.
-     *
-     * @param csvRows UTF‑8 cells; first row is treated as header by downstream consumers.
-     * @param resultCsvPath Output file path.
-     */
+    /** Thin CSV passthrough for generic tables. */
     fun writeCsv(csvRows: List<Array<String>>, resultCsvPath: String) =
         csvView.writeCsv(csvRows, resultCsvPath)
 
-    /**
-     * Generic Parquet table writer for **Final** tables.
-     *
-     * - Uses a header‑driven UTF‑8 schema.
-     * - Normalizes decimals to 6 fractional digits where applicable.
-     *
-     * @param rows First row is the header; subsequent rows are data.
-     * @param resultParquetPath Output Parquet file path.
-     */
+    /** Generic Parquet table writer (header-driven UTF-8 schema, 6-digit decimals). */
     fun writeParquet(rows: List<Array<String>>, resultParquetPath: String) =
         parquetView.writeTable(rows, resultParquetPath)
 }

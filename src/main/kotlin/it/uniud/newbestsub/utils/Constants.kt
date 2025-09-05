@@ -148,12 +148,13 @@ object Constants {
     /**
      * Generation warm-up: number of generations to skip completely before streaming begins.
      */
-    const val GENERATION_WARMUP: Int = 20
+    const val GENERATION_WARMUP: Int = 100
 
     /**
      * Generation stride: after the warm-up, stream/log every N-th generation.
      *
      * Used to reduce I/O load and output size during long evolutionary runs.
      */
-    const val GENERATION_STRIDE: Int = 5
+    const val GENERATION_STRIDE: Int = 10
+
 }

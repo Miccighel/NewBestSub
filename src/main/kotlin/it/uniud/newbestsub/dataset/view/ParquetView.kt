@@ -1,9 +1,9 @@
 package it.uniud.newbestsub.dataset.view
 
 import it.uniud.newbestsub.dataset.DatasetModel
+import it.uniud.newbestsub.dataset.view.ViewPaths
 import it.uniud.newbestsub.dataset.model.CardinalityResult
 import it.uniud.newbestsub.problem.BestSubsetSolution
-import it.uniud.newbestsub.problem.getCardinality
 import it.uniud.newbestsub.utils.Constants
 import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.solution.binarysolution.BinarySolution
@@ -40,30 +40,9 @@ import java.util.Base64
 /**
  * # ParquetView
  *
- * Streaming‑first Parquet writer for **FUN**, **VAR**, and **TOP** tables, plus
- * generic “final” tables (Aggregated/Info). Mirrors [CSVView] semantics.
- *
- * ## Responsibilities
- * - Resolve deterministic output paths via [ViewPaths].
- * - Stream or snapshot write:
- *   - **FUN**: `(K, Correlation)`
- *   - **VAR**: `(K, TopicsB64)` where topics are a Base64‑packed boolean mask.
- *   - **TOP** (BEST/WORST only): `(K, Correlation, TopicsB64)`.
- * - Write arbitrary final tables (header‑driven UTF‑8 schema).
- *
- * ## Platform
- * - Compression: `-Dnbs.parquet.codec=SNAPPY|GZIP|UNCOMPRESSED`; default SNAPPY (non‑Windows), GZIP (Windows).
- * - SNAPPY tempdir auto‑provisioning when needed.
- * - Windows without `winutils.exe`: falls back to a pure‑NIO [OutputFile].
- *
- * ## Ordering
- * - On close: FUN/VAR rows sorted by `(K asc, corr asc)` except WORST `(K asc, corr desc)`.
- *
- * ## Safety
- * - Toggle: `-Dnbs.parquet.enabled=false` makes methods no‑ops.
- * - Internal buffers cleared on [closeStreams].
+ * Streaming-first Parquet writer for **FUN**, **VAR**, and **TOP** tables, plus
+ * generic “final” tables (Aggregated/Info). Mirrors CSVView semantics.
  */
-
 class ParquetView {
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
@@ -72,35 +51,35 @@ class ParquetView {
 
     private fun funParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(
-                ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                Constants.FUNCTION_VALUES_FILE_SUFFIX
-            )
+                ViewPaths.parquetNameNoTs(
+                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                    Constants.FUNCTION_VALUES_FILE_SUFFIX
+                )
 
     private fun varParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(
-                ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                Constants.VARIABLE_VALUES_FILE_SUFFIX
-            )
+                ViewPaths.parquetNameNoTs(
+                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                    Constants.VARIABLE_VALUES_FILE_SUFFIX
+                )
 
     private fun topParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(
-                ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                Constants.TOP_SOLUTIONS_FILE_SUFFIX
-            )
+                ViewPaths.parquetNameNoTs(
+                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                    Constants.TOP_SOLUTIONS_FILE_SUFFIX
+                )
 
     fun getAggregatedDataParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.AGGREGATED_DATA_FILE_SUFFIX)
+                ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.AGGREGATED_DATA_FILE_SUFFIX)
     }
 
     fun getInfoParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-            ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.INFO_FILE_SUFFIX)
+                ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.INFO_FILE_SUFFIX)
     }
 
     /* ---------------- Schemas ---------------- */
@@ -153,7 +132,8 @@ class ParquetView {
                 Files.createDirectories(p)
                 System.setProperty("org.xerial.snappy.tempdir", p.toString())
                 return
-            } catch (_: Exception) { /* ignore */ }
+            } catch (_: Exception) { /* ignore */
+            }
         }
     }
 
@@ -182,14 +162,19 @@ class ParquetView {
                     singleByte.put(0, b.toByte())
                     ch.write(singleByte); pos += 1
                 }
+
                 override fun write(b: ByteArray, off: Int, len: Int) {
                     val bb = ByteBuffer.wrap(b, off, len)
                     val n = ch.write(bb); pos += n.toLong()
                 }
+
                 override fun flush() {}
-                override fun close() { ch.close() }
+                override fun close() {
+                    ch.close()
+                }
             }
         }
+
         override fun supportsBlockSize(): Boolean = false
         override fun defaultBlockSize(): Long = 0L
     }
@@ -250,7 +235,9 @@ class ParquetView {
             if (base.firstOrNull()?.isDigit() == true) base = "_$base"
             var name = base
             var idx = 2
-            while (!used.add(name)) { name = "${base}_$idx"; idx++ }
+            while (!used.add(name)) {
+                name = "${base}_$idx"; idx++
+            }
             name
         }
     }
@@ -260,6 +247,7 @@ class ParquetView {
     private val base64Encoder = Base64.getEncoder().withoutPadding()
 
     private data class LabelsKey(val identity: Int, val size: Int, val first: String?)
+
     private val labelIndexCache = mutableMapOf<LabelsKey, Map<String, Int>>()
 
     private fun indexByLabel(labels: Array<String>): Map<String, Int> {
@@ -273,29 +261,64 @@ class ParquetView {
      */
     private fun fieldToB64(raw: String, labels: Array<String>): String {
         val t = raw.trim()
+        if (t.isEmpty()) return "B64:"
         if (t.startsWith("B64:")) return t
-        return try {
-            if (t.any { it == '|' || it == ';' || it == ',' || it == ' ' || it == '[' }) {
-                val tokens = t.removePrefix("[").removeSuffix("]").split(tokenSplitRegex).filter { it.isNotBlank() }
-                val byLabel = indexByLabel(labels)
-                val mask = BooleanArray(labels.size)
-                var matched = 0
-                for (token in tokens) {
-                    val idx = byLabel[token] ?: token.toIntOrNull()
-                    if (idx != null && idx in 0 until mask.size) { mask[idx] = true; matched++ }
+
+        // True bitstring fast-path: ONLY '0'/'1'
+        var isBitstring = true
+        run {
+            var i = 0
+            while (i < t.length) {
+                val c = t[i]
+                if (c != '0' && c != '1') {
+                    isBitstring = false; break
                 }
-                if (matched == 0) logger.warn("ParquetView fieldToB64] topics field did not match labels/indices; emitting empty mask. raw='{}'", raw)
-                "B64:" + toBase64(mask)
-            } else {
-                val mask = BooleanArray(labels.size)
-                val n = minOf(labels.size, t.length)
-                for (i in 0 until n) mask[i] = (t[i] == '1')
-                "B64:" + toBase64(mask)
+                i++
             }
-        } catch (_: Exception) {
-            logger.warn("ParquetView fieldToB64] parse failed; emitting empty mask. raw='{}'", raw)
-            "B64:"
         }
+        if (isBitstring) {
+            val mask = BooleanArray(labels.size)
+            val n = minOf(labels.size, t.length)
+            var i = 0
+            while (i < n) {
+                mask[i] = (t[i] == '1'); i++
+            }
+            return "B64:" + toBase64(mask)
+        }
+
+        // Token path (handles single token too: label or numeric index)
+        val tokens = if (t.any { it == '|' || it == ';' || it == ',' || it.isWhitespace() || it == '[' || it == ']' }) {
+            t.removePrefix("[").removeSuffix("]").split(tokenSplitRegex).filter { it.isNotBlank() }
+        } else {
+            listOf(t)
+        }
+        if (tokens.isEmpty()) return "B64:"
+
+        val mask = BooleanArray(labels.size)
+        var matched = 0
+        val allNumeric = tokens.all { tok -> tok.all { ch -> ch in '0'..'9' } }
+
+        if (allNumeric) {
+            for (tok in tokens) {
+                val idx = tok.toIntOrNull()
+                if (idx != null && idx in 0 until mask.size && !mask[idx]) {
+                    mask[idx] = true; matched++
+                }
+            }
+        } else {
+            val byLabel = indexByLabel(labels)
+            for (tok in tokens) {
+                val idx = byLabel[tok] ?: tok.toIntOrNull()
+                if (idx != null && idx in 0 until mask.size && !mask[idx]) {
+                    mask[idx] = true; matched++
+                }
+            }
+        }
+
+        if (matched == 0) {
+            logger.warn("ParquetView fieldToB64] topics field did not match labels/indices; emitting empty mask. raw='{}'", raw)
+        }
+        return "B64:" + toBase64(mask)
     }
 
     private fun toBase64(mask: BooleanArray): String {
@@ -304,19 +327,26 @@ class ParquetView {
         var bitInWord = 0
         var wordIndex = 0
         var accumulator = 0L
-        for (i in mask.indices) {
+        var i = 0
+        while (i < mask.size) {
             if (mask[i]) accumulator = accumulator or (1L shl bitInWord)
             bitInWord++
             if (bitInWord == 64) {
                 packed[wordIndex++] = accumulator; accumulator = 0L; bitInWord = 0
             }
+            i++
         }
         if (bitInWord != 0) packed[wordIndex] = accumulator
         val out = ByteArray(words * java.lang.Long.BYTES)
         var offset = 0
         for (word in packed) {
             var x = word
-            for (i in 0 until java.lang.Long.BYTES) { out[offset + i] = (x and 0xFF).toByte(); x = x ushr 8 }
+            var b = 0
+            while (b < java.lang.Long.BYTES) {
+                out[offset + b] = (x and 0xFF).toByte()
+                x = x ushr 8
+                b++
+            }
             offset += java.lang.Long.BYTES
         }
         return base64Encoder.encodeToString(out)
@@ -326,17 +356,15 @@ class ParquetView {
 
     private data class ViewKey(val dataset: String, val execution: Int, val target: String)
     private data class FunVarRow(val k: Int, val naturalCorrelation: Double, val topicsMaskB64: String)
+
     private val funVarBuffers: MutableMap<ViewKey, MutableList<FunVarRow>> = mutableMapOf()
 
     private data class TopRow(val k: Int, val naturalCorrelation: Double, val topicsMaskB64: String)
+
     private val topBlocks: MutableMap<ViewKey, MutableMap<Int, List<TopRow>>> = mutableMapOf()
 
     /* ---------------- Snapshot (non-streamed) ---------------- */
 
-    /**
-     * Write a full snapshot of FUN/VAR (and TOP when applicable) to Parquet.
-     * Uses **natural** correlation via `model.naturalCorrOf(...)`.
-     */
     fun printSnapshot(
         model: DatasetModel,
         allSolutions: List<BinarySolution>,
@@ -354,9 +382,10 @@ class ParquetView {
             openWriter(funParquetPath(model), schemaFun).use { funW ->
                 openWriter(varParquetPath(model), schemaVar).use { varW ->
                     for (s in allSolutions) {
-                        val k = s.getCardinality().toInt()
-                        val corrNatural = round6(model.naturalCorrOf(s as BestSubsetSolution))
-                        val mask = s.retrieveTopicStatus()
+                        val bss = s as BestSubsetSolution
+                        val k = bss.getCardinality().toInt()
+                        val corrNatural = round6(model.naturalCorrOf(bss))
+                        val mask = bss.retrieveTopicStatus()
                         funW.write(funFactory.newGroup().append("K", k).append("Correlation", corrNatural))
                         varW.write(varFactory.newGroup().append("K", k).append("TopicsB64", "B64:" + toBase64(mask)))
                     }
@@ -384,11 +413,9 @@ class ParquetView {
 
     /* ---------------- Streaming hooks ---------------- */
 
-    /**
-     * Buffer one streamed FUN/VAR row (topics normalized to B64) for later write.
-     * `ev.correlation` is already **natural**. Do NOT convert here.
-     */
+    /** Buffer one streamed FUN/VAR row (topics normalized to B64). `ev.correlation` is NATURAL. */
     fun onAppendCardinality(model: DatasetModel, ev: CardinalityResult) {
+        if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) return
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
         val buf = funVarBuffers.getOrPut(viewKey) { mutableListOf() }
 
@@ -400,11 +427,12 @@ class ParquetView {
 
     /**
      * Merge/replace per-K TOP blocks.
-     * Lines are "K,Corr,Topics", where Corr is **natural** and producer already ordered by target
-     * (BEST → desc, WORST → asc).
+     * Lines are "K,Corr,Topics", where Corr is NATURAL and producer already ordered by target.
      */
     fun onReplaceTopBatch(model: DatasetModel, blocks: Map<Int, List<String>>) {
+        if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) return
         if (blocks.isEmpty()) return
+
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
         val cache = topBlocks.getOrPut(viewKey) { mutableMapOf() }
 
@@ -426,14 +454,15 @@ class ParquetView {
      * - TOP written by ascending K and producer-provided block order.
      */
     fun closeStreams(model: DatasetModel) {
-        if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) {
-            val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
+        val enabled = !System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)
+        val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
+
+        if (!enabled) {
             funVarBuffers.remove(viewKey); topBlocks.remove(viewKey); labelIndexCache.clear()
             logger.info("skipped (disabled).")
             return
         }
 
-        val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
         val totStart = System.nanoTime()
 
         val sortStart = System.nanoTime()
@@ -538,6 +567,4 @@ class ParquetView {
             }
         }.onFailure { logger.warn("Parquet table write failed for $outPath", it) }
     }
-
-
 }

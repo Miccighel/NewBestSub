@@ -1,7 +1,5 @@
 package it.uniud.newbestsub.dataset.model
 
-import kotlin.collections.iterator
-
 /**
  * Immutable, shared, hot-path numeric bundle.
  *
@@ -78,22 +76,20 @@ data class PrecomputedData(
  * - Copy rows into a dense row-major matrix `[S][T]`
  * - Compute full-set means per system
  * - Build column views `[T][S]` for fast ± updates
- *
- * @param averagePrecisionsBySystem Mapping from system ID to per-topic AP scores.
- *  Each entry is a `DoubleArray` where `array[t]` is the AP of the system on topic *t*.
- * @return a [PrecomputedData] structure containing row-major, column-major, and mean views.
- * @throws IllegalArgumentException if input is empty or inconsistent.
+ * - **Order is preserved** from the input map's iteration order (e.g., CSV load order).
  */
 fun buildPrecomputedData(
     averagePrecisionsBySystem: Map<String, DoubleArray>
 ): PrecomputedData {
     require(averagePrecisionsBySystem.isNotEmpty()) { "averagePrecisionsBySystem must not be empty" }
 
-    // Deterministic system order (stable across runs)
-    val systemIdsInOrder = averagePrecisionsBySystem.keys.sorted()
+    // Preserve iteration order from the input map (LinkedHashMap from loader).
+    val systemIdsInOrder = ArrayList<String>(averagePrecisionsBySystem.size).apply {
+        for (id in averagePrecisionsBySystem.keys) add(id)
+    }
     val numberOfSystems = systemIdsInOrder.size
 
-    val firstRow = averagePrecisionsBySystem.getValue(systemIdsInOrder.first())
+    val firstRow = averagePrecisionsBySystem.getValue(systemIdsInOrder[0])
     val numberOfTopics = firstRow.size
     require(numberOfTopics > 0) { "AP rows must contain at least one topic" }
 
@@ -121,7 +117,7 @@ fun buildPrecomputedData(
         s++
     }
 
-    // Column views: [topic][system] → used by delta-evaluation later
+    // Column views: [topic][system]
     val topicColumnViewByTopic = Array(numberOfTopics) { DoubleArray(numberOfSystems) }
     var topicIdx = 0
     while (topicIdx < numberOfTopics) {
@@ -147,23 +143,20 @@ fun buildPrecomputedData(
 }
 
 /**
- * Convert legacy boxed rows to primitive arrays.
+ * Convert legacy boxed rows to primitive arrays, **preserving iteration order**.
  *
- * Intended to be used **once at load time**.
- * Do **not** call this inside evaluation loops.
- *
- * @param legacy Mapping from system ID to boxed `Array<Double>`.
- * @return A mapping with equivalent primitive `DoubleArray` rows.
+ * Intended to be used once at load time (do not call in hot paths).
  */
 fun toPrimitiveAPRows(
     legacy: Map<String, Array<Double>>
 ): Map<String, DoubleArray> {
-    val out = HashMap<String, DoubleArray>(legacy.size)
+    val out = LinkedHashMap<String, DoubleArray>(legacy.size)
     for ((k, boxed) in legacy) {
         val row = DoubleArray(boxed.size)
         var i = 0
         while (i < boxed.size) {
-            row[i] = boxed[i]; i++
+            row[i] = boxed[i]
+            i++
         }
         out[k] = row
     }

@@ -141,6 +141,8 @@ class DatasetController(
      * - System labels are generated as `"Sys{index}{NNN} (F)"` with `NNN ∈ [800..998]`.
      * - AP rows for the new systems are random; in deterministic mode they come from
      *   a [SplittableRandom] seeded via [RandomBridge.childSeed].
+     * - **Important fix**: new systems receive **exactly `numberOfTopics`** AP values
+     *   (previously `+ expansionCoefficient`, which was incorrect).
      *
      * @param expansionCoefficient Number of random systems to append.
      * @param trueNumberOfSystems Ground-truth number of systems; if `current + expansionCoefficient < trueNumberOfSystems`,
@@ -156,10 +158,14 @@ class DatasetController(
             "Sys$index$suffix (F)"
         }
 
+        /* Ensure we build rows that match the current topic count (no extra columns). */
+        val topicsNow = models.firstOrNull()?.numberOfTopics
+            ?: throw IllegalStateException("expandSystems() called before load()")
+
         val randomizedAveragePrecisions = LinkedHashMap<String, DoubleArray>()
         systemLabels.forEach { systemLabel ->
             randomizedAveragePrecisions[systemLabel] =
-                DoubleArray(models[0].numberOfTopics + expansionCoefficient) { rng?.nextDouble() ?: Math.random() }
+                DoubleArray(topicsNow) { rng?.nextDouble() ?: Math.random() }
         }
 
         models.forEach { model ->
@@ -168,17 +174,50 @@ class DatasetController(
     }
 
     /**
-     * Run the experiment(s) according to [parameters.targetToAchieve]:
+     * Run the experiment(s) according to [parameters.targetToAchieve].
      *
-     * - **TARGET_ALL**: solves BEST, WORST, AVERAGE (sequential in deterministic mode, parallel otherwise),
-     *   streams progress to a single printer coroutine, then writes Aggregated & Info (CSV+Parquet) for ALL.
-     * - **Single target**: solves just that target, streams results, then writes Aggregated & Info for that target.
+     * ### What this does
+     * - Seals all loaded [DatasetModel]s (boxing → dense primitives) before solving.
+     * - Starts the solve(s), streaming progress via a single back-pressured [Channel] of [ProgressEvent]s.
+     * - A dedicated **printer** coroutine (IO dispatcher) consumes events and appends:
+     *   - [CardinalityResult] → FUN/VAR lines
+     *   - [TopKReplaceBatch] → atomically replaces Top blocks
+     *   - [RunCompleted] → closes writers (also triggers Parquet writes in the view)
+     * - After runs complete, writes **Aggregated** and **Info** tables (CSV + Parquet),
+     *   then clears per-run caches in each model.
      *
-     * RAM hygiene: before solving, calls [DatasetModel.sealData] on all models to drop boxed AP maps.
-     * After writing final tables, clears per-run caches via [DatasetModel.clearPercentiles] and
-     * [DatasetModel.clearAfterSerialization].
+     * ### Determinism
+     * - If [Parameters.deterministic] is `true`, runs execute **sequentially** (BEST → WORST → AVERAGE).
+     * - Randomness is routed through `RandomBridge` with labeled child seeds
+     *   (`"BEST"`, `"WORST"`, `"AVERAGE"`) for reproducibility.
      *
-     * @param parameters Execution parameters (determinism, seeds, sizes, etc.).
+     * ### Parallelism and thread budgeting
+     * - BEST/WORST use jMetal’s **internal** parallel evaluator (`MultiThreadedSolutionListEvaluator`)
+     *   sized via [Parameters.evaluatorThreads].
+     * - When `targetToAchieve == ALL` **and** `deterministic == false`:
+     *   - We **split CPU cores** between BEST and WORST to avoid oversubscription:
+     *     reserve ~1 core for I/O/GC, split the remainder in half, and set
+     *     `evaluatorThreads` for BEST and WORST accordingly (min 2 each).
+     *   - AVERAGE remains effectively **single-threaded** inside the model
+     *     (its loop is not jMetal-parallelized), so we set `evaluatorThreads = 1`.
+     *   - Each NSGA job is launched on **one coroutine worker**
+     *     (`Dispatchers.Default.limitedParallelism(1)`), letting the jMetal pool
+     *     do the heavy lifting inside the job.
+     * - For **single-target**, non-deterministic runs: if the caller didn’t set
+     *   [Parameters.evaluatorThreads], we give the run **all available cores**
+     *   explicitly; otherwise we honor the provided value.
+     *
+     * ### Back-pressure & I/O
+     * - The event channel capacity is sized conservatively and all writes happen
+     *   on the printer coroutine to keep file I/O serialized and GC-friendly.
+     * - `TopKReplaceBatch` minimizes churn by replacing whole blocks only when
+     *   content changes (version-gated inside the model).
+     *
+     * ### Post-run hygiene
+     * - After artifacts are written, the controller calls:
+     *   - [DatasetModel.clearPercentiles] to drop percentile lists.
+     *   - [DatasetModel.clearAfterSerialization] to release representative masks,
+     *     per-K correlation maps, and Top pools.
      */
     fun solve(parameters: Parameters) {
 
@@ -195,7 +234,6 @@ class DatasetController(
         if (parameters.deterministic) {
             logger.info("Deterministic mode is ON. Master seed: ${parameters.seed ?: "(derived)"}")
         }
-
         if (parameters.targetToAchieve == Constants.TARGET_ALL || parameters.targetToAchieve == Constants.TARGET_AVERAGE) {
             val pct = parameters.percentiles.joinToString(", ") { "$it%" }
             logger.info("Percentiles: $pct. [Experiment: Average]")
@@ -206,26 +244,27 @@ class DatasetController(
 
         if (parameters.targetToAchieve == Constants.TARGET_ALL) {
 
-            val bestParameters = parameters.copy(targetToAchieve = Constants.TARGET_BEST)
-            val worstParameters = parameters.copy(targetToAchieve = Constants.TARGET_WORST)
-            val averageParameters = parameters.copy(targetToAchieve = Constants.TARGET_AVERAGE)
+            /* Prepare per-target parameters (may be tweaked for thread budgets below). */
+            var bestParams = parameters.copy(targetToAchieve = Constants.TARGET_BEST)
+            var worstParams = parameters.copy(targetToAchieve = Constants.TARGET_WORST)
+            var averageParams = parameters.copy(targetToAchieve = Constants.TARGET_AVERAGE)
 
             /* Channel capacity tuned for throttled onGen with headroom. */
-            val estPerTargetEvents = (models[0].numberOfTopics / 3) + 64
-            val cap = (estPerTargetEvents * 3).coerceAtLeast(64)
-            val progress: Channel<ProgressEvent> = Channel(cap)
+            val estimatedEventsPerTarget = (models[0].numberOfTopics / 3) + 64
+            val channelCapacity = (estimatedEventsPerTarget * 3).coerceAtLeast(64)
+            val progressEvents: Channel<ProgressEvent> = Channel(channelCapacity)
 
             if (parameters.deterministic) {
                 /* ---------------- Deterministic: sequential solves with labeled seeds ---------------- */
                 runBlocking {
                     supervisorScope {
                         /* Single printer on IO dispatcher */
-                        val printer = launch(Dispatchers.IO) {
-                            for (ev in progress) {
-                                val model = models.first { it.targetToAchieve == ev.target }
-                                when (ev) {
-                                    is CardinalityResult -> view.appendCardinality(model, ev)
-                                    is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
+                        val printerJob = launch(Dispatchers.IO) {
+                            for (event in progressEvents) {
+                                val model = models.first { it.targetToAchieve == event.target }
+                                when (event) {
+                                    is CardinalityResult -> view.appendCardinality(model, event)
+                                    is TopKReplaceBatch -> view.replaceTopBatch(model, event.blocks)
                                     is RunCompleted -> view.closeStreams(model)
                                 }
                             }
@@ -233,70 +272,127 @@ class DatasetController(
 
                         /* BEST */
                         RandomBridge.withSeed(RandomBridge.childSeed("BEST")) {
-                            models[0].solve(bestParameters, progress)
+                            models[0].solve(bestParams, progressEvents)
                         }
                         /* WORST */
                         RandomBridge.withSeed(RandomBridge.childSeed("WORST")) {
-                            models[1].solve(worstParameters, progress)
+                            models[1].solve(worstParams, progressEvents)
                         }
                         /* AVERAGE */
                         RandomBridge.withSeed(RandomBridge.childSeed("AVERAGE")) {
-                            models[2].solve(averageParameters, progress)
+                            models[2].solve(averageParams, progressEvents)
                         }
 
-                        progress.close()
-                        printer.join()
+                        progressEvents.close()
+                        printerJob.join()
                     }
                 }
 
             } else {
-                /* ---------------- Non-deterministic: parallel solves as before ---------------- */
+                /* ---------------- Non-deterministic: parallel solves ----------------
+                 * Avoid CPU over-subscription by splitting cores across runs and letting
+                 * jMetal’s evaluator pool do the heavy lifting inside each run. */
+
+                /* Determine which targets are enabled in this branch.
+                 * If ALL → run all three; otherwise run only the requested one. */
+                val runAll = parameters.targetToAchieve == Constants.TARGET_ALL
+                val runBest = runAll || parameters.targetToAchieve == Constants.TARGET_BEST
+                val runWorst = runAll || parameters.targetToAchieve == Constants.TARGET_WORST
+                val runAverage = runAll || parameters.targetToAchieve == Constants.TARGET_AVERAGE
+
+                /* Compute a simple thread budget:
+                 * - Reserve one core for I/O/GC.
+                 * - Keep AVERAGE single-threaded only if it runs (its loop is not jMetal-parallelized).
+                 * - Split the remaining worker cores between BEST and WORST.
+                 *   If only one of BEST/WORST runs, it receives the whole pool.
+                 *   If AVERAGE is disabled, its core is returned to BEST/WORST. */
+                val totalCores = Runtime.getRuntime().availableProcessors()
+                val reserveForSystem = 1
+                val coresForWork = (totalCores - reserveForSystem).coerceAtLeast(1)
+                val threadsForAverage = if (runAverage) 1 else 0
+                val bwPool = (coresForWork - threadsForAverage).coerceAtLeast(1)
+
+                var threadsForBest = 0
+                var threadsForWorst = 0
+                if (runBest && runWorst) {
+                    threadsForBest = bwPool / 2
+                    threadsForWorst = bwPool - threadsForBest
+                    /* Ensure both get at least 1 when both enabled. */
+                    if (threadsForBest == 0) {
+                        threadsForBest = 1; threadsForWorst = (bwPool - 1).coerceAtLeast(0)
+                    }
+                    if (threadsForWorst == 0) {
+                        threadsForWorst = 1; threadsForBest = (bwPool - 1).coerceAtLeast(0)
+                    }
+                } else if (runBest) {
+                    threadsForBest = bwPool
+                } else if (runWorst) {
+                    threadsForWorst = bwPool
+                }
+
+                /* Apply per-run evaluator threads. (AVERAGE stays single-threaded when enabled.) */
+                bestParams = bestParams.copy(evaluatorThreads = threadsForBest)
+                worstParams = worstParams.copy(evaluatorThreads = threadsForWorst)
+                averageParams = averageParams.copy(evaluatorThreads = threadsForAverage)
+
+                /* Log the computed budget for traceability. */
+                logger.info(
+                    "Thread budget → BEST={}, WORST={}, AVERAGE={}, totalCores={}",
+                    threadsForBest, threadsForWorst, threadsForAverage, totalCores
+                )
+
                 runBlocking {
                     supervisorScope {
-                        val cnt = intArrayOf(0, 0, 0) // funVar, top, done
+                        val counters = intArrayOf(0, 0, 0) /* fun/var, top, done */
                         val t0 = System.nanoTime()
-                        val printer = launch(Dispatchers.IO) {
-                            for (ev in progress) {
-                                val model = if (parameters.targetToAchieve == Constants.TARGET_ALL)
-                                    models.first { it.targetToAchieve == ev.target } else models[0]
-                                when (ev) {
+
+                        /* Single printer on IO dispatcher */
+                        val printerJob = launch(Dispatchers.IO) {
+                            for (event in progressEvents) {
+                                val model =
+                                    if (parameters.targetToAchieve == Constants.TARGET_ALL)
+                                        models.first { it.targetToAchieve == event.target }
+                                    else models[0]
+                                when (event) {
                                     is CardinalityResult -> {
-                                        view.appendCardinality(model, ev)
-                                        cnt[0]++
+                                        view.appendCardinality(model, event); counters[0]++
                                     }
+
                                     is TopKReplaceBatch -> {
-                                        view.replaceTopBatch(model, ev.blocks)
-                                        cnt[1]++
+                                        view.replaceTopBatch(model, event.blocks); counters[1]++
                                     }
+
                                     is RunCompleted -> {
-                                        cnt[2]++
+                                        counters[2]++
                                         logger.info(
                                             "RunCompleted received for target {} → closing streams ({} fun/var appends, {} top batches, {} ms).",
-                                            ev.target, cnt[0], cnt[1], (System.nanoTime() - t0) / 1_000_000
+                                            event.target, counters[0], counters[1], (System.nanoTime() - t0) / 1_000_000
                                         )
-                                        view.closeStreams(model) // Parquet write happens here
+                                        view.closeStreams(model) /* Parquet write happens here */
                                     }
                                 }
-
-                                // light heartbeat each ~10k events
-                                val total = cnt[0] + cnt[1] + cnt[2]
+                                /* Light heartbeat each ~10k events */
+                                val total = counters[0] + counters[1] + counters[2]
                                 if (total % 10_000 == 0 && total > 0) {
-                                    logger.info("heartbeat events: funVar={}, top={}, done={}", cnt[0], cnt[1], cnt[2])
+                                    logger.info("heartbeat events: funVar={}, top={}, done={}", counters[0], counters[1], counters[2])
                                 }
                             }
                         }
 
-                        val jobs = listOf(
-                            launch(Dispatchers.Default) { models[0].solve(bestParameters, progress) },
-                            launch(Dispatchers.Default) { models[1].solve(worstParameters, progress) },
-                            launch(Dispatchers.Default) { models[2].solve(averageParameters, progress) }
-                        )
+                        /* Launch jobs, each bound to ONE coroutine worker.
+                         * Inside each job, jMetal uses its own thread pool (evaluatorThreads). */
+                        val jobs = mutableListOf<Job>()
+                        if (runBest) jobs += launch(Dispatchers.Default.limitedParallelism(1)) { models[0].solve(bestParams, progressEvents) }
+                        if (runWorst) jobs += launch(Dispatchers.Default.limitedParallelism(1)) { models[1].solve(worstParams, progressEvents) }
+                        if (runAverage) jobs += launch(Dispatchers.Default.limitedParallelism(1)) { models[2].solve(averageParams, progressEvents) }
+
                         jobs.joinAll()
-                        progress.close()
-                        printer.join()
+                        progressEvents.close()
+                        printerJob.join()
                     }
                 }
             }
+
 
             /* ---- Collect result paths and aggregate/info for TARGET_ALL ---- */
             aggregatedDataResultPaths.add(view.getAggregatedDataFilePath(models[0], isTargetAll = true))
@@ -344,20 +440,20 @@ class DatasetController(
 
         } else {
             /* ---------------- Single target ---------------- */
-            val estPerTargetEvents = (models[0].numberOfTopics / 3) + 64
-            val cap = estPerTargetEvents.coerceAtLeast(64)
-            val progress: Channel<ProgressEvent> = Channel(cap)
+            val estimatedEvents = (models[0].numberOfTopics / 3) + 64
+            val channelCapacity = estimatedEvents.coerceAtLeast(64)
+            val progressEvents: Channel<ProgressEvent> = Channel(channelCapacity)
 
             if (parameters.deterministic) {
                 /* Sequential + seeded solve */
                 runBlocking {
                     supervisorScope {
-                        val printer = launch(Dispatchers.IO) {
-                            for (ev in progress) {
+                        val printerJob = launch(Dispatchers.IO) {
+                            for (event in progressEvents) {
                                 val model = models[0]
-                                when (ev) {
-                                    is CardinalityResult -> view.appendCardinality(model, ev)
-                                    is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
+                                when (event) {
+                                    is CardinalityResult -> view.appendCardinality(model, event)
+                                    is TopKReplaceBatch -> view.replaceTopBatch(model, event.blocks)
                                     is RunCompleted -> view.closeStreams(model)
                                 }
                             }
@@ -365,33 +461,39 @@ class DatasetController(
 
                         val label = parameters.targetToAchieve.uppercase(Locale.ROOT)
                         RandomBridge.withSeed(RandomBridge.childSeed(label)) {
-                            models[0].solve(parameters, progress)
+                            models[0].solve(parameters, progressEvents)
                         }
 
-                        progress.close()
-                        printer.join()
+                        progressEvents.close()
+                        printerJob.join()
                     }
                 }
 
             } else {
-                /* Keep coroutine structure for symmetry. */
+                /* Non-deterministic single target:
+                 * If caller didn’t set evaluatorThreads, give the run all cores explicitly. */
+                val tunedParams =
+                    if (parameters.evaluatorThreads > 0) parameters
+                    else parameters.copy(evaluatorThreads = Runtime.getRuntime().availableProcessors().coerceAtLeast(2))
+
                 runBlocking {
                     supervisorScope {
-                        val printer = launch(Dispatchers.IO) {
-                            for (ev in progress) {
+                        val printerJob = launch(Dispatchers.IO) {
+                            for (event in progressEvents) {
                                 val model = models[0]
-                                when (ev) {
-                                    is CardinalityResult -> view.appendCardinality(model, ev)
-                                    is TopKReplaceBatch -> view.replaceTopBatch(model, ev.blocks)
+                                when (event) {
+                                    is CardinalityResult -> view.appendCardinality(model, event)
+                                    is TopKReplaceBatch -> view.replaceTopBatch(model, event.blocks)
                                     is RunCompleted -> view.closeStreams(model)
                                 }
                             }
                         }
 
-                        val job = launch(Dispatchers.Default) { models[0].solve(parameters, progress) }
+                        /* One coroutine worker; evaluator pool handles parallel work. */
+                        val job = launch(Dispatchers.Default.limitedParallelism(1)) { models[0].solve(tunedParams, progressEvents) }
                         job.join()
-                        progress.close()
-                        printer.join()
+                        progressEvents.close()
+                        printerJob.join()
                     }
                 }
             }
@@ -439,6 +541,7 @@ class DatasetController(
         logger.info("Data aggregation completed.")
         logger.info("Problem resolution completed.")
     }
+
 
     /* ------------------------ Aggregation and info ------------------------ */
 
@@ -555,61 +658,84 @@ class DatasetController(
     }
 
     /**
-     * Build the **Info** table listing execution parameters and times for each model.
+     * Build the **Info** table listing execution parameters and timing for each model.
      *
-     * Columns:
-     * `"Dataset Name","Number of Systems","Number of Topics","Correlation Method",
-     * "Target to Achieve","Number of Iterations","Population Size","Number of Repetitions","Computing Time"`
+     * Columns (multicore-aware):
+     * "Dataset Name","Number of Systems","Number of Topics","Correlation Method",
+     * "Target to Achieve","Number of Iterations","Population Size","Number of Repetitions",
+     * "Evaluator Threads (effective)","Parallel Evaluator","CPU Logical Cores",
+     * "Computing Time (ms)"
      *
-     * @param models The models to summarize.
+     * Notes:
+     * - "Evaluator Threads (effective)" reflects the **actual** threads used per model (`model.evaluatorThreadsUsed`).
+     * - "Parallel Evaluator" is "YES" iff `evaluatorThreadsUsed > 1`, else "NO".
+     * - "Computing Time (ms)" is the wall-clock runtime captured by each model.
+     *
+     * @param models The models to summarize (one row per model).
      * @return Rows including header (first row).
      */
     private fun info(models: List<DatasetModel>): List<Array<String>> {
-        val header = mutableListOf<String>()
-        val aggregatedData = mutableListOf<Array<String>>()
-        var executionParameters: MutableList<String>
+        val cpuLogicalCores: Int = Runtime.getRuntime().availableProcessors()
 
-        header.add("Dataset Name")
-        header.add("Number of Systems")
-        header.add("Number of Topics")
-        header.add("Correlation Method")
-        header.add("Target to Achieve")
-        header.add("Number of Iterations")
-        header.add("Population Size")
-        header.add("Number of Repetitions")
-        header.add("Computing Time")
-        aggregatedData.add(header.toTypedArray())
+        val header = arrayOf(
+            "Dataset Name",
+            "Number of Systems",
+            "Number of Topics",
+            "Correlation Method",
+            "Target to Achieve",
+            "Number of Iterations",
+            "Population Size",
+            "Number of Repetitions",
+            "Evaluator Threads (effective)",
+            "Parallel Evaluator",
+            "CPU Logical Cores",
+            "Computing Time (ms)"
+        )
+
+        val rows = ArrayList<Array<String>>(models.size + 1)
+        rows += header
 
         models.forEach { model ->
-            executionParameters = mutableListOf()
-            executionParameters.plusAssign(model.datasetName)
-            executionParameters.plusAssign(model.numberOfSystems.toString())
-            executionParameters.plusAssign(model.numberOfTopics.toString())
-            executionParameters.plusAssign(model.correlationMethod)
-            executionParameters.plusAssign(model.targetToAchieve)
-            executionParameters.plusAssign(model.numberOfIterations.toString())
-            executionParameters.plusAssign(model.populationSize.toString())
-            executionParameters.plusAssign(model.numberOfRepetitions.toString())
-            executionParameters.plusAssign(model.computingTime.toString())
-            aggregatedData.add(executionParameters.toTypedArray())
+            val effectiveThreads = model.evaluatorThreadsUsed.coerceAtLeast(1)
+            val isParallel = if (effectiveThreads > 1) "YES" else "NO"
+            val row = arrayOf(
+                model.datasetName,
+                model.numberOfSystems.toString(),
+                model.numberOfTopics.toString(),
+                model.correlationMethod,
+                model.targetToAchieve,
+                model.numberOfIterations.toString(),
+                model.populationSize.toString(),
+                model.numberOfRepetitions.toString(),
+                effectiveThreads.toString(),
+                isParallel,
+                cpuLogicalCores.toString(),
+                model.computingTime.toString()
+            )
+            rows += row
         }
-        return aggregatedData
+        return rows
     }
+
 
     /**
      * Merge results from multiple executions (ex1..exN) into **merged** CSV/Parquet artifacts:
      *
-     * - Aggregated (pick best-of/best and worst-of/worst across executions per K).
-     * - FUN/VAR per target (select execution with best/worst aggregated correlations for each K).
+     * - Aggregated (pick best-of/best and worst-of/worst per K, same logic as before).
+     * - FUN/VAR per target (take the execution that produced the chosen aggregated value).
      * - TOP per target (copy rows matching the chosen execution per K).
-     * - Info (sum computing times).
+     * - Info (sum "Computing Time (ms)" per target; keep other fields from the first occurrence).
+     *
+     * The method is **schema-aware** for INFO: it locates the "Computing Time (ms)"
+     * column by header name (falls back to the last column if not found) so older
+     * runs still merge correctly. It also reads the "Target to Achieve" column to sum
+     * per-target time across executions when merging `ALL`.
      *
      * Also **cleans** the original per-execution CSV/Parquet files after writing merged outputs.
      *
      * @param numberOfExecutions Number of executions to merge (prefix of collected path lists).
      */
     fun merge(numberOfExecutions: Int) {
-
         logger.info("Starting to merge results of $numberOfExecutions executions.")
 
         /* ----------------- tiny helpers ----------------- */
@@ -639,7 +765,7 @@ class DatasetController(
         fun minDataLen(tables: List<List<Array<String>>>): Int =
             tables.minOfOrNull { (if (it.isNotEmpty()) it.size - 1 else 0) } ?: 0
 
-        fun safeDouble(s: String): Double? = runCatching { s.trim().toDouble() }.getOrNull()
+        fun parseDoubleOrNull(s: String): Double? = runCatching { s.trim().toDouble() }.getOrNull()
 
         /* ----------------- 1) aggregated tables ----------------- */
 
@@ -658,11 +784,14 @@ class DatasetController(
 
         val aggregatedHeader = headerOrEmpty(aggregatedTables.first())
         val aggregatedDataRowsPerExec = aggregatedTables.map { dataRows(it) }
-
         val alignedCardinalityCount = minDataLen(aggregatedTables)
 
         val loggingFactor = maxOf(1, (alignedCardinalityCount * Constants.LOGGING_FACTOR) / 100)
         var progressCounter = 0
+
+        /* Identify mask column indices (if present). */
+        val idxBestTopics = aggregatedHeader.indexOf("BestTopicsB64").takeIf { it >= 0 }
+        val idxWorstTopics = aggregatedHeader.indexOf("WorstTopicsB64").takeIf { it >= 0 }
 
         /* ----------------- 2) per-target per-exec (FUN/VAR/TOP) ----------------- */
 
@@ -694,15 +823,29 @@ class DatasetController(
                     varPaths += variableValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_BEST) }
                     topPaths += topSolutionsResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_BEST) }
                 }
+
                 Constants.TARGET_WORST -> {
                     funPaths += functionValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_WORST) }
                     varPaths += variableValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_WORST) }
                     topPaths += topSolutionsResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_WORST) }
                 }
+
                 Constants.TARGET_AVERAGE -> {
                     funPaths += functionValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_AVERAGE) }
                     varPaths += variableValuesResultPaths.filter { it.contains("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}") && it.contains(Constants.TARGET_AVERAGE) }
                 }
+            }
+
+            fun <T> transposeToLinked(rowsPerExec: List<List<T>>): LinkedList<LinkedList<T>> {
+                val h = LinkedList<LinkedList<T>>()
+                if (rowsPerExec.isEmpty()) return h
+                val minLen = rowsPerExec.minOf { it.size }
+                repeat(minLen) { idx ->
+                    val col = LinkedList<T>()
+                    rowsPerExec.forEach { execRows -> col += execRows[idx] }
+                    h += col
+                }
+                return h
             }
 
             val funTables: List<List<String>> = execSlicePaths(funPaths, numberOfExecutions, "FUN")
@@ -719,29 +862,19 @@ class DatasetController(
                         .map { readAllLines(it).drop(1) } /* drop header */
                 else emptyList()
 
-            fun <T> transposeToLinked(rowsPerExec: List<List<T>>): LinkedList<LinkedList<T>> {
-                val h = LinkedList<LinkedList<T>>()
-                if (rowsPerExec.isEmpty()) return h
-                val minLen = rowsPerExec.minOf { it.size }
-                repeat(minLen) { idx ->
-                    val col = LinkedList<T>()
-                    rowsPerExec.forEach { execRows -> col += execRows[idx] }
-                    h += col
-                }
-                return h
-            }
-
             when (model.targetToAchieve) {
                 Constants.TARGET_BEST -> {
                     bestFunctionValues = transposeToLinked(funTables)
                     bestVariableValues = transposeToLinked(varTables)
                     bestTopSolutions = transposeToLinked(topTables)
                 }
+
                 Constants.TARGET_WORST -> {
                     worstFunctionValues = transposeToLinked(funTables)
                     worstVariableValues = transposeToLinked(varTables)
                     worstTopSolutions = transposeToLinked(topTables)
                 }
+
                 Constants.TARGET_AVERAGE -> {
                     averageFunctionValues = transposeToLinked(funTables)
                     averageVariableValues = transposeToLinked(varTables)
@@ -782,40 +915,44 @@ class DatasetController(
 
             val cardinalityToken = rowsAtI.first()[0]
 
-            var bestAggCorr = Double.NEGATIVE_INFINITY
+            var bestCorr = Double.NEGATIVE_INFINITY
             var bestExecIdx = -1
-            var worstAggCorr = Double.POSITIVE_INFINITY
+            var worstCorr = Double.POSITIVE_INFINITY
             var worstExecIdx = -1
 
             rowsAtI.forEachIndexed { execIdx, row ->
                 when (targetToAchieve) {
                     Constants.TARGET_ALL -> {
-                        safeDouble(row.getOrNull(1) ?: "")?.let {
-                            if (it > bestAggCorr) {
-                                bestAggCorr = it; bestExecIdx = execIdx
+                        parseDoubleOrNull(row.getOrNull(1) ?: "")?.let {
+                            if (it > bestCorr) {
+                                bestCorr = it; bestExecIdx = execIdx
                             }
                         }
-                        safeDouble(row.getOrNull(2) ?: "")?.let {
-                            if (it < worstAggCorr) {
-                                worstAggCorr = it; worstExecIdx = execIdx
+                        parseDoubleOrNull(row.getOrNull(2) ?: "")?.let {
+                            if (it < worstCorr) {
+                                worstCorr = it; worstExecIdx = execIdx
                             }
                         }
                     }
+
                     Constants.TARGET_BEST -> {
-                        safeDouble(row.getOrNull(1) ?: "")?.let {
-                            if (it > bestAggCorr) {
-                                bestAggCorr = it; bestExecIdx = execIdx
+                        parseDoubleOrNull(row.getOrNull(1) ?: "")?.let {
+                            if (it > bestCorr) {
+                                bestCorr = it; bestExecIdx = execIdx
                             }
                         }
                     }
+
                     Constants.TARGET_WORST -> {
-                        safeDouble(row.getOrNull(1) ?: "")?.let {
-                            if (it < worstAggCorr) {
-                                worstAggCorr = it; worstExecIdx = execIdx
+                        parseDoubleOrNull(row.getOrNull(1) ?: "")?.let {
+                            if (it < worstCorr) {
+                                worstCorr = it; worstExecIdx = execIdx
                             }
                         }
                     }
-                    Constants.TARGET_AVERAGE -> { /* copy as is */ }
+
+                    Constants.TARGET_AVERAGE -> { /* copy as is */
+                    }
                 }
             }
 
@@ -824,24 +961,40 @@ class DatasetController(
             out[0] = cardinalityToken
             when (targetToAchieve) {
                 Constants.TARGET_ALL -> {
-                    out[1] = if (bestExecIdx >= 0) bestAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
-                    out[2] = if (worstExecIdx >= 0) worstAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
+                    out[1] = if (bestExecIdx >= 0) bestCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
+                    out[2] = if (worstExecIdx >= 0) worstCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
                     for (col in 3 until template.size) out[col] = template[col]
+                    /* Masks come from the chosen exec row(s) */
+                    if (idxBestTopics != null && bestExecIdx >= 0) {
+                        out[idxBestTopics] = rowsAtI[bestExecIdx].getOrNull(idxBestTopics) ?: out[idxBestTopics]
+                    }
+                    if (idxWorstTopics != null && worstExecIdx >= 0) {
+                        out[idxWorstTopics] = rowsAtI[worstExecIdx].getOrNull(idxWorstTopics) ?: out[idxWorstTopics]
+                    }
                 }
+
                 Constants.TARGET_BEST -> {
-                    out[1] = if (bestExecIdx >= 0) bestAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
+                    out[1] = if (bestExecIdx >= 0) bestCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
                     for (col in 2 until template.size) out[col] = template[col]
+                    if (idxBestTopics != null && bestExecIdx >= 0) {
+                        out[idxBestTopics] = rowsAtI[bestExecIdx].getOrNull(idxBestTopics) ?: out[idxBestTopics]
+                    }
                 }
+
                 Constants.TARGET_WORST -> {
-                    out[1] = if (worstExecIdx >= 0) worstAggCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
+                    out[1] = if (worstExecIdx >= 0) worstCorr.toString() else Constants.CARDINALITY_NOT_AVAILABLE
                     for (col in 2 until template.size) out[col] = template[col]
+                    if (idxWorstTopics != null && worstExecIdx >= 0) {
+                        out[idxWorstTopics] = rowsAtI[worstExecIdx].getOrNull(idxWorstTopics) ?: out[idxWorstTopics]
+                    }
                 }
+
                 Constants.TARGET_AVERAGE -> {
                     val src = rowsAtI.first()
                     for (col in src.indices) out[col] = src[col]
                 }
             }
-            mergedAggregatedData += out
+            mergedAggregatedData.add(out)
 
             /* Stash per-target selections (FUN/VAR/TOP) with null/size guards */
             if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_BEST) {
@@ -896,75 +1049,120 @@ class DatasetController(
 
         logger.info("Results merged for cardinality: $alignedCardinalityCount/$alignedCardinalityCount (100%) for $numberOfExecutions total executions.")
 
-        /* ----------------- 4) merge Info ----------------- */
+        /* ----------------- 4) merge Info (schema-aware on the time/target columns) ----------------- */
 
         logger.info("Loading info for all executions.")
         logger.info("Info paths:")
         infoResultPaths.take(numberOfExecutions).forEach { logger.info("\"$it\"") }
-        val infoTables: List<List<String>> = infoResultPaths.take(numberOfExecutions).map { readAllLines(it) }
+        val infoTables: List<List<Array<String>>> =
+            infoResultPaths.take(numberOfExecutions).map { readAllCsvRows(it) }
 
-        val mergedInfo = LinkedList<String>()
-        val infoHeader = infoTables.firstOrNull()?.firstOrNull()
-            ?: "Dataset Name,Number of Systems,Number of Topics,Correlation Method,Target to Achieve,Number of Iterations,Population Size,Number of Repetitions,Computing Time"
-        mergedInfo += infoHeader
+        /* Find header; provide a fallback header if missing. */
+        val defaultInfoHeader = arrayOf(
+            "Dataset Name", "Number of Systems", "Number of Topics", "Correlation Method", "Target to Achieve",
+            "Number of Iterations", "Population Size", "Number of Repetitions",
+            "Evaluator Threads (effective)", "Parallel Evaluator", "CPU Logical Cores",
+            "Computing Time (ms)"
+        )
+        val infoHeader = infoTables.firstOrNull()?.firstOrNull() ?: defaultInfoHeader
 
-        fun sumTimes(lines: List<String>): Int =
-            lines.drop(1).sumOf { ln ->
-                ln.substringAfterLast(',').replace("\"", "").trim().toIntOrNull() ?: 0
-            }
+        fun findTimeColumnIndex(header: Array<String>): Int {
+            val exact = header.indexOfFirst { it.trim().equals("Computing Time (ms)", ignoreCase = true) }
+            if (exact >= 0) return exact
+            val contains = header.indexOfFirst { it.trim().lowercase(Locale.ROOT).contains("computing time") }
+            return if (contains >= 0) contains else header.lastIndex.coerceAtLeast(0)
+        }
 
-        when (targetToAchieve) {
-            Constants.TARGET_ALL -> {
-                val bestLines = infoTables.getOrNull(0) ?: emptyList()
-                val worstLines = infoTables.getOrNull(1) ?: emptyList()
-                val avgLines = infoTables.getOrNull(2) ?: emptyList()
+        fun findTargetColumnIndex(header: Array<String>): Int {
+            val exact = header.indexOfFirst { it.trim().equals("Target to Achieve", ignoreCase = true) }
+            return if (exact >= 0) exact else 4.coerceIn(0, header.lastIndex) /* best-effort */
+        }
 
-                fun mergeInfoRow(src: String, total: Int): String {
-                    val parts = src.split(',').toMutableList()
-                    if (parts.isNotEmpty()) parts[parts.lastIndex] = total.toString()
-                    return parts.joinToString(",")
+        val timeColIndexGlobal = findTimeColumnIndex(infoHeader)
+        val targetColIndexGlobal = findTargetColumnIndex(infoHeader)
+
+        val mergedInfoLines = LinkedList<Array<String>>().apply { add(infoHeader) }
+
+        if (targetToAchieve == Constants.TARGET_ALL) {
+            /* Sum times per target across executions; keep a template row per target from the first occurrence. */
+            val sumByTarget = mutableMapOf(
+                Constants.TARGET_BEST to 0L,
+                Constants.TARGET_WORST to 0L,
+                Constants.TARGET_AVERAGE to 0L
+            )
+            val templateRowByTarget = mutableMapOf<String, Array<String>>()
+
+            infoTables.forEach { table ->
+                if (table.isEmpty()) return@forEach
+                val hdr = table.first()
+                val timeIdx = findTimeColumnIndex(hdr)
+                val tgtIdx = findTargetColumnIndex(hdr)
+                table.drop(1).forEach { row ->
+                    val tgt = row.getOrNull(tgtIdx)?.trim() ?: return@forEach
+                    val ms = row.getOrNull(timeIdx)?.replace("\"", "")?.trim()?.toLongOrNull() ?: 0L
+                    if (tgt in sumByTarget) {
+                        sumByTarget[tgt] = (sumByTarget[tgt] ?: 0L) + ms
+                        templateRowByTarget.putIfAbsent(tgt, row.copyOf())
+                    }
                 }
-
-                if (bestLines.size > 1) mergedInfo += mergeInfoRow(bestLines[1], sumTimes(bestLines))
-                if (worstLines.size > 1) mergedInfo += mergeInfoRow(worstLines[1], sumTimes(worstLines))
-                if (avgLines.size > 1) mergedInfo += mergeInfoRow(avgLines[1], sumTimes(avgLines))
             }
-            else -> {
-                val lines = infoTables.firstOrNull() ?: emptyList()
-                if (lines.size > 1) {
-                    val total = sumTimes(lines)
-                    val mergedRow = lines[1].split(',').toMutableList().also {
-                        if (it.isNotEmpty()) it[it.lastIndex] = total.toString()
-                    }.joinToString(",")
-                    mergedInfo += mergedRow
+
+            fun rewrite(row: Array<String>?, total: Long): Array<String>? =
+                row?.copyOf()?.also { if (it.isNotEmpty()) it[timeColIndexGlobal] = total.toString() }
+
+            listOf(Constants.TARGET_BEST, Constants.TARGET_WORST, Constants.TARGET_AVERAGE).forEach { tgt ->
+                val tpl = templateRowByTarget[tgt]
+                val total = sumByTarget[tgt] ?: 0L
+                rewrite(tpl, total)?.let { mergedInfoLines += it }
+            }
+        } else {
+            /* Single-target merge: sum the time across executions */
+            val totalTime = infoTables.sumOf { table ->
+                if (table.size <= 1) 0L
+                else {
+                    val hdr = table.first()
+                    val timeIdx = findTimeColumnIndex(hdr)
+                    table.drop(1).sumOf { r -> r.getOrNull(timeIdx)?.replace("\"", "")?.trim()?.toLongOrNull() ?: 0L }
                 }
             }
+            val firstRow = infoTables.firstOrNull()?.getOrNull(1) ?: emptyArray()
+            /* Build a NON-NULL copy padded to fit the time column; avoid copyOf(newSize) which yields Array<String?> */
+            val targetSize = maxOf(
+                firstRow.size,
+                infoHeader.size,
+                timeColIndexGlobal + 1  /* ensure we can write the time cell */
+            )
+            val rewritten: Array<String> = Array(targetSize) { "" }
+            /* fast copy of existing cells (all non-null) */
+            System.arraycopy(firstRow, 0, rewritten, 0, firstRow.size)
+            /* write merged time */
+            rewritten[timeColIndexGlobal] = totalTime.toString()
+
+            mergedInfoLines.add(rewritten)
+
         }
 
         /* ----------------- 5) write merged CSV + Parquet ----------------- */
 
-        val isAll = (targetToAchieve == Constants.TARGET_ALL)
+        val isAllTargets = (targetToAchieve == Constants.TARGET_ALL)
 
         /* Aggregated */
-        val mergedAggCsv = view.getAggregatedDataMergedFilePath(models[0], isTargetAll = isAll)
+        val mergedAggCsv = view.getAggregatedDataMergedFilePath(models[0], isTargetAll = isAllTargets)
         view.writeCsv(mergedAggregatedData, mergedAggCsv)
-        logger.info("Merged aggregated data available at:")
-        logger.info("\"$mergedAggCsv\"")
+        logger.info("Merged aggregated data available at:\n\"$mergedAggCsv\"")
 
-        val mergedAggParquet = view.getAggregatedDataMergedParquetPath(models[0], isTargetAll = isAll)
+        val mergedAggParquet = view.getAggregatedDataMergedParquetPath(models[0], isTargetAll = isAllTargets)
         view.writeParquet(mergedAggregatedData, mergedAggParquet)
 
         /* Info */
-        val mergedInfoCsv = view.getInfoMergedFilePath(models[0], isTargetAll = isAll)
-        Files.newBufferedWriter(Paths.get(mergedInfoCsv)).use { w ->
-            mergedInfo.forEach { ln -> w.appendLine(ln) }
+        val mergedInfoCsv = view.getInfoMergedFilePath(models[0], isTargetAll = isAllTargets)
+        java.nio.file.Files.newBufferedWriter(java.nio.file.Paths.get(mergedInfoCsv)).use { w ->
+            mergedInfoLines.forEach { ln -> w.appendLine(ln.joinToString(",")) }
         }
-        logger.info("Merged info available at:")
-        logger.info("\"$mergedInfoCsv\"")
+        logger.info("Merged info available at:\n\"$mergedInfoCsv\"")
 
-        val mergedInfoParquet = view.getInfoMergedParquetPath(models[0], isTargetAll = isAll)
-        val infoRowsForParquet = mergedInfo.map { it.split(',').toTypedArray() }
-        view.writeParquet(infoRowsForParquet, mergedInfoParquet)
+        val mergedInfoParquet = view.getInfoMergedParquetPath(models[0], isTargetAll = isAllTargets)
+        view.writeParquet(mergedInfoLines.map { it.toList().toTypedArray() }, mergedInfoParquet)
 
         /* Per target: FUN / VAR / TOP -> write CSV as before + Parquet siblings. */
 
@@ -973,7 +1171,7 @@ class DatasetController(
 
             /* FUN CSV */
             val funMergedCsv = view.getFunctionValuesMergedFilePath(model)
-            Files.newBufferedWriter(Paths.get(funMergedCsv)).use { w ->
+            java.nio.file.Files.newBufferedWriter(java.nio.file.Paths.get(funMergedCsv)).use { w ->
                 val lines = when (model.targetToAchieve) {
                     Constants.TARGET_BEST -> mergedBestFunctionValues
                     Constants.TARGET_WORST -> mergedWorstFunctionValues
@@ -984,7 +1182,7 @@ class DatasetController(
 
             /* VAR CSV */
             val varMergedCsv = view.getVariableValuesMergedFilePath(model)
-            Files.newBufferedWriter(Paths.get(varMergedCsv)).use { w ->
+            java.nio.file.Files.newBufferedWriter(java.nio.file.Paths.get(varMergedCsv)).use { w ->
                 val lines = when (model.targetToAchieve) {
                     Constants.TARGET_BEST -> mergedBestVariableValues
                     Constants.TARGET_WORST -> mergedWorstVariableValues
@@ -996,7 +1194,7 @@ class DatasetController(
             /* TOP CSV (no AVERAGE) */
             if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
                 val topMergedCsv = view.getTopSolutionsMergedFilePath(model)
-                Files.newBufferedWriter(Paths.get(topMergedCsv)).use { w ->
+                java.nio.file.Files.newBufferedWriter(java.nio.file.Paths.get(topMergedCsv)).use { w ->
                     w.appendLine("Cardinality,Correlation,TopicsB64")
                     val lines = if (model.targetToAchieve == Constants.TARGET_BEST) mergedBestTopSolutions else mergedWorstTopSolutions
                     lines.forEach { ln -> w.appendLine(ln) }
@@ -1005,7 +1203,7 @@ class DatasetController(
 
             /* ---- Parquet ---- */
 
-            /* FUN Parquet (header: K,Correlation) */
+            /* FUN Parquet (header: K,Correlation) — robust split on comma **or** whitespace */
             run {
                 val funLines = when (model.targetToAchieve) {
                     Constants.TARGET_BEST -> mergedBestFunctionValues
@@ -1014,8 +1212,9 @@ class DatasetController(
                 }
                 val rows = ArrayList<Array<String>>(funLines.size + 1)
                 rows += arrayOf("K", "Correlation")
+                val split = Regex("[,\\s]+")
                 funLines.forEach { ln ->
-                    val parts = ln.trim().split(Regex("\\s+"))
+                    val parts = ln.trim().split(split)
                     val kTok = parts.getOrNull(0) ?: ""
                     val corrTok = parts.getOrNull(1) ?: ""
                     rows += arrayOf(kTok, corrTok)
@@ -1088,10 +1287,7 @@ class DatasetController(
         /* Build Parquet lists from the SNAPSHOTS (so we still have ex1/ex2) */
         fun mapCsvToParquet(path: String): String =
             path
-                .replace(
-                    "${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}",
-                    "${Constants.PATH_SEPARATOR}Parquet${Constants.PATH_SEPARATOR}"
-                )
+                .replace("${Constants.PATH_SEPARATOR}CSV${Constants.PATH_SEPARATOR}", "${Constants.PATH_SEPARATOR}Parquet${Constants.PATH_SEPARATOR}")
                 .replace(".csv", ".parquet")
 
         val aggParquetToClean = snapAggCsv.map(::mapCsvToParquet).toMutableList()
@@ -1110,8 +1306,8 @@ class DatasetController(
         logger.info("Cleaning of not merged Parquet results completed.")
 
         logger.info("Executions result merging completed.")
-
     }
+
 
     /**
      * Copy the per-execution and merged results produced by the last solve/merge
