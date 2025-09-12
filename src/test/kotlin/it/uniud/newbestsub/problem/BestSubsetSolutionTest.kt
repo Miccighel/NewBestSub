@@ -15,8 +15,8 @@ import kotlin.test.assertEquals
  * Covered behavior:
  * - Bit flip semantics via [BestSubsetSolution.setBitValue] and selection count consistency.
  * - Correct computation of total bit capacity ([BestSubsetSolution.totalNumberOfBits]) as the sum
- *   of per‑variable capacities ([BestSubsetSolution.numberOfBitsPerVariable]).
- * - Value‑semantics cloning via [BestSubsetSolution.copy].
+ *   of per-variable capacities ([BestSubsetSolution.numberOfBitsPerVariable]).
+ * - Value-semantics cloning via [BestSubsetSolution.copy].
  *
  * Test data:
  * - A deterministic fake AP table is created for `numberOfTopics + 1` systems to satisfy
@@ -25,9 +25,7 @@ import kotlin.test.assertEquals
 @DisplayName("BestSubsetSolution – core operations")
 class BestSubsetSolutionTest {
 
-    /* ----------------------------------------------------------------------------------------------------------------
-     * Test fixtures
-     * ---------------------------------------------------------------------------------------------------------------- */
+    /* Test fixtures */
 
     /** Problem instance used only for construction needs in the fixtures. */
     private lateinit var testProblem: BestSubsetProblem
@@ -63,7 +61,6 @@ class BestSubsetSolutionTest {
         for (systemIndex in 0 until numberOfSystems) {
             val apRow = Array(numberOfTopics) { 0.0 }
             for (topicIdx in 0 until numberOfTopics) {
-                // values in (0.01 .. 1.00], deterministic
                 apRow[topicIdx] = (1 + (100 - 1) * rng.nextDouble()) / 100.0
             }
             fakeAveragePrecisions["System $systemIndex"] = apRow
@@ -106,9 +103,7 @@ class BestSubsetSolutionTest {
         )
     }
 
-    /* ----------------------------------------------------------------------------------------------------------------
-     * Tests
-     * ---------------------------------------------------------------------------------------------------------------- */
+    /* Tests */
 
     /**
      * Verifies that toggling a bit with [BestSubsetSolution.setBitValue] both:
@@ -124,7 +119,6 @@ class BestSubsetSolutionTest {
         val oldMask = testSolution.retrieveTopicStatus()
         val wasSelected = oldMask[0]
 
-        // flip bit 0
         testSolution.setBitValue(0, !wasSelected)
 
         val newSelectedCount = testSolution.numberOfSelectedTopics
@@ -136,10 +130,8 @@ class BestSubsetSolutionTest {
                 "SelectedCount: $oldSelectedCount -> $newSelectedCount"
         )
 
-        // The bit must reflect the set value
         assertEquals(!wasSelected, isSelected, "bit 0 should be toggled")
 
-        // Count must increase by 1 on select, decrease by 1 on deselect
         val expectedDelta = if (!wasSelected) +1 else -1
         assertEquals(oldSelectedCount + expectedDelta, newSelectedCount, "selected topics count should be updated")
 
@@ -155,7 +147,6 @@ class BestSubsetSolutionTest {
     fun getTotalNumberOfBitsTest() {
         println("[BestSubsetSolutionTest getTotalNumberOfBits] - Test begins.")
 
-        // jMetal 6.x: capacity is reported via numberOfBitsPerVariable(); total is the sum
         val capacitySum = testSolution.numberOfBitsPerVariable().sum()
         val totalBits = testSolution.totalNumberOfBits()
 
@@ -167,8 +158,8 @@ class BestSubsetSolutionTest {
     }
 
     /**
-     * Checks that [BestSubsetSolution.copy] produces a value‑equal clone (reflexive and equal‑to‑original).
-     * jMetal’s [BinarySolution] equality is value‑based, so the cloned instance should compare equal.
+     * Checks that [BestSubsetSolution.copy] produces a value-equal clone (reflexive and equal-to-original).
+     * jMetal’s [BinarySolution] equality is value-based, so the cloned instance should compare equal.
      */
     @Test
     @DisplayName("copy produces an equal solution (value semantics)")
@@ -176,7 +167,6 @@ class BestSubsetSolutionTest {
         println("[BestSubsetSolutionTest copy] - Test begins.")
 
         val cloned = testSolution.copy()
-        // jMetal's BinarySolution implements equals with value semantics; ensure reflexivity and copy equality
         assertEquals(cloned, testSolution, "copy must be value-equal to the original")
         assertEquals(testSolution, testSolution, "solution must be equal to itself (sanity)")
 

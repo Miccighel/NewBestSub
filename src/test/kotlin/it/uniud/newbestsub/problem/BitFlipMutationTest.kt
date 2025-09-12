@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
  * Tests for the [BitFlipMutation] operator.
  *
  * Covered behavior:
- * - Mutation flips **exactly one bit** in the solution (Hamming distance = 1).
+ * - Mutation flips exactly one bit in the solution (Hamming distance = 1).
  * - The number of selected topics remains ≥ 1 after mutation (safety constraint).
  * - Cardinality changes by exactly ±1 relative to the pre-mutation state.
  * - Underlying bitset capacity is preserved and remains equal to `numberOfTopics`.
@@ -37,9 +37,7 @@ class BitFlipMutationTest {
     fun testExecute() {
         println("[BitFlipMutationTest execute] - Test begins.")
 
-        /* ----------------------------------------------------------------------------------------------------------------
-         * Arrange
-         * ---------------------------------------------------------------------------------------------------------------- */
+        /* Arrange */
         val numberOfTopics = 10
         val topicLabels = Array(numberOfTopics) { i -> "t$i" }
 
@@ -51,32 +49,26 @@ class BitFlipMutationTest {
             forcedCardinality = null
         )
 
-        /* Ensure the internal bitset has the right length (avoid length=1 defaults) */
+        /* Ensure the internal bitset has the right length (avoid length=1 defaults). */
         val emptyGenes = Array(numberOfTopics) { false }
         solution.variables()[0] = solution.createNewBitSet(numberOfTopics, emptyGenes)
 
-        /* Start from a known mask with at least two 1s so we can't drop to zero selections */
+        /* Start from a known mask with at least two 1s so we cannot drop to zero selections. */
         solution.setBitValue(0, true)
         solution.setBitValue(1, true)
 
-        val mutation = BitFlipMutation(probability = 1.0)  // force exactly one flip
+        val mutation = BitFlipMutation(probability = 1.0)  /* force exactly one flip */
 
         val beforeMask = solution.retrieveTopicStatus()
         val beforeSelectedCount = solution.numberOfSelectedTopics
 
-        /* ----------------------------------------------------------------------------------------------------------------
-         * Act
-         * ---------------------------------------------------------------------------------------------------------------- */
+        /* Act */
         mutation.execute(solution)
 
         val afterMask = solution.retrieveTopicStatus()
         val afterSelectedCount = solution.numberOfSelectedTopics
 
-        /* ----------------------------------------------------------------------------------------------------------------
-         * Assert
-         * ---------------------------------------------------------------------------------------------------------------- */
-
-        // Hamming distance between before/after should be exactly 1
+        /* Assert */
         val hammingDistance = beforeMask.indices.count { idx -> beforeMask[idx] != afterMask[idx] }
 
         println(
@@ -91,7 +83,6 @@ class BitFlipMutationTest {
             "Cardinality should change by exactly ±1"
         )
 
-        // Capacity must remain unchanged
         val capacitySum = solution.numberOfBitsPerVariable().sum()
         assertEquals(numberOfTopics, capacitySum, "Bitset capacity must remain equal to numberOfTopics")
 

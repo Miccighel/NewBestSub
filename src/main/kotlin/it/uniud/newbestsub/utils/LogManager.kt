@@ -1,8 +1,6 @@
 package it.uniud.newbestsub.utils
 
 import org.apache.logging.log4j.Level
-import org.apache.logging.log4j.LogManager
-import org.apache.logging.log4j.Logger
 import org.apache.logging.log4j.core.LoggerContext
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -15,19 +13,17 @@ import java.nio.file.StandardCopyOption
  * `baseLogFileName` (e.g., using `${sys:baseLogFileName}` in the `RollingFile` appender).
  *
  * Notes:
- * - This object’s name intentionally matches Log4j’s type name. Calls to Log4j's static helpers
- *   are fully qualified through imports (e.g., [LogManager.getContext]) and remain unambiguous.
- * - All path helpers ensure the `${Constants.NEWBESTSUB_PATH}/log/` directory exists.
+ * • This object’s name intentionally matches Log4j’s type name. Calls to Log4j's static helpers
+ *   are referenced with fully qualified names to avoid ambiguity.
+ * • All path helpers ensure the `${Constants.NEWBESTSUB_PATH}/log/` directory exists.
  */
 object LogManager {
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // Log directory & path helpers
-    // -----------------------------------------------------------------------------------------------------------------
-
     /**
-     * Ensures that the log directory exists under `NEWBESTSUB_PATH/log/` and returns its absolute path
+     * Ensure the log directory exists under `NEWBESTSUB_PATH/log/` and return its absolute path
      * with a trailing path separator.
+     *
+     * Idempotent: creating existing directories is a no-op.
      *
      * @return Absolute path to the log directory, ending with [Constants.PATH_SEPARATOR].
      */
@@ -38,19 +34,14 @@ object LogManager {
     }
 
     /**
-     * Returns the absolute path of the **bootstrap** log file used from program start,
+     * Absolute path of the bootstrap log file used from program start,
      * before parameters are known. Ensures the log directory exists.
      *
      * Filename pattern:
-     * ```
-     * <logDir>/<base><RUN_TIMESTAMP><suffix>
-     * ```
+     *   `<logDir>/<base><RUN_TIMESTAMP><suffix>`
      * where:
-     * - `base`  = [Constants.LOG_FILE_NAME]
-     * - `suffix` = [Constants.LOG_FILE_SUFFIX]
-     *
-     * @return Absolute path to the bootstrap log file.
-     * @see ensureLogDir
+     *   base   = [Constants.LOG_FILE_NAME]
+     *   suffix = [Constants.LOG_FILE_SUFFIX]
      */
     fun getBootstrapLogFilePath(): String {
         val directoryPath = ensureLogDir()
@@ -61,15 +52,12 @@ object LogManager {
     }
 
     /**
-     * Builds the absolute path of the **final parameterized** log file (no subfolder).
+     * Absolute path of the final parameterized log file (no subfolder).
      *
      * Filename pattern:
-     * ```
-     * <logDir>/<params-token>-time<RUN_TIMESTAMP>.log
-     * ```
+     *   `<logDir>/<params-token>-time<RUN_TIMESTAMP>.log`
      *
-     * @param paramsToken The token built from run parameters (see your filename builder utilities).
-     * @return Absolute path to the final parameterized log file.
+     * @param paramsToken Token built from run parameters (see filename builder utilities).
      */
     fun buildFinalLogFilePathFromParams(paramsToken: String): String {
         val directoryPath = ensureLogDir()
@@ -81,59 +69,52 @@ object LogManager {
             Constants.LOG_FILE_SUFFIX
     }
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // Log4j operations (mechanics)
-    // -----------------------------------------------------------------------------------------------------------------
-
     /**
-     * Switches the active Log4j2 file appender to write to [newAbsoluteBasePath].
+     * Switch the active Log4j2 file appender to write to [newAbsoluteBasePath].
      *
      * Preconditions:
-     * - Your Log4j2 configuration must reference the `baseLogFileName` system property
+     * • The Log4j2 configuration must reference the `baseLogFileName` system property
      *   (e.g., in the file appender `fileName`/`filePattern`).
      *
      * Steps:
-     * 1. Set `baseLogFileName` system property.
-     * 2. Reconfigure the current [LoggerContext].
+     * 1) Set `baseLogFileName` system property.
+     * 2) Reconfigure the current [LoggerContext].
      *
-     * @param newAbsoluteBasePath Absolute base path used by the file appender.
+     * Propagation:
+     * • Reconfiguration affects the whole JVM logging context.
      */
     fun switchActiveLogFile(newAbsoluteBasePath: String) {
         System.setProperty("baseLogFileName", newAbsoluteBasePath)
-        val loggerContext = LogManager.getContext(false) as LoggerContext
+        val loggerContext = org.apache.logging.log4j.LogManager.getContext(false) as LoggerContext
         loggerContext.reconfigure()
     }
 
     /**
-     * Updates the root logger level and refreshes all loggers in the current context.
+     * Update the root logger level and refresh all loggers in the current context.
      *
-     * This does **not** change the output file; use [switchActiveLogFile] for path changes.
+     * This does not change the output file; use [switchActiveLogFile] for path changes.
      *
      * @param level New root [Level].
-     * @return The refreshed root [Logger].
+     * @return The refreshed root logger.
      */
-    fun updateRootLoggerLevel(level: Level): Logger {
-        val loggerContext = LogManager.getContext(false) as LoggerContext
+    fun updateRootLoggerLevel(level: Level): org.apache.logging.log4j.Logger {
+        val loggerContext = org.apache.logging.log4j.LogManager.getContext(false) as LoggerContext
         val configuration = loggerContext.configuration
-        val rootConfig = configuration.getLoggerConfig(LogManager.ROOT_LOGGER_NAME)
+        val rootConfig = configuration.getLoggerConfig(org.apache.logging.log4j.LogManager.ROOT_LOGGER_NAME)
         rootConfig.level = level
         loggerContext.updateLoggers()
-        return LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
+        return org.apache.logging.log4j.LogManager.getLogger(org.apache.logging.log4j.LogManager.ROOT_LOGGER_NAME)
     }
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // High-level workflow
-    // -----------------------------------------------------------------------------------------------------------------
-
     /**
-     * Promotes the bootstrap log to the final parameterized log:
+     * Promote the bootstrap log to the final parameterized log.
      *
      * Workflow:
-     * 1. Copy the bootstrap log to the final parameterized path (if the bootstrap exists),
-     *    otherwise ensure the destination file exists.
-     * 2. Switch Log4j2 to write to the new parameterized file (via [switchActiveLogFile]).
-     * 3. Optionally apply a new root level (via [updateRootLoggerLevel]).
-     * 4. Best-effort delete of the old bootstrap file (errors ignored).
+     * 1) If the bootstrap file exists, copy its contents to the final parameterized path;
+     *    otherwise, ensure the destination file exists so the appender can append to it.
+     * 2) Switch Log4j2 to write to the new parameterized file (via [switchActiveLogFile]).
+     * 3) Optionally apply a new root level (via [updateRootLoggerLevel]).
+     * 4) Best-effort delete of the old bootstrap file (errors ignored).
      *
      * Ordering minimizes the window where messages could land in the old file.
      *
@@ -149,29 +130,37 @@ object LogManager {
 
         Files.createDirectories(destinationPath.parent)
 
+        /*
+         * If a bootstrap log exists, copy its contents so the final file starts with all early messages.
+         * Otherwise, create an empty destination file to guarantee the appender has a valid target.
+         */
         if (Files.exists(sourcePath)) {
-            // Copy bootstrap contents to the final file
             Files.copy(sourcePath, destinationPath, StandardCopyOption.REPLACE_EXISTING)
         } else {
-            // Ensure destination exists so the appender can append
             if (!Files.exists(destinationPath)) {
                 Files.createFile(destinationPath)
             }
         }
 
-        // Switch Log4j to write to the final parameterized file
+        /*
+         * Atomically switch the active file in the Log4j2 context. After this point, all subsequent
+         * log events will be appended to the final parameterized file.
+         */
         switchActiveLogFile(destinationPath.toString())
 
-        // Apply requested level after reconfiguration (if any)
+        /* Apply the requested root level after the reconfiguration, if provided. */
         desiredRootLevel?.let { updateRootLoggerLevel(it) }
 
-        // Best-effort cleanup of the bootstrap file (ignore errors)
+        /*
+         * Clean up the bootstrap file. Any failure here is intentionally ignored to avoid
+         * disrupting the main execution flow due to log housekeeping.
+         */
         try {
             if (Files.exists(sourcePath)) {
                 Files.deleteIfExists(sourcePath)
             }
         } catch (_: Exception) {
-            // Intentionally ignored — logging must not fail due to clean up.
+            /* Ignored by design: logging must not fail due to clean-up. */
         }
     }
 }

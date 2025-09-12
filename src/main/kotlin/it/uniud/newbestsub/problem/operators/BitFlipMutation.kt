@@ -1,56 +1,61 @@
 package it.uniud.newbestsub.problem.operators
 
 import it.uniud.newbestsub.problem.BestSubsetSolution
-import org.apache.logging.log4j.LogManager
 import org.uma.jmetal.operator.mutation.MutationOperator
 import org.uma.jmetal.solution.binarysolution.BinarySolution
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
 /**
- * **BitFlipMutation (jMetal 6.x)** — flips a single random bit of the solution with a
- * per-candidate probability `p`.
+ * BitFlipMutation — single-bit variable-K mutation with repair.
  *
  * Behavior:
- * - Draw once per candidate; if the draw `< p`, select one random bit index and flip it.
- * - This operator **does not preserve cardinality K** (unlike [FixedKSwapMutation]).
- * - After mutation, incremental caches and swap flags in [BestSubsetSolution] are cleared.
+ * • With probability [probability], flip one random bit.
+ * • If this makes K == 0, flip a second random bit to ensure K ≥ 1.
+ * • Cardinality is not preserved (variable-K mutation).
  *
  * Determinism:
- * - All randomness goes through jMetal’s [JMetalRandom] singleton, so external seeding applies.
+ * All randomness uses jMetal's [JMetalRandom] singleton; set the seed upstream.
  *
- * @param probability Per-candidate mutation probability in `(0.0..1.0]`. If the random draw
- *   is `>= probability`, no mutation is applied.
+ * @param probability Per-candidate probability in (0.0, 1.0].
  */
 class BitFlipMutation(private var probability: Double) : MutationOperator<BinarySolution> {
 
-    private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
-
-    /** jMetal 6.x mutation API: returns the configured per‑candidate mutation probability. */
+    /** Returns the configured mutation probability. */
     override fun mutationProbability(): Double = probability
 
     /**
-     * Executes a single-bit flip on the candidate solution with probability [probability].
+     * Execute a bit-flip mutation with repair to avoid empty masks.
      *
-     * Implementation notes:
-     * - Assumes [candidate] is a [BestSubsetSolution] (cast is unchecked and will throw if not).
-     * - Chooses a random index in `[0, n)` and toggles the bit.
-     * - Resets incremental evaluation state and mutation flags, since this is **not** a fixed‑K swap.
-     *
-     * @param candidate input solution (expected: [BestSubsetSolution]).
-     * @return the same instance after potential mutation.
+     * @param candidate Input solution (expected: [BestSubsetSolution]).
+     * @return The same instance, possibly mutated.
      * @throws ClassCastException if [candidate] is not a [BestSubsetSolution].
      */
     override fun execute(candidate: BinarySolution): BinarySolution {
         val sol = candidate as BestSubsetSolution
+
+        /* Total number of bits in the mask (variable 0). */
         val n = sol.numberOfBitsPerVariable()[0]
+        if (n == 0) return sol
+
         val rng = JMetalRandom.getInstance()
 
-        if (n == 0 || rng.nextDouble() >= probability) return sol
+        /* Probability gate: if mutation does not trigger, clear flags and return. */
+        if (rng.nextDouble() >= probability) {
+            sol.clearLastMutationFlags()
+            return sol
+        }
 
-        val idx = rng.nextInt(0, n - 1)
+        /* First flip (variable-K). */
+        var idx = rng.nextInt(0, n - 1)
         sol.setBitValue(idx, !sol.retrieveTopicStatus()[idx])
 
-        // Not a fixed-K swap → clear delta-eval caches and flags.
+        /* Repair: ensure K ≥ 1 by flipping a second random bit if the mask became empty. */
+        if (sol.numberOfSelectedTopics == 0) {
+            idx = rng.nextInt(0, n - 1)
+            sol.setBitValue(idx, !sol.retrieveTopicStatus()[idx])
+        }
+
+        /* Not a fixed-K swap → reset incremental caches/flags so the evaluator recomputes safely. */
         sol.resetIncrementalEvaluationState()
         sol.clearLastMutationFlags()
 

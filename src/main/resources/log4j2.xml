@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Configuration status="WARN">
-    <Properties>
-        <!-- Ensure that baseLogFileName system property is set -->
-        <Property name="baseLogFileName">${sys:baseLogFileName}</Property>
-    </Properties>
-
+    <!-- Console + size-based rolling file. Paths come from sys:baseLogFileName set by LogManager. -->
     <Appenders>
-        <!-- Console Appender for Main Logs -->
         <Console name="Console-Main" target="SYSTEM_OUT">
-            <PatternLayout disableAnsi="false" pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.17C{1} %-12.12M] %style{%m%n}{FG_Cyan}"/>
+            <PatternLayout disableAnsi="false"
+                           pattern="%style{%-5.5p}{FG_Cyan} [%d{HH:mm:ss} %-8.8t %-17.17C{1} %-12.12M] %style{%m%n}{FG_Cyan}"/>
         </Console>
 
-        <!-- Rolling File Appender -->
-        <RollingFile name="Rolling" fileName="${baseLogFileName}" filePattern="${baseLogFileName}-%i.log" append="false">
+        <!-- append=true preserves the copied bootstrap contents after promote. -->
+        <!-- Rollover files: <base>.1, <base>.2, ... (no duplicate .log). -->
+        <RollingFile name="Rolling"
+                     fileName="${sys:baseLogFileName}"
+                     filePattern="${sys:baseLogFileName}.%i"
+                     append="true">
             <PatternLayout pattern="%-5.5p [%d{HH:mm:ss} %-8.8t %-17.-17C{1} %-12M] %m%n"/>
             <Policies>
                 <SizeBasedTriggeringPolicy size="20 MB"/>
@@ -22,11 +22,10 @@
     </Appenders>
 
     <Loggers>
-        <!-- Quiet some noisy libs (optional) -->
+        <!-- Trim noisy libraries without hiding warnings. -->
         <Logger name="org.apache.hadoop" level="WARN"/>
         <Logger name="org.apache.parquet" level="INFO"/>
 
-        <!-- Root Logger -->
         <Root level="debug" includeLocation="true">
             <AppenderRef ref="Console-Main"/>
             <AppenderRef ref="Rolling"/>

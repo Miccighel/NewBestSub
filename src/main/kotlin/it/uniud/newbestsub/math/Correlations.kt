@@ -1,49 +1,38 @@
-@file:Suppress("OPT_IN_USAGE")
-
 package it.uniud.newbestsub.math
 
 import it.uniud.newbestsub.utils.Constants
 import kotlin.math.sqrt
 import java.util.Arrays
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ForkJoinPool
 import jdk.incubator.vector.DoubleVector
 import jdk.incubator.vector.VectorOperators
 import java.lang.Double.compare as dcmp
 
 /**
- * **Correlations**
+ * Correlations
  *
- * Centralized implementation of correlation measures used in NewBestSub.
+ * Centralized implementations of Pearson and Kendall τ-b used in NewBestSub.
  *
- * Features:
- * - **Single source of truth** for both Pearson and Kendall τ-b.
- * - **Primitive DoubleArray implementations** (no boxing) for hot paths.
- * - **Boxed Array<Double> implementations** for legacy branches (e.g., Average mode).
- * - **Factory helpers** to select by method token ([Constants.CORRELATION_PEARSON], [Constants.CORRELATION_KENDALL]).
- * - **Fast paths from (SUMS, K)**: Pearson with aggregate-level scaling; Kendall τ-b uses SUMS directly.
+ * The code favors primitive DoubleArray paths for performance. It also exposes
+ * helpers that compute Pearson directly from per-system SUMS and a selected K,
+ * which avoids recomputing means during Average mode.
  *
- * Design notes:
- * - **Pearson** correlation keeps optimal **O(n)** time / **O(1)** memory; constants improved via:
- *   - **FMA** (fused-multiply-add) for (xx, yy, xy),
- *   - **loop unrolling ×4** in the scalar path,
- *   - **Vector API** path with runtime auto-dispatch (optional),
- *   - optional **parallel reduction** for huge arrays.
- * - **Kendall τ-b**:
- *   - **No ties**: τ-a == τ-b; implemented via inversion counting on ranks → **O(n log n)**.
- *   - **With ties**: **Knight (1966)** scheme: lexicographic (x,y) sort, inversion count on y, and tie terms
- *     **n1 (x ties)**, **n2 (y ties)**, **n3 (joint ties)** → **O(n log n)** total.
+ * For Pearson, an O(n) scalar path uses fused-multiply-add and loop unrolling.
+ * A JDK Vector API path is available when the module is present at runtime.
+ *
+ * For Kendall τ-b, the implementation runs in O(n log n). It uses a fast path
+ * without ties (τ-a via inversion counting on ranks) and a full Knight (1966)
+ * correction when ties are present. Per-thread scratch buffers avoid allocations.
  */
 object Correlations {
 
-    // ====================================================================================
-    // Runtime capability probe for Vector API (no hard dependency in hot paths)
-    // ====================================================================================
+    /**
+     * Lazy probe for the Vector API so that the class can load even when the
+     * incubator module is not available. The result is cached.
+     */
+    @Volatile
+    private var _vectorApiAvailable: Boolean? = null
 
-    /** Cache the probe result to avoid repeated reflective lookups. */
-    @Volatile private var _vectorApiAvailable: Boolean? = null
-
-    /** True only if `jdk.incubator.vector.DoubleVector` is loadable in this JVM. */
+    /** Returns true if jdk.incubator.vector.DoubleVector can be loaded. */
     private fun vectorApiAvailable(): Boolean {
         _vectorApiAvailable?.let { return it }
         val ok = try {
@@ -56,19 +45,36 @@ object Correlations {
         return ok
     }
 
-    /** Heuristic size where SIMD tends to win; keep constant to avoid touching DoubleVector here. */
+    /**
+     * Heuristic size where SIMD usually outperforms the tuned scalar loop.
+     * Kept as a constant to avoid touching DoubleVector during the check.
+     */
     private const val VECTOR_AUTO_MIN_N: Int = 2048
 
-    // ====================================================================================
-    // Pearson (primitive) - O(n) scalar with FMA + 4x unrolling
-    // ====================================================================================
+    /**
+     * Thread-local scratch for Kendall paths to avoid per-call allocations.
+     * Capacity grows geometrically when more space is needed.
+     */
+    private val tlsScratch: ThreadLocal<DoubleArray> =
+        ThreadLocal.withInitial { DoubleArray(1024) }
+
+    /** Ensures a scratch buffer with at least n elements and returns it. */
+    private fun ensureScratch(n: Int): DoubleArray {
+        var buf = tlsScratch.get()
+        if (buf.size < n) {
+            var cap = buf.size
+            while (cap < n) cap = cap shl 1
+            buf = DoubleArray(cap)
+            tlsScratch.set(buf)
+        }
+        return buf
+    }
 
     /**
-     * Pearson correlation (primitive) — **O(n)**, allocation-free.
+     * Pearson correlation on primitive arrays.
      *
-     * Optimizations:
-     * - 4× loop unrolling to reduce loop-carried dependencies.
-     * - **Math.fma** improves speed (when HW supports FMA) and accuracy.
+     * O(n) time, O(1) extra space. Uses 4x loop unrolling to increase ILP and
+     * Math.fma to improve accuracy and throughput on supported hardware.
      */
     fun fastPearsonPrimitive(left: DoubleArray, right: DoubleArray): Double {
         val n = left.size
@@ -79,7 +85,8 @@ object Correlations {
         var sumXY = 0.0
 
         var i = 0
-        val limit = n - (n and 3) // round down to multiple of 4
+        val limit = n - (n and 3)
+
         while (i < limit) {
             val x0 = left[i];     val y0 = right[i]
             val x1 = left[i + 1]; val y1 = right[i + 1]
@@ -96,6 +103,7 @@ object Correlations {
 
             i += 4
         }
+
         while (i < n) {
             val x = left[i]; val y = right[i]
             sumX += x; sumY += y
@@ -115,15 +123,10 @@ object Correlations {
         return if (denominator == 0.0) 0.0 else numerator / denominator
     }
 
-    // ====================================================================================
-    // Pearson (primitive) - Vector API (Java 22)
-    // ====================================================================================
-
     /**
-     * Pearson correlation using the **JDK Vector API** (Incubator).
-     * Still **O(n)**; processes lanes-at-a-time and then reduces.
-     *
-     * NOTE: Call this only when [vectorApiAvailable] is true.
+     * Pearson correlation using the JDK Vector API.
+     * Still O(n); processes a vector of lanes per step and reduces at the end.
+     * Call only when the incubator module is available.
      */
     fun fastPearsonPrimitiveVector(left: DoubleArray, right: DoubleArray): Double {
         val n = left.size
@@ -157,7 +160,6 @@ object Correlations {
         var sumYY = vSumYY.reduceLanes(VectorOperators.ADD)
         var sumXY = vSumXY.reduceLanes(VectorOperators.ADD)
 
-        // scalar tail
         while (i < n) {
             val x = left[i]; val y = right[i]
             sumX  += x
@@ -173,13 +175,14 @@ object Correlations {
         val denomX = nD * sumXX - sumX * sumX
         val denomY = nD * sumYY - sumY * sumY
         if (denomX <= 0.0 || denomY <= 0.0) return 0.0
+
         val denominator = sqrt(denomX * denomY)
         return if (denominator == 0.0) 0.0 else numerator / denominator
     }
 
     /**
-     * Chooses Vector API for large arrays; otherwise uses the tuned scalar (FMA + unroll).
-     * IMPORTANT: no direct reference to DoubleVector here to avoid NoClassDefFoundError.
+     * Chooses the Vector API for large inputs when the module is present, otherwise
+     * falls back to the tuned scalar path.
      */
     fun fastPearsonPrimitiveAuto(left: DoubleArray, right: DoubleArray): Double {
         return if (vectorApiAvailable() && left.size >= VECTOR_AUTO_MIN_N)
@@ -189,90 +192,10 @@ object Correlations {
     }
 
     /**
-     * Pearson with **parallel reduction**; still O(n) but split across cores.
-     * Use for *very large* inputs—overhead is non-trivial for moderate n.
-     */
-    fun fastPearsonPrimitiveParallel(
-        left: DoubleArray,
-        right: DoubleArray,
-        parallelism: Int = Runtime.getRuntime().availableProcessors(),
-        minChunk: Int = 1 shl 15 // 32768
-    ): Double {
-        val n = left.size
-        if (n == 0) return 0.0
-        val chunks = ((n + minChunk - 1) / minChunk).coerceAtMost(parallelism).coerceAtLeast(1)
-        if (chunks == 1) return fastPearsonPrimitiveAuto(left, right)
-
-        data class Partial(
-            var sumX: Double, var sumY: Double,
-            var sumXX: Double, var sumYY: Double, var sumXY: Double
-        )
-
-        fun reduceRange(lo: Int, hi: Int): Partial {
-            var sX = 0.0; var sY = 0.0; var sXX = 0.0; var sYY = 0.0; var sXY = 0.0
-            var i = lo
-            val limit = hi - ((hi - lo) and 3)
-            while (i < limit) {
-                val x0 = left[i];     val y0 = right[i]
-                val x1 = left[i + 1]; val y1 = right[i + 1]
-                val x2 = left[i + 2]; val y2 = right[i + 2]
-                val x3 = left[i + 3]; val y3 = right[i + 3]
-
-                sX += (x0 + x1) + (x2 + x3)
-                sY += (y0 + y1) + (y2 + y3)
-
-                sXX = Math.fma(x0, x0, sXX); sYY = Math.fma(y0, y0, sYY); sXY = Math.fma(x0, y0, sXY)
-                sXX = Math.fma(x1, x1, sXX); sYY = Math.fma(y1, y1, sYY); sXY = Math.fma(x1, y1, sXY)
-                sXX = Math.fma(x2, x2, sXX); sYY = Math.fma(y2, y2, sYY); sXY = Math.fma(x2, y2, sXY)
-                sXX = Math.fma(x3, x3, sXX); sYY = Math.fma(y3, y3, sYY); sXY = Math.fma(x3, y3, sXY)
-
-                i += 4
-            }
-            while (i < hi) {
-                val x = left[i]; val y = right[i]
-                sX += x; sY += y
-                sXX = Math.fma(x, x, sXX); sYY = Math.fma(y, y, sYY); sXY = Math.fma(x, y, sXY)
-                i++
-            }
-            return Partial(sX, sY, sXX, sYY, sXY)
-        }
-
-        val pool = ForkJoinPool.commonPool()
-        val step = (n + chunks - 1) / chunks
-        val futures = ArrayList<CompletableFuture<Partial>>(chunks)
-        var start = 0
-        repeat(chunks) {
-            val lo = start
-            val hi = minOf(start + step, n)
-            start = hi
-            futures += CompletableFuture.supplyAsync({ reduceRange(lo, hi) }, pool)
-        }
-
-        var sumX = 0.0; var sumY = 0.0; var sumXX = 0.0; var sumYY = 0.0; var sumXY = 0.0
-        for (f in futures) {
-            val p = f.join()
-            sumX += p.sumX; sumY += p.sumY
-            sumXX += p.sumXX; sumYY += p.sumYY; sumXY += p.sumXY
-        }
-
-        val nD = n.toDouble()
-        val numerator = nD * sumXY - sumX * sumY
-        val denomX = nD * sumXX - sumX * sumX
-        val denomY = nD * sumYY - sumY * sumY
-        if (denomX <= 0.0 || denomY <= 0.0) return 0.0
-        val denominator = sqrt(denomX * denomY)
-        return if (denominator == 0.0) 0.0 else numerator / denominator
-    }
-
-    // ====================================================================================
-    // Kendall τ-b (primitive) - O(n log n) with ties (Knight) + no-ties fast path
-    // ====================================================================================
-
-    /**
      * Kendall τ-b on primitive arrays.
      *
-     * - If both inputs have no ties, falls back to τ-a fast path in **O(n log n)**.
-     * - Otherwise uses **Knight's O(n log n)** method with full tie correction.
+     * If neither input contains ties, it falls back to τ-a via inversion counting
+     * on ranks. Otherwise it uses Knight's O(n log n) method with full tie terms.
      */
     fun kendallTauBPrimitive(x: DoubleArray, y: DoubleArray): Double {
         val n = x.size
@@ -281,7 +204,12 @@ object Correlations {
         return kendallTauBTiesFast(x, y)
     }
 
-    /** Exact tie check: O(n^2) scan for n<1024 (no alloc); copy+sort for larger n. */
+    /**
+     * Exact tie detection.
+     *
+     * For small n uses an O(n^2) scan that avoids allocations.
+     * For larger n copies into thread-local scratch, sorts, and scans.
+     */
     private fun hasTies(v: DoubleArray): Boolean {
         val n = v.size
         if (n < 1024) {
@@ -297,25 +225,33 @@ object Correlations {
             }
             return false
         } else {
-            val copy = v.copyOf()
-            Arrays.sort(copy)
+            val scratch = ensureScratch(n)
+            System.arraycopy(v, 0, scratch, 0, n)
+            Arrays.sort(scratch, 0, n)
             var i = 1
             while (i < n) {
-                if (copy[i] == copy[i - 1]) return true
+                if (scratch[i] == scratch[i - 1]) return true
                 i++
             }
             return false
         }
     }
 
-    /** No-ties Kendall (τ-a) via inversion counting on Y ranks after ordering by X. O(n log n). */
+    /**
+     * No-ties Kendall (τ-a).
+     *
+     * Steps:
+     * 1) Sort indices by x ascending.
+     * 2) Build y in that order and compute strict ranks in 1..n.
+     * 3) Count inversions on the ranks with a Fenwick tree.
+     */
     private fun kendallTauNoTies(x: DoubleArray, y: DoubleArray): Double {
         val n = x.size
         val indexByX = IntArray(n) { it }
-        sortIndicesBy(x, indexByX)  // sort indices by x (strictly increasing)
+        sortIndicesBy(x, indexByX)
 
         val yInXOrder = DoubleArray(n) { y[indexByX[it]] }
-        val strictRanks = rankStrict(yInXOrder) // ranks in [1..n]
+        val strictRanks = rankStrict(yInXOrder)
 
         val discordantPairs = countInversionsFenwick(strictRanks)
         val totalPairs = n.toLong() * (n - 1L) / 2L
@@ -324,18 +260,17 @@ object Correlations {
     }
 
     /**
-     * **Kendall τ-b with ties** — **O(n log n)** implementation (Knight 1966).
+     * Kendall τ-b with ties (Knight 1966).
      *
      * Steps:
-     * 1) Sort indices lexicographically by (x asc, y asc).
-     * 2) Let `yInXOrder` be `y` in that order. Count **discordant pairs D** as inversions in `yInXOrder`.
+     * 1) Sort indices by (x asc, y asc).
+     * 2) Build yInXOrder and count discordant pairs as inversions.
      * 3) Compute tie terms:
-     *    - `n0 = n*(n-1)/2` total pairs,
-     *    - `n1` = sum over x tie-runs of `t_x * (t_x - 1) / 2`,
-     *    - `n2` = sum over y tie-runs of `t_y * (t_y - 1) / 2`,
-     *    - `n3` = sum over joint (x,y) tie-runs of `t_xy * (t_xy - 1) / 2`.
-     *    Then **C + D = n0 - n1 - n2 + n3**.
-     * 4) τ-b = (C - D) / sqrt((n0 - n1) * (n0 - n2)).
+     *    n0 = n*(n-1)/2
+     *    n1 = sum over x tie-runs of t_x*(t_x-1)/2
+     *    n2 = sum over y tie-runs of t_y*(t_y-1)/2
+     *    n3 = sum over joint (x,y) tie-runs of t_xy*(t_xy-1)/2
+     * 4) C + D = n0 - n1 - n2 + n3 and τ-b = (C - D) / sqrt((n0 - n1)*(n0 - n2)).
      */
     private fun kendallTauBTiesFast(x: DoubleArray, y: DoubleArray): Double {
         val n = x.size
@@ -374,8 +309,9 @@ object Correlations {
             n3 += runLenXY * (runLenXY - 1L) / 2L
         }
 
-        val ySorted = y.copyOf()
-        Arrays.sort(ySorted)
+        val ySorted = ensureScratch(n)
+        System.arraycopy(y, 0, ySorted, 0, n)
+        Arrays.sort(ySorted, 0, n)
         var n2 = 0L
         run {
             var runLenY = 1L
@@ -404,11 +340,10 @@ object Correlations {
         return (concordantPairs - discordantPairs).toDouble() / denominator
     }
 
-    // ====================================================================================
-    // Sorting & rank utilities (primitive, allocation-conscious)
-    // ====================================================================================
-
-    /** Sorts `idx` by `values[idx[i]]` ascending; in-place quicksort on indices. */
+    /**
+     * Sorts idx so that values[idx[i]] is ascending.
+     * In-place quicksort over indices to avoid moving the data array.
+     */
     private fun sortIndicesBy(values: DoubleArray, idx: IntArray) {
         fun swap(i: Int, j: Int) { val t = idx[i]; idx[i] = idx[j]; idx[j] = t }
         fun quicksort(lo: Int, hi: Int) {
@@ -436,7 +371,10 @@ object Correlations {
         quicksort(0, idx.lastIndex)
     }
 
-    /** Sorts `idx` by (x asc, then y asc); in-place quicksort on indices. */
+    /**
+     * Sorts idx by (x asc, y asc).
+     * In-place quicksort over indices to avoid moving the data arrays.
+     */
     private fun sortIndicesByLex(x: DoubleArray, y: DoubleArray, idx: IntArray) {
         fun swap(i: Int, j: Int) { val t = idx[i]; idx[i] = idx[j]; idx[j] = t }
         fun less(iIndex: Int, pivotX: Double, pivotY: Double): Boolean {
@@ -473,7 +411,10 @@ object Correlations {
         quicksort(0, idx.lastIndex)
     }
 
-    /** Ranks for strictly increasing values (no ties), returns IntArray in [1..n]. */
+    /**
+     * Ranks for strictly increasing values (no ties).
+     * Returns an IntArray with ranks in the closed interval [1, n].
+     */
     private fun rankStrict(values: DoubleArray): IntArray {
         val n = values.size
         val idx = IntArray(n) { it }
@@ -489,11 +430,15 @@ object Correlations {
         return ranks
     }
 
-    /** Fenwick tree inversion count for ranks in [1..n]; counts strictly greater. */
+    /**
+     * Inversion count on ranks in [1, n] using a Fenwick tree.
+     * Counts strictly greater elements to the right.
+     */
     private fun countInversionsFenwick(ranks: IntArray): Long {
         val n = ranks.size
         val bit = LongArray(n + 1)
-        fun sum(i0: Int): Long {
+
+        fun prefixSum(i0: Int): Long {
             var i = i0
             var acc = 0L
             while (i > 0) { acc += bit[i]; i -= i and -i }
@@ -508,7 +453,7 @@ object Correlations {
         var i = n - 1
         while (i >= 0) {
             val r = ranks[i]
-            inversions += sum(r - 1)
+            inversions += prefixSum(r - 1)
             add(r, 1)
             i--
         }
@@ -516,13 +461,14 @@ object Correlations {
     }
 
     /**
-     * Merge-sort inversion count on a DoubleArray (strictly greater, i.e., left > right).
-     * Destructive on `values` (sorted on return). Uses a single scratch buffer.
+     * Merge-sort inversion count on a DoubleArray.
+     * Destructive on the input: the array is sorted on return.
+     * Uses a single thread-local scratch buffer.
      */
     private fun countInversionsByMerge(values: DoubleArray): Long {
         val n = values.size
         if (n <= 1) return 0L
-        val scratch = DoubleArray(n)
+        val scratch = ensureScratch(n)
 
         fun sort(lo: Int, hi: Int): Long {
             if (lo >= hi) return 0L
@@ -550,10 +496,9 @@ object Correlations {
         return sort(0, n - 1)
     }
 
-    // ====================================================================================
-    // Pearson (primitive) - fast path from SUMS and K (scalar + vector)
-    // ====================================================================================
-
+    /**
+     * Aggregates used to reuse Y-side terms across many Pearson evaluations from SUMS and K.
+     */
     data class CorrelationYStats(
         val y: DoubleArray,
         val n: Int,
@@ -562,7 +507,9 @@ object Correlations {
         val yDenTerm: Double
     )
 
-    /** Precompute Y-side aggregates to reuse across many Pearson evaluations. */
+    /**
+     * Precompute Y-side aggregates for Pearson so that repeated calls can reuse them.
+     */
     fun precomputeYStats(y: DoubleArray): CorrelationYStats {
         var sum = 0.0
         var sumYY = 0.0
@@ -579,7 +526,10 @@ object Correlations {
         return CorrelationYStats(y = y, n = n, ySum = sum, ySumYY = sumYY, yDenTerm = yDen)
     }
 
-    /** Scalar (FMA+unrolled) Pearson from system-level SUMS and K. */
+    /**
+     * Pearson from system-level SUMS and selected K.
+     * Computes correlation between per-system means of the chosen K topics and Y.
+     */
     fun fastPearsonFromSumsWithK(
         sumsBySystem: DoubleArray,
         kSelected: Int,
@@ -633,7 +583,10 @@ object Correlations {
         return if (denominator == 0.0) 0.0 else numerator / denominator
     }
 
-    /** Vectorized Pearson from SUMS and K (call only if [vectorApiAvailable] is true). */
+    /**
+     * Vectorized Pearson from SUMS and K.
+     * Requires the Vector API at runtime.
+     */
     fun fastPearsonFromSumsWithKVector(
         sumsBySystem: DoubleArray,
         kSelected: Int,
@@ -690,8 +643,8 @@ object Correlations {
     }
 
     /**
-     * Auto-dispatcher for SUMS+K: choose Vector API when it's likely to win.
-     * IMPORTANT: no direct reference to DoubleVector here to avoid NoClassDefFoundError.
+     * Auto-dispatcher for the SUMS+K variant. Chooses the vector path when the
+     * module is present and the input is large enough.
      */
     fun fastPearsonFromSumsWithKAuto(
         sumsBySystem: DoubleArray,
@@ -704,22 +657,26 @@ object Correlations {
             fastPearsonFromSumsWithK(sumsBySystem, kSelected, yStats)
     }
 
-    // ====================================================================================
-    // Factories
-    // ====================================================================================
-
+    /**
+     * Factory that returns a primitive correlation function by method token.
+     * Defaults to Pearson when the token is not Kendall.
+     */
     fun makePrimitiveCorrelation(method: String): (DoubleArray, DoubleArray) -> Double =
         when (method) {
             Constants.CORRELATION_KENDALL -> { a, b -> kendallTauBPrimitive(a, b) }
-            else /* Pearson default */     -> { a, b -> fastPearsonPrimitiveAuto(a, b) }
+            else -> { a, b -> fastPearsonPrimitiveAuto(a, b) }
         }
 
+    /**
+     * Factory that returns a correlation from SUMS and K given precomputed Y stats.
+     * Defaults to the Pearson path when the token is not Kendall.
+     */
     fun makeCorrelationFromSums(
         method: String,
         yStats: CorrelationYStats
     ): (DoubleArray, Int) -> Double =
         when (method) {
             Constants.CORRELATION_KENDALL -> { sums, _ -> kendallTauBPrimitive(sums, yStats.y) }
-            else /* Pearson default */     -> { sums, k -> fastPearsonFromSumsWithKAuto(sums, k, yStats) }
+            else -> { sums, k -> fastPearsonFromSumsWithKAuto(sums, k, yStats) }
         }
 }

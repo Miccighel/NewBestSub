@@ -4,7 +4,9 @@
             http://maven.apache.org/plugins/maven-assembly-plugin/assembly/3.1.0
             https://maven.apache.org/xsd/assembly-3.1.0.xsd">
   <id>test-jar-with-dependencies</id>
-  <formats><format>jar</format></formats>
+  <formats>
+    <format>jar</format>
+  </formats>
   <includeBaseDirectory>false</includeBaseDirectory>
 
   <dependencySets>
@@ -14,8 +16,9 @@
       <useTransitiveDependencies>true</useTransitiveDependencies>
       <unpack>true</unpack>
 
-      <!-- you’re including your own jar; this is what triggers the overwrite warnings -->
-      <useProjectArtifact>true</useProjectArtifact>
+      <!-- do not include the module’s own main artifact to avoid overwrite warnings -->
+      <useProjectArtifact>false</useProjectArtifact>
+      <!-- keep attached artifacts like the test-jar if you attach it via maven-jar-plugin:test-jar -->
       <useProjectAttachments>true</useProjectAttachments>
 
       <unpackOptions>

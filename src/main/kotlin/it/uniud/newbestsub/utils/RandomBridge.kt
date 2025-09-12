@@ -7,19 +7,18 @@ import java.util.SplittableRandom
 /**
  * Bridges a deterministic RNG to jMetal's [PseudoRandomGenerator] interface.
  *
- * This utility centralizes random generation so that experiments are reproducible under a
- * single master seed. It installs an adapter over [SplittableRandom] that implements exactly
- * the methods required by your jMetal variant.
+ * Centralizes random generation so experiments are reproducible under a single master seed.
+ * Installs a thin adapter over [SplittableRandom] that implements only the methods required
+ * by the jMetal interface in this project.
  *
  * Design notes:
- * - Installation is explicit: call [installDeterministic] once at startup to set the master seed.
- * - Use [childSeed] to derive stable seeds for labeled sub‑runs (for example "BEST", "WORST", "AVERAGE").
- * - Use [withSeed] to temporarily swap the jMetal RNG inside a sequential block and then restore it.
- * - The adapter intentionally does not override methods that your interface does not require.
+ * • Installation is explicit: call [installDeterministic] once at startup to set the master seed.
+ * • Use [childSeed] to derive stable seeds for labeled sub-runs (for example "BEST", "WORST", "AVERAGE").
+ * • Use [withSeed] to temporarily swap the jMetal RNG inside a sequential block and then restore it.
  *
  * Determinism:
- * - Determinism is guaranteed for the same JVM, jMetal version, adapter logic, and identical call order.
- * - Program-level sequential execution must be ensured by the caller when determinism is requested.
+ * • Guaranteed for the same JVM, jMetal version, adapter logic, and identical call order.
+ * • Program-level sequential execution must be ensured by the caller when determinism is requested.
  */
 object RandomBridge {
 
@@ -41,29 +40,28 @@ object RandomBridge {
      * Adapter from [SplittableRandom] to jMetal's [PseudoRandomGenerator].
      *
      * Implements exactly the methods required by the target interface:
-     * - [nextDouble]
-     * - [nextDouble] with bounds
-     * - [nextInt] with bounds
-     * - [setSeed]
-     * - [getSeed]
-     * - [getName]
+     * • [nextDouble]
+     * • [nextDouble] with bounds
+     * • [nextInt] with bounds
+     * • [setSeed]
+     * • [getSeed]
+     * • [getName]
      *
-     * The adapter does not implement other methods such as `nextInt()` or `nextLong()` without bounds,
-     * since they are not used by your jMetal interface.
+     * The adapter intentionally avoids implementing unused methods such as `nextInt()` or
+     * `nextLong()` without bounds to keep behavior surface minimal and stable.
      */
     private class SplittableAdapter(seed: Long) : PseudoRandomGenerator {
         private var currentSeed: Long = seed
         private var rng: SplittableRandom = SplittableRandom(currentSeed)
 
-        /** Returns a uniform double in [0.0, 1.0). */
+        /** Uniform double in [0.0, 1.0). */
         override fun nextDouble(): Double = rng.nextDouble()
 
         /**
-         * Returns a uniform double in [lowerBound, upperBound).
-         * If `upperBound <= lowerBound`, returns `lowerBound`.
+         * Uniform double in [lowerBound, upperBound).
          *
-         * @param lowerBound inclusive lower bound
-         * @param upperBound exclusive upper bound
+         * Edge cases:
+         * • If `upperBound <= lowerBound`, returns `lowerBound` to avoid exceptions and undefined widths.
          */
         override fun nextDouble(lowerBound: Double, upperBound: Double): Double {
             if (upperBound <= lowerBound) return lowerBound
@@ -71,11 +69,12 @@ object RandomBridge {
         }
 
         /**
-         * Returns a uniform int in [lowerBound, upperBound).
-         * If `upperBound <= lowerBound`, returns `lowerBound`.
+         * Uniform int in [lowerBound, upperBound).
          *
-         * @param lowerBound inclusive lower bound
-         * @param upperBound exclusive upper bound
+         * Edge cases:
+         * • If `upperBound <= lowerBound`, returns `lowerBound`.
+         * Implementation detail:
+         * • Uses `rng.nextInt(width)` with `width = upperBound - lowerBound` which is guaranteed ≥ 1 here.
          */
         override fun nextInt(lowerBound: Int, upperBound: Int): Int {
             if (upperBound <= lowerBound) return lowerBound
@@ -83,30 +82,35 @@ object RandomBridge {
             return lowerBound + rng.nextInt(width)
         }
 
-        /** Re-seeds the adapter with the given seed. */
+        /**
+         * Re-seeds the adapter.
+         *
+         * Contract:
+         * • Replacing the seed replaces the underlying [SplittableRandom] instance to ensure
+         *   the next draw begins from the new seed.
+         */
         override fun setSeed(seed: Long) {
             currentSeed = seed
             rng = SplittableRandom(currentSeed)
         }
 
-        /** Returns the current seed. */
+        /** Returns the current seed used by this adapter. */
         override fun getSeed(): Long = currentSeed
 
-        /** Returns a short diagnostic name including the current seed. */
+        /** Short diagnostic name useful in logs. */
         override fun getName(): String = "SplittableRandomAdapter(seed=$currentSeed)"
     }
 
     /**
      * Installs a deterministic RNG into jMetal under the provided master [seed].
      *
-     * This replaces [JMetalRandom.getInstance().randomGenerator] with a [SplittableAdapter]
-     * and marks this bridge as installed. Call once during program initialization when
-     * deterministic mode is required.
+     * Mechanics:
+     * • Replaces [JMetalRandom.getInstance().randomGenerator] with a [SplittableAdapter].
+     * • Marks this bridge as installed so callers can check [isInstalled].
      *
-     * Thread-safety: synchronized. The replacement itself is atomic, but determinism also
-     * requires sequential use of the RNG by the caller.
-     *
-     * @param seed master seed for the whole experiment run
+     * Thread-safety:
+     * • Synchronized to avoid races when multiple components initialize concurrently.
+     * • Determinism still requires sequential use of the RNG by the caller.
      */
     @Synchronized
     fun installDeterministic(seed: Long) {
@@ -117,16 +121,15 @@ object RandomBridge {
     }
 
     /**
-     * Derives a stable child seed from the installed master seed for a labeled sub‑run.
+     * Derives a stable child seed from the installed master seed for a labeled sub-run.
      *
-     * The derivation uses the label hash, the optional index, and a SplitMix64 finalizer
-     * with a golden‑ratio increment to decorrelate streams.
+     * Recipe:
+     * • Combine `masterSeed`, `label.hashCode()` and `index`.
+     * • Add a golden-ratio increment to spread seeds across the 64-bit space.
+     * • Finalize with SplitMix64 mixer for high-quality diffusion.
      *
-     * Determinism requires that [installDeterministic] has been called before.
-     *
-     * @param label semantic label for the child stream (for example "BEST")
-     * @param index optional index to obtain additional distinct seeds under the same label
-     * @return a 64‑bit seed suitable for initializing a new RNG
+     * Preconditions:
+     * • Deterministic mode should have been installed via [installDeterministic].
      */
     fun childSeed(label: String, index: Int = 0): Long {
         val h = label.hashCode().toLong()
@@ -138,12 +141,11 @@ object RandomBridge {
      * Temporarily replaces jMetal's RNG with one seeded by [seed] for the duration of [block],
      * then restores the previous generator.
      *
-     * Intended for short, sequential sections that require a specific seed without affecting
-     * the global stream. The previous generator is restored even if [block] throws.
+     * Use cases:
+     * • Short, deterministic sections that need an isolated stream without affecting the global RNG.
      *
-     * @param seed temporary seed to use inside [block]
-     * @param block code to execute under the temporary RNG
-     * @return the result of [block]
+     * Guarantees:
+     * • The previous generator is restored even if [block] throws.
      */
     fun <T> withSeed(seed: Long, block: () -> T): T {
         val jmr = JMetalRandom.getInstance()
@@ -157,23 +159,16 @@ object RandomBridge {
         }
     }
 
-    /**
-     * Indicates whether a deterministic RNG has been installed into jMetal via [installDeterministic].
-     *
-     * @return true if installed, false otherwise
-     */
+    /** True if a deterministic RNG has been installed into jMetal via [installDeterministic]. */
     fun isInstalled(): Boolean = installed
 
     /**
-     * SplitMix64 finalizer for 64‑bit mixing.
+     * SplitMix64 finalizer for 64-bit mixing.
      *
-     * Uses signed literals to avoid value out of range issues in Kotlin.
+     * Uses signed literals to avoid value out-of-range issues in Kotlin.
      * Constants:
-     * - `-0x40A7_B892_E31B_1A47L`
-     * - `-0x6B2F_B644_ECCE_EE15L`
-     *
-     * @param z0 input value to mix
-     * @return mixed 64‑bit output
+     * • `-0x40A7_B892_E31B_1A47L`
+     * • `-0x6B2F_B644_ECCE_EE15L`
      */
     private fun mix64(z0: Long): Long {
         var z = z0

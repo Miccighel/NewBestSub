@@ -12,37 +12,37 @@ import org.uma.jmetal.solution.binarysolution.BinarySolution
 import org.uma.jmetal.util.binarySet.BinarySet
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.LongAdder
-import kotlin.math.min
 
 /**
- * jMetal [BinaryProblem] for the **best subset selection** task.
+ * BestSubsetProblem
  *
- * Correlates, per-system:
- * - **X**: mean AP over the currently selected topics (subset means, built via incremental SUMS)
- * - **Y**: mean AP over the full topic set (precomputed once)
+ * Binary jMetal problem that evaluates topic subsets by correlating:
+ *  • X: mean AP over the selected topics, maintained incrementally as system-level SUMS.
+ *  • Y: full-set mean AP per system, precomputed once and reused.
  *
- * Correlation backends:
- * - Pearson (default): via SUMS+K path [correlationFromSums], internally vectorized when enabled
- * - Kendall τ-b: via [Correlations.kendallTauBPrimitive] (ordering invariant to positive scaling)
+ * Correlation backends
+ *  • Pearson via a SUMS+K path with optional vectorization.
+ *  • Kendall τ-b via a primitive O(n log n) implementation with ties.
  *
- * Hot-path notes:
- * - Keeps per-solution SUMS (`DoubleArray`) and a bitset snapshot; updates via XOR diff or fixed-K swap hints
- * - First-time accumulation touches **only set bits** (O(K)), not all N topics
- * - Uses a tiny in-place **AXPY** kernel for column add/sub to reduce loop overhead
- * - Objective encoding is delegated to [targetStrategy]
+ * Hot-path invariants
+ *  • Primitive arrays end-to-end.
+ *  • Incremental updates via XOR diffs or fixed-K swap hints.
+ *  • AXPY micro-kernel with ±1 fast paths.
+ *  • Objective encoding delegated to the provided targetStrategy.
  */
 class BestSubsetProblem(
     private val parameters: Parameters,
     private val numberOfTopics: Int,
     private val precomputedData: PrecomputedData,
     val topicLabels: Array<String>,
-    @Suppress("unused") /* kept for ctor API compatibility (old boxed path) */
+    @Suppress("unused")
     private val legacyBoxedCorrelation: (DoubleArray, DoubleArray) -> Double,
     private val targetStrategy: (BinarySolution, Double) -> BinarySolution
 ) : BinaryProblem {
 
     /**
-     * Secondary constructor kept for **API compatibility** with older boxed-array call sites.
+     * Compatibility constructor for callers that still pass boxed arrays.
+     * The boxed correlation function is bridged to the primitive path.
      */
     constructor(
         parameters: Parameters,
@@ -57,52 +57,52 @@ class BestSubsetProblem(
         numberOfTopics = numberOfTopics,
         precomputedData = buildPrecomputedData(toPrimitiveAPRows(averagePrecisions)),
         topicLabels = topicLabels,
-        legacyBoxedCorrelation = { l, r ->
-            val lb = Array(l.size) { i -> l[i] }
-            val rb = Array(r.size) { i -> r[i] }
-            correlationStrategy.invoke(lb, rb)
+        legacyBoxedCorrelation = { left, right ->
+            val leftBoxed = Array(left.size) { i -> left[i] }
+            val rightBoxed = Array(right.size) { i -> right[i] }
+            correlationStrategy.invoke(leftBoxed, rightBoxed)
         },
         targetStrategy = targetStrategy
     ) {
-        val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
+        val rootLogger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
         if (meanAveragePrecisions.size != precomputedData.numberOfSystems) {
-            logger.warn(
+            rootLogger.warn(
                 "meanAveragePrecisions length (${meanAveragePrecisions.size}) differs from numberOfSystems " +
                         "(${precomputedData.numberOfSystems}). Using PrecomputedData.fullSetMeanAPBySystem instead."
             )
         }
     }
 
-    /* ====================================================================================
-     * Correlation strategy (delegated to Correlations)
-     * ==================================================================================== */
-
-    private val yMeans: DoubleArray = precomputedData.fullSetMeanAPBySystem
-    private val yStats: Correlations.CorrelationYStats = Correlations.precomputeYStats(yMeans)
+    /* Correlation strategy compiled once, reused in evaluate() */
+    private val fullSetMeanAPBySystem: DoubleArray = precomputedData.fullSetMeanAPBySystem
+    private val ySideStats: Correlations.CorrelationYStats = Correlations.precomputeYStats(fullSetMeanAPBySystem)
     private val correlationFromSums: (DoubleArray, Int) -> Double =
-        Correlations.makeCorrelationFromSums(parameters.correlationMethod, yStats)
+        Correlations.makeCorrelationFromSums(parameters.correlationMethod, ySideStats)
 
-    /* --------------------- Streaming / bookkeeping --------------------- */
-
-    val dominatedSolutions = linkedMapOf<Int, BinarySolution>()
-    val topSolutions = linkedMapOf<Int, MutableList<BinarySolution>>()
+    /* Streaming / bookkeeping for optional consumers */
+    val dominatedSolutionsByK = linkedMapOf<Int, BinarySolution>()
+    val topSolutionsByK = linkedMapOf<Int, MutableList<BinarySolution>>()
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
-    private val systemsCount = precomputedData.numberOfSystems
-    private val columnByTopic: Array<DoubleArray> = precomputedData.topicColumnViewByTopic
+    private val numberOfSystems = precomputedData.numberOfSystems
+    private val topicColumnByTopicIndex: Array<DoubleArray> = precomputedData.topicColumnViewByTopic
+    private val maxEvaluations: Int = parameters.numberOfIterations
 
-    private val totalEvaluations: Int = parameters.numberOfIterations
-    private val logStrideEvaluations: Int = run {
-        val step = (totalEvaluations * Constants.LOGGING_FACTOR) / 100
-        if (step <= 0) Int.MAX_VALUE else step
-    }
-    private val evalCounter = LongAdder()
-    private val nextLogAt = AtomicInteger(logStrideEvaluations)
+    /* Low-contention progress counter and percent-gated logger */
+    private val evaluationCounter = LongAdder()
+    private val lastLoggedPct = AtomicInteger(-1)
 
-    private companion object {
-        const val SNAPSHOT_ATTR = "nbsub:lastBitsetSnapshot"
-    }
-    private val diffBitsetTL = ThreadLocal.withInitial { BinarySet(numberOfTopics) }
+    /**
+     * Attribute key to cache the last evaluated snapshot as a BinarySet.
+     * Using an object key avoids string hashing and reduces GC pressure in the hot path.
+     */
+    private object SnapshotKey
+
+    /**
+     * Thread-local bitset to compute XOR diffs without allocation.
+     * Each evaluation thread gets its own instance; capacity matches numberOfTopics.
+     */
+    private val diffBitsetThreadLocal = ThreadLocal.withInitial { BinarySet(numberOfTopics) }
 
     override fun name(): String = "BestSubsetProblem"
     override fun numberOfVariables(): Int = 1
@@ -111,135 +111,225 @@ class BestSubsetProblem(
     override fun totalNumberOfBits(): Int = numberOfTopics
     override fun numberOfBitsPerVariable(): List<Int> = listOf(numberOfTopics)
 
-    private var cardinalityToGenerate = 1
+    /**
+     * Seed initial individuals by sweeping increasing forced cardinalities
+     * to ensure early generations cover small and medium K values.
+     */
+    private var nextForcedCardinality = 1
+
     override fun createSolution(): BinarySolution {
-        return if (cardinalityToGenerate < numberOfTopics) {
-            BestSubsetSolution(1, 2, numberOfTopics, topicLabels, forcedCardinality = cardinalityToGenerate++)
+        return if (nextForcedCardinality < numberOfTopics) {
+            BestSubsetSolution(
+                1,
+                2,
+                numberOfTopics,
+                topicLabels,
+                forcedCardinality = nextForcedCardinality++
+            )
         } else {
-            BestSubsetSolution(1, 2, numberOfTopics, topicLabels, forcedCardinality = null)
+            BestSubsetSolution(
+                1,
+                2,
+                numberOfTopics,
+                topicLabels,
+                forcedCardinality = null
+            )
         }
-    }
-
-    override fun evaluate(solution: BinarySolution): BinarySolution {
-        val bestSubsetSolution = solution as BestSubsetSolution
-
-        // ---------- progress logging (debounced) ----------
-        evalCounter.increment()
-        val completedEvaluations = evalCounter.sum().toInt()
-        if (completedEvaluations >= nextLogAt.get()) {
-            var loggedThisStride = false
-            while (!loggedThisStride) {
-                val threshold = nextLogAt.get()
-                if (completedEvaluations < threshold) break
-                if (nextLogAt.compareAndSet(threshold, threshold + logStrideEvaluations)) {
-                    val shownCompleted = min(completedEvaluations, totalEvaluations)
-                    val shownPercent =
-                        if (totalEvaluations > 0) ((completedEvaluations * 100L) / totalEvaluations).toInt().coerceIn(0, 100)
-                        else 0
-                    logger.info(
-                        "Completed evaluations: {}/{} ({}%) on \"{}\" with target {}.",
-                        shownCompleted, totalEvaluations, shownPercent,
-                        Thread.currentThread().name, parameters.targetToAchieve
-                    )
-                    logger.debug(
-                        "/* Debounce */ progress logs every {} evaluations (~{}%).",
-                        logStrideEvaluations, Constants.LOGGING_FACTOR
-                    )
-                    loggedThisStride = true
-                }
-            }
-        }
-
-        val currentBitset = bestSubsetSolution.variables()[0] as BinarySet
-        val selectedTopicCount = bestSubsetSolution.numberOfSelectedTopics
-
-        var sumsBySystem = bestSubsetSolution.cachedSumsBySystem
-        var lastSnapshot = bestSubsetSolution.attributes()[SNAPSHOT_ATTR] as? BinarySet
-        var lastEvaluatedMask = bestSubsetSolution.lastEvaluatedMask
-
-        if (sumsBySystem == null || lastSnapshot == null || lastEvaluatedMask == null) {
-            // ---------------- First-time build for this solution ----------------
-            val freshSums = DoubleArray(systemsCount)
-            val snapshotBitset = BinarySet(numberOfTopics)
-            val reusableMask = bestSubsetSolution.ensureReusableLastMaskBuffer()
-
-            // Iterate only set bits: O(K)
-            var idx = currentBitset.nextSetBit(0)
-            while (idx >= 0) {
-                snapshotBitset.set(idx, true)
-                reusableMask[idx] = true
-                axpyInPlace(freshSums, columnByTopic[idx], +1.0)
-                idx = currentBitset.nextSetBit(idx + 1)
-            }
-
-            sumsBySystem = freshSums
-            bestSubsetSolution.cachedSumsBySystem = freshSums
-            bestSubsetSolution.lastEvaluatedMask = reusableMask
-            bestSubsetSolution.attributes()[SNAPSHOT_ATTR] = snapshotBitset
-
-        } else {
-            // ---------------- Incremental update (swap hints or generic diff) ----------------
-            val hasSwapHints =
-                bestSubsetSolution.lastMutationWasFixedKSwap &&
-                        (bestSubsetSolution.lastSwapOutIndex != null || bestSubsetSolution.lastSwapInIndex != null)
-
-            if (hasSwapHints) {
-                // Targeted updates with swap hints
-                bestSubsetSolution.lastSwapOutIndex?.let { outIndex ->
-                    axpyInPlace(sumsBySystem!!, columnByTopic[outIndex], -1.0)
-                    lastEvaluatedMask!![outIndex] = false
-                    lastSnapshot!!.set(outIndex, false)
-                }
-                bestSubsetSolution.lastSwapInIndex?.let { inIndex ->
-                    axpyInPlace(sumsBySystem!!, columnByTopic[inIndex], +1.0)
-                    lastEvaluatedMask!![inIndex] = true
-                    lastSnapshot!!.set(inIndex, true)
-                }
-            } else {
-                // XOR diff against previous snapshot: touch only changed bits
-                val diff = diffBitsetTL.get()
-                diff.clear()
-                diff.or(lastSnapshot)
-                diff.xor(currentBitset)
-
-                var i = diff.nextSetBit(0)
-                while (i >= 0) {
-                    val nowSelected = currentBitset.get(i)
-                    val alpha = if (nowSelected) +1.0 else -1.0
-                    axpyInPlace(sumsBySystem!!, columnByTopic[i], alpha)
-                    lastEvaluatedMask!![i] = nowSelected
-                    lastSnapshot!!.set(i, nowSelected)
-                    i = diff.nextSetBit(i + 1)
-                }
-            }
-
-            bestSubsetSolution.cachedSumsBySystem = sumsBySystem
-            bestSubsetSolution.clearLastMutationFlags()
-        }
-
-        val naturalCorrelationValue = correlationFromSums(sumsBySystem!!, selectedTopicCount)
-        targetStrategy(bestSubsetSolution, naturalCorrelationValue)
-        return bestSubsetSolution
     }
 
     /**
-     * In-place AXPY micro-kernel: dst[i] += alpha * src[i]
-     * - Unrolled by 4 to reduce loop overhead
-     * - Works for +/-1 alpha and general doubles
+     * Evaluate a candidate by producing or updating the system-level SUMS vector,
+     * then computing correlation in the requested backend.
+     *
+     * Two mutually exclusive paths
+     *  • First-time build for this candidate: iterate only set bits (O(K)) and accumulate SUMS.
+     *    Also materializes a BinarySet snapshot and a reusable boolean mask for future diffs.
+     *  • Incremental update for a previously seen candidate:
+     *      – If a fixed-K swap was recorded, apply a pair of AXPY updates for out/in indices.
+     *      – Otherwise, XOR the previous snapshot with the current mask and AXPY only changed topics.
+     *
+     * The correlation is computed from SUMS and K without constructing means explicitly in the Pearson case.
+     * The targetStrategy encodes objectives in-place using the natural correlation value.
      */
-    private fun axpyInPlace(dst: DoubleArray, src: DoubleArray, alpha: Double) {
+    override fun evaluate(solution: BinarySolution): BinarySolution {
+        val subsetSolution = solution as BestSubsetSolution
+
+        /* Percent-gated progress with minimal contention */
+        evaluationCounter.add(1L)
+        logProgressByPercent()
+
+        val currentBitset: BinarySet = subsetSolution.variables()[0] as BinarySet
+        val selectedTopicCount: Int = subsetSolution.numberOfSelectedTopics
+
+        var cachedSumsBySystem: DoubleArray? = subsetSolution.cachedSumsBySystem
+        var lastSnapshotBitset: BinarySet? = subsetSolution.attributes()[SnapshotKey] as? BinarySet
+        var lastEvaluatedMask: BooleanArray? = subsetSolution.lastEvaluatedMask
+
+        if (cachedSumsBySystem == null || lastSnapshotBitset == null || lastEvaluatedMask == null) {
+            /**
+             * First-time path for this candidate
+             *  Accumulates SUMS by scanning set bits only and builds:
+             *   • a BinarySet snapshot for XOR diffs,
+             *   • a boolean[] mask for quick reads and external consumers.
+             *  Complexity: O(K + S) where S is systems count hidden in AXPY.
+             */
+            val freshSumsBySystem = DoubleArray(numberOfSystems)
+            val newSnapshotBitset = BinarySet(numberOfTopics)
+            val reusableLastMask = subsetSolution.ensureReusableLastMaskBuffer()
+
+            var topicIndex = currentBitset.nextSetBit(0)
+            while (topicIndex >= 0) {
+                newSnapshotBitset.set(topicIndex, true)
+                reusableLastMask[topicIndex] = true
+                axpyInPlace(freshSumsBySystem, topicColumnByTopicIndex[topicIndex], +1.0)
+                topicIndex = currentBitset.nextSetBit(topicIndex + 1)
+            }
+
+            cachedSumsBySystem = freshSumsBySystem
+            subsetSolution.cachedSumsBySystem = freshSumsBySystem
+            subsetSolution.lastEvaluatedMask = reusableLastMask
+            subsetSolution.attributes()[SnapshotKey] = newSnapshotBitset
+
+        } else {
+            /**
+             * Incremental path
+             *  Prefer a constant-time update when the mutation recorded a fixed-K swap,
+             *  otherwise compute the XOR difference and touch only changed topics.
+             *  After applying updates, keep snapshot and mask in sync with the candidate bitset.
+             */
+            val hasSwapHints =
+                subsetSolution.lastMutationWasFixedKSwap &&
+                        (subsetSolution.lastSwapOutIndex != null || subsetSolution.lastSwapInIndex != null)
+
+            if (hasSwapHints) {
+                subsetSolution.lastSwapOutIndex?.let { outTopicIndex ->
+                    axpyInPlace(cachedSumsBySystem!!, topicColumnByTopicIndex[outTopicIndex], -1.0)
+                    lastEvaluatedMask!![outTopicIndex] = false
+                    lastSnapshotBitset!!.set(outTopicIndex, false)
+                }
+                subsetSolution.lastSwapInIndex?.let { inTopicIndex ->
+                    axpyInPlace(cachedSumsBySystem!!, topicColumnByTopicIndex[inTopicIndex], +1.0)
+                    lastEvaluatedMask!![inTopicIndex] = true
+                    lastSnapshotBitset!!.set(inTopicIndex, true)
+                }
+            } else {
+                /* XOR-diff path: visit only indices that changed since the last evaluation */
+                val diffBitset = diffBitsetThreadLocal.get()
+                diffBitset.clear()
+                diffBitset.or(lastSnapshotBitset)
+                diffBitset.xor(currentBitset)
+
+                var changedTopic = diffBitset.nextSetBit(0)
+                while (changedTopic >= 0) {
+                    val nowSelected = currentBitset.get(changedTopic)
+                    val alpha = if (nowSelected) +1.0 else -1.0
+                    axpyInPlace(cachedSumsBySystem!!, topicColumnByTopicIndex[changedTopic], alpha)
+                    lastEvaluatedMask!![changedTopic] = nowSelected
+                    lastSnapshotBitset!!.set(changedTopic, nowSelected)
+                    changedTopic = diffBitset.nextSetBit(changedTopic + 1)
+                }
+            }
+
+            subsetSolution.cachedSumsBySystem = cachedSumsBySystem
+            subsetSolution.clearLastMutationFlags()
+        }
+
+        /* Natural correlation from SUMS and K; targetStrategy encodes objectives in-place */
+        val naturalCorrelation = correlationFromSums(cachedSumsBySystem!!, selectedTopicCount)
+        targetStrategy(subsetSolution, naturalCorrelation)
+        return subsetSolution
+    }
+
+    /* Progress logging */
+
+    /**
+     * Log “Completed evaluations …” every Constants.LOGGING_FACTOR percentage points.
+     * Uses an AtomicInteger bucket to avoid duplicate logs under concurrency and to
+     * ensure a monotone, at-most-once emission per bucket across threads.
+     */
+    private fun logProgressByPercent() {
+        val total = maxEvaluations.coerceAtLeast(0)
+        if (total == 0) return
+
+        val completed = evaluationCounter.sum().coerceAtMost(total.toLong())
+        val currentPct = ((completed * 100L) / total).toInt().coerceIn(0, 100)
+        val step = Constants.LOGGING_FACTOR.coerceAtLeast(1)
+
+        while (true) {
+            val prev = lastLoggedPct.get()
+            val nextThreshold = prev + step
+            if (currentPct < nextThreshold && !(prev < 0 && currentPct >= 0)) return
+
+            val newBucket = (currentPct / step) * step
+            if (newBucket <= prev) return
+
+            if (lastLoggedPct.compareAndSet(prev, newBucket)) {
+                logger.info(
+                    "Completed evaluations: {}/{} ({}%) on \"{}\" with target {}.",
+                    completed,
+                    total,
+                    newBucket,
+                    Thread.currentThread().name,
+                    parameters.targetToAchieve
+                )
+                return
+            }
+        }
+    }
+
+    /* AXPY micro-kernel */
+
+    /**
+     * destination[i] += alpha * source[i]
+     *
+     * Micro-optimizations
+     *  • Fast paths for alpha = ±1 to skip multiplications.
+     *  • Unrolled by 4 to reduce loop overhead and enable simple pipelining.
+     *  • Branchless tails for the remaining elements.
+     */
+    private fun axpyInPlace(destination: DoubleArray, source: DoubleArray, alpha: Double) {
+        val n = destination.size
+
+        if (alpha == 1.0) {
+            var i = 0
+            while (i + 3 < n) {
+                destination[i] += source[i]
+                destination[i + 1] += source[i + 1]
+                destination[i + 2] += source[i + 2]
+                destination[i + 3] += source[i + 3]
+                i += 4
+            }
+            while (i < n) {
+                destination[i] += source[i]; i++
+            }
+            return
+        }
+
+        if (alpha == -1.0) {
+            var i = 0
+            while (i + 3 < n) {
+                destination[i] -= source[i]
+                destination[i + 1] -= source[i + 1]
+                destination[i + 2] -= source[i + 2]
+                destination[i + 3] -= source[i + 3]
+                i += 4
+            }
+            while (i < n) {
+                destination[i] -= source[i]; i++
+            }
+            return
+        }
+
         var i = 0
-        val n = dst.size
         while (i + 3 < n) {
-            dst[i    ] += alpha * src[i    ]
-            dst[i + 1] += alpha * src[i + 1]
-            dst[i + 2] += alpha * src[i + 2]
-            dst[i + 3] += alpha * src[i + 3]
+            destination[i] += alpha * source[i]
+            destination[i + 1] += alpha * source[i + 1]
+            destination[i + 2] += alpha * source[i + 2]
+            destination[i + 3] += alpha * source[i + 3]
             i += 4
         }
         while (i < n) {
-            dst[i] += alpha * src[i]
-            i++
+            destination[i] += alpha * source[i]; i++
         }
     }
 }

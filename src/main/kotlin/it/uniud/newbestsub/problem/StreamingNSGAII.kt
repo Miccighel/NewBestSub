@@ -1,7 +1,8 @@
-package it.uniud.newbestsub.dataset
+package it.uniud.newbestsub.problem
 
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import org.apache.logging.log4j.Logger
+import org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAII
 import org.uma.jmetal.operator.crossover.CrossoverOperator
 import org.uma.jmetal.operator.mutation.MutationOperator
 import org.uma.jmetal.operator.selection.SelectionOperator
@@ -11,18 +12,20 @@ import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.evaluator.SolutionListEvaluator
 import org.uma.jmetal.util.ranking.Ranking
 import org.uma.jmetal.util.ranking.impl.MergeNonDominatedSortRanking
+import java.util.Arrays
 import kotlin.math.min
 
 /**
- * Streaming NSGA-II variant with:
- * - Per-generation callback [onGeneration] (init, every update, before result()).
- * - MNDS (MergeNonDomininatedSortRanking).
- * - Optimized replacement:
- *   - Offspring de-dup via sparse 64-bit hash over set bit indices (FastUtil LongOpenHashSet, no boxing).
- *   - Array-based crowding distance (no boxing/maps) with reusable scratch buffers.
- *   - Partial selection on the split front via quickselect (avg O(n)).
- *   - Deterministic tie-breaking when distances are equal.
- *   - Early exits for “no new offspring” and “single front ≤ capacity”.
+ * Streaming NSGA-II with:
+ *
+ * • Per-generation callback [onGeneration] (init, each update, and before result()).
+ * • MNDS ranking ([MergeNonDominatedSortRanking]).
+ * • Optimized replacement:
+ *   • Offspring de-duplication via a sparse 64-bit hash over set bit indices (FastUtil LongOpenHashSet, no boxing).
+ *   • Array-based crowding distance with reusable scratch buffers.
+ *   • Partial selection on the split front via quickselect (average O(n)).
+ *   • Deterministic tie-breaking when distances are equal.
+ *   • Early exits for “no new offspring” and “single front ≤ capacity”.
  */
 class StreamingNSGAII(
     problem: Problem<BinarySolution>,
@@ -34,7 +37,7 @@ class StreamingNSGAII(
     evaluator: SolutionListEvaluator<BinarySolution>,
     private val onGeneration: (Int, List<BinarySolution>) -> Unit,
     private val logger: Logger
-) : org.uma.jmetal.algorithm.multiobjective.nsgaii.NSGAII<BinarySolution>(
+) : NSGAII<BinarySolution>(
     problem,
     maxEvaluations,
     populationSize,
@@ -46,7 +49,7 @@ class StreamingNSGAII(
     evaluator
 ) {
 
-    /* ---------------- Progress / lifecycle ---------------- */
+    /* Progress / lifecycle */
 
     private var generationIndex: Int = 0
 
@@ -70,9 +73,9 @@ class StreamingNSGAII(
         return super.result()
     }
 
-    /* ---------------- Replacement (MNDS + optimized crowding) ---------------- */
+    /* Replacement (MNDS + optimized crowding) */
 
-    // Reusable scratch buffers to avoid per-generation allocations
+    /** Reusable scratch buffers to avoid per-generation allocations. */
     private var crowdingDistanceScratch: DoubleArray = DoubleArray(0)
     private var indexOrderScratch: IntArray = IntArray(0)
     private var wasPickedScratch: BooleanArray = BooleanArray(0)
@@ -83,31 +86,29 @@ class StreamingNSGAII(
     ): List<BinarySolution> {
         val targetPopulationSize = parentPopulation.size
 
-        // --- Offspring de-duplication (sparse hash over set bits) ---
+        /* Offspring de-duplication (sparse hash over set bits). */
         val seenHashes = LongOpenHashSet(offspringPopulation.size * 2)
         val uniqueOffspring = ArrayList<BinarySolution>(offspringPopulation.size)
         for (child in offspringPopulation) {
             val mask = child.variables()[0] as BinarySet
-            var h = 0x9E3779B97F4A7C15uL.toLong()              // seed
+            var h = 0x9E3779B97F4A7C15uL.toLong()
             var card = 0
             var i = mask.nextSetBit(0)
             while (i >= 0) {
-                // Mix index with splitmix64-style mixer, then fold
                 h = (h xor mix64(i.toLong())) * 0xC2B2AE3D27D4EB4FuL.toLong()
                 card++
                 i = mask.nextSetBit(i + 1)
             }
-            // Fold in cardinality and universe size to further decorrelate
             h = h xor (card.toLong() * 0x9E3779B97F4A7C15uL.toLong())
             if (seenHashes.add(h)) uniqueOffspring.add(child)
         }
 
-        // Early exit #1: no new offspring after de-dup → keep parents as-is
+        /* Early exit: no new offspring after de-dup → keep parents as-is. */
         if (uniqueOffspring.isEmpty()) {
             return parentPopulation
         }
 
-        // --- MNDS ranking on merged population ---
+        /* MNDS ranking on merged population. */
         val mergedPopulation = ArrayList<BinarySolution>(targetPopulationSize + uniqueOffspring.size).apply {
             addAll(parentPopulation)
             addAll(uniqueOffspring)
@@ -115,7 +116,7 @@ class StreamingNSGAII(
         val mnds: Ranking<BinarySolution> = MergeNonDominatedSortRanking()
         mnds.compute(mergedPopulation)
 
-        // Early exit #2: single non-dominated front that fits entirely → no crowding/selection needed
+        /* Early exit: single non-dominated front that fits entirely → no crowding/selection needed. */
         if (mnds.numberOfSubFronts == 1) {
             val onlyFront = mnds.getSubFront(0)
             if (onlyFront.size <= targetPopulationSize) {
@@ -123,7 +124,7 @@ class StreamingNSGAII(
             }
         }
 
-        // --- Survivor selection with partial selection on split front ---
+        /* Survivor selection with partial selection on the split front. */
         val nextGeneration = ArrayList<BinarySolution>(targetPopulationSize)
         var frontIndex = 0
         while (nextGeneration.size < targetPopulationSize && frontIndex < mnds.numberOfSubFronts) {
@@ -134,15 +135,15 @@ class StreamingNSGAII(
                 val slotsRemaining = targetPopulationSize - nextGeneration.size
                 ensureScratchCapacity(currentFront.size)
 
-                // Crowding distances (array-based)
+                /* Crowding distances (array-based). */
                 computeCrowdingDistancesInto(currentFront, crowdingDistanceScratch, indexOrderScratch)
 
-                // Determine threshold via quickselect on a copy so we don't mutate the scratch
+                /* Determine threshold via quickselect on a copy so we don't mutate the scratch. */
                 val distancesForSelect = crowdingDistanceScratch.copyOf(currentFront.size)
-                val kthToDrop = currentFront.size - slotsRemaining  // 0-based rank of the smallest we keep threshold against
+                val kthToDrop = currentFront.size - slotsRemaining
                 val distanceThreshold = quickselect(distancesForSelect, kthToDrop)
 
-                // Pick all with distance > threshold first (strictly better)
+                /* Pick all with distance > threshold first (strictly better). */
                 var chosenCount = 0
                 var i = 0
                 while (i < currentFront.size && chosenCount < slotsRemaining) {
@@ -154,7 +155,7 @@ class StreamingNSGAII(
                     i++
                 }
 
-                // Then pick those with distance == threshold in deterministic index order
+                /* Then pick those with distance == threshold in deterministic index order. */
                 i = 0
                 while (i < currentFront.size && chosenCount < slotsRemaining) {
                     if (!wasPickedScratch[i] && crowdingDistanceScratch[i] == distanceThreshold) {
@@ -170,15 +171,12 @@ class StreamingNSGAII(
         return nextGeneration
     }
 
-    /**
-     * Ensure reusable buffers are large enough for the current front size.
-     */
+    /** Ensure reusable buffers are large enough for the current front size. */
     private fun ensureScratchCapacity(requiredSize: Int) {
         if (crowdingDistanceScratch.size < requiredSize) crowdingDistanceScratch = DoubleArray(requiredSize)
         if (indexOrderScratch.size < requiredSize) indexOrderScratch = IntArray(requiredSize)
         if (wasPickedScratch.size < requiredSize) wasPickedScratch = BooleanArray(requiredSize)
-        // Reset only the slice we’ll use
-        java.util.Arrays.fill(wasPickedScratch, 0, requiredSize, false)
+        Arrays.fill(wasPickedScratch, 0, requiredSize, false)
     }
 
     /**
@@ -192,13 +190,13 @@ class StreamingNSGAII(
         indexOrderOut: IntArray
     ) {
         val n = front.size
-        java.util.Arrays.fill(distanceOut, 0, n, 0.0)
+        Arrays.fill(distanceOut, 0, n, 0.0)
         if (n <= 2) {
-            java.util.Arrays.fill(distanceOut, 0, n, Double.POSITIVE_INFINITY)
+            Arrays.fill(distanceOut, 0, n, Double.POSITIVE_INFINITY)
             return
         }
 
-        // initialize 0..n-1
+        /* Initialize index order 0..n-1. */
         var i = 0
         while (i < n) {
             indexOrderOut[i] = i
@@ -208,7 +206,7 @@ class StreamingNSGAII(
         val objectiveCount = front[0].objectives().size
         var obj = 0
         while (obj < objectiveCount) {
-            // sort indices by this objective (ascending, deterministic on ties)
+            /* Sort indices by this objective (ascending, deterministic on ties). */
             quicksortIndicesByObjective(front, indexOrderOut, 0, n - 1, obj)
 
             val minValue = front[indexOrderOut[0]].objectives()[obj]
@@ -234,8 +232,7 @@ class StreamingNSGAII(
         }
     }
 
-    /* ---------------- In-place quicksort of index array for a specific objective ---------------- */
-
+    /** In-place quicksort of an index array for a specific objective. */
     private fun quicksortIndicesByObjective(
         front: List<BinarySolution>,
         indices: IntArray,
@@ -245,7 +242,8 @@ class StreamingNSGAII(
     ) {
         var left = leftBound
         var right = rightBound
-        // small manual stack to avoid recursion
+
+        /* Small manual stack to avoid recursion. */
         val stackLeft = IntArray(64)
         val stackRight = IntArray(64)
         var top = 0
@@ -272,7 +270,7 @@ class StreamingNSGAII(
                     i++; j--
                 }
             }
-            // Push larger partition first to keep stack shallow
+
             val leftLen = j - left
             val rightLen = right - i
             if (leftLen > rightLen) {
@@ -304,12 +302,11 @@ class StreamingNSGAII(
         return when {
             a < b -> -1
             a > b -> 1
-            else -> leftIndex - rightIndex // deterministic tie-breaker
+            else -> leftIndex - rightIndex
         }
     }
 
-    /* ---------------- Quickselect (kth order statistic, 0-based) ---------------- */
-
+    /** Quickselect (k-th order statistic, 0-based). */
     private fun quickselect(values: DoubleArray, k: Int): Double {
         var left = 0
         var right = values.lastIndex
@@ -340,8 +337,7 @@ class StreamingNSGAII(
         return store
     }
 
-    /* ---------------- 64-bit mixing (splitmix64-style) for robust hashing ---------------- */
-
+    /** 64-bit mixing (splitmix64-style) for robust hashing of bit indices. */
     private fun mix64(z0: Long): Long {
         var z = z0 + 0x9E3779B97F4A7C15uL.toLong()
         z = (z xor (z ushr 30)) * 0xBF58476D1CE4E5B9uL.toLong()

@@ -1,0 +1,51 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [ "main", "master", "release/*" ]
+  pull_request:
+    branches: [ "main", "master", "release/*" ]
+  schedule:
+    - cron: "0 3 * * 1"  # Mondays at 03:00 UTC
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (CodeQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '22'
+          cache: maven
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java   # also covers Kotlin in the JVM build
+          queries: security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
+
+      # Option A: Let CodeQL try to build automatically (works for standard Maven layouts)
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      # Option B: Manual build (uncomment if you want full control or Autobuild fails)
+      # - name: Build with Maven
+      #   run: mvn -B -DskipTests package
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:java"

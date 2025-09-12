@@ -1,0 +1,11 @@
+name: "NewBestSub CodeQL config"
+paths:
+  - src/main
+  - src/test
+paths-ignore:
+  - "**/res/**"
+  - "**/data/**"
+  - "**/NewBestSub-Experiments/**"
+  - "**/target/**"
+  - "**/.idea/**"
+  - "**/.vscode/**"

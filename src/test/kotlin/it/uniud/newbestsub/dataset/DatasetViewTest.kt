@@ -15,15 +15,15 @@ import kotlin.test.assertTrue
  * Tests for [DatasetView] streaming helpers.
  *
  * Covered scenarios:
- * - **FUN/VAR**: verify that out-of-order rows are globally rewritten and sorted
- *   by `(K asc, corr asc)` on [DatasetView.closeStreams], keeping FUN and VAR aligned.
- * - **TOP**: verify that `replaceTopBatch` replaces blocks as expected
- *   (newer batch replaces older for the same K; multiple K’s are preserved).
+ * • FUN/VAR: out-of-order rows are globally rewritten and sorted by (K asc, corr asc)
+ *   on [DatasetView.closeStreams], keeping FUN and VAR aligned.
+ * • TOP: `replaceTopBatch` replaces blocks as expected (newer batch overwrites same-K;
+ *   multiple Ks are preserved).
  *
  * Notes:
- * - A minimal [DatasetModel] stub is used (only fields needed for path resolution).
- * - Topic labels are provided for conversions.
- * - Progress messages are printed to mimic the existing test style.
+ * • A minimal [DatasetModel] stub is used (only fields needed for path resolution).
+ * • Topic labels are provided for conversions.
+ * • Progress messages are printed to mimic the existing test style.
  */
 @DisplayName("DatasetView – streaming helpers (FUN/VAR sort + TOP batch replace)")
 class DatasetViewTest {
@@ -39,9 +39,8 @@ class DatasetViewTest {
         }
     }
 
-    /*
-     * Build a minimal model that satisfies DatasetView path computation.
-     * Provides topic labels so conversions have a label universe.
+    /**
+     * Minimal model that satisfies DatasetView path computation and provides a label universe.
      */
     private fun stubModel(
         datasetName: String = "TEST_DS",
@@ -60,22 +59,22 @@ class DatasetViewTest {
             this.currentExecution = currentExecution
             this.expansionCoefficient = 0
             this.percentiles = linkedMapOf()
-            /* Provide labels like 401..450 */
+            /* Labels like 401..450 */
             this.topicLabels = Array(50) { (401 + it).toString() }
         }
 
     /**
-     * Verifies [DatasetView] streaming behavior:
-     * - FUN/VAR: appends rows out-of-order, then checks that [DatasetView.closeStreams]
-     *   rewrites them globally sorted by `(K asc, corr asc)`.
-     * - VAR: lines are normalized into `"B64:<payload>"` and decodable.
-     * - TOP: `replaceTopBatch` updates blocks, newer K=1 batch replaces the previous one,
-     *   and K=2 remains from the earlier batch.
+     * Verifies streaming behavior:
+     * • FUN/VAR: appends rows out-of-order, then checks that [DatasetView.closeStreams]
+     *   rewrites them globally sorted by (K asc, corr asc).
+     * • VAR: lines are normalized into "B64:<payload>" and decodable.
+     * • TOP: `replaceTopBatch` updates blocks; newer K=1 batch replaces the previous one;
+     *   K=2 remains from the earlier batch.
      *
      * Also checks:
-     * - FUN/VAR alignment (same row count).
-     * - TOP header correctness and Base64-encoding of topics.
-     * - Test cleans up generated CSV files at the end.
+     * • FUN/VAR alignment (same row count).
+     * • TOP header correctness and Base64-encoding of topics.
+     * • Cleanup of generated CSV files.
      */
     @Test
     @DisplayName("Streaming: FUN/VAR global sort + TOP replace-batch")
@@ -94,13 +93,11 @@ class DatasetViewTest {
             val topSolutionsPath = Paths.get(view.getTopSolutionsFilePath(model))
             Files.createDirectories(functionValuesPath.parent)
 
-            // NOTE: do NOT call view.openStreams(model) — streaming opens lazily on first append.
+            /* Do not call openStreams(model): streaming opens lazily on first append. */
 
             /**
-             * Helper to emit a single improved K row (intentionally out-of-order).
-             *
-             * For FUN, we use `"K,corr"`, formatted with `Locale.ROOT` to ensure dot-decimal.
-             * For VAR, we pass raw forms; CSV view will normalize to Base64 on close.
+             * Emit one improved K row (intentionally out-of-order).
+             * FUN uses "K,corr" with Locale.ROOT; VAR passes raw, normalized on close.
              */
             fun emit(cardinality: Int, correlation: Double, variableCsvRaw: String) {
                 val corrStr = String.format(Locale.ROOT, "%.6f", correlation)
@@ -122,9 +119,7 @@ class DatasetViewTest {
             emit(2, 0.60, "0 1 0 0")
             emit(1, 0.80, "1 1 1 0")
 
-            /**
-             * Helper to create a 10-row TOP block for a given K with ascending correlations.
-             */
+            /** Create a 10-row TOP block for a given K with ascending correlations. */
             fun topBlock(cardinality: Int, baseCorrelation: Double): List<String> =
                 (0 until 10).map { i -> "$cardinality,${String.format(Locale.ROOT, "%.2f", baseCorrelation + i * 0.01)},topicA|topicB|topicC" }
 
@@ -177,7 +172,7 @@ class DatasetViewTest {
             variableLines.forEachIndexed { idx, line ->
                 assertTrue(line.startsWith("B64:"), "VAR line #$idx must start with B64:")
                 val payload = line.removePrefix("B64:")
-                Base64.getDecoder().decode(payload) // throws if invalid
+                Base64.getDecoder().decode(payload) /* throws if invalid */
             }
 
             /* ===== Assertions: TOP ===== */
@@ -205,9 +200,9 @@ class DatasetViewTest {
 
             assertTrue(firstK1Topics.startsWith("B64:"), "TOP topics must start with B64:")
             val topicsPayload = firstK1Topics.removePrefix("B64:")
-            Base64.getDecoder().decode(topicsPayload) // throws if invalid
+            Base64.getDecoder().decode(topicsPayload) /* throws if invalid */
 
-            /* Cleanup so the test is repeatable without manual deletes */
+            /* Cleanup for repeatable runs */
             cleanup(functionValuesPath.toFile(), variableValuesPath.toFile(), topSolutionsPath.toFile())
 
             println("[DatasetViewTest] - Test ends.")
@@ -215,8 +210,7 @@ class DatasetViewTest {
     }
 
     /**
-     * Best-effort cleanup helper to delete generated files.
-     * Failures are ignored to keep test repeatable across runs.
+     * Best-effort cleanup helper to delete generated files. Failures are ignored.
      */
     private fun cleanup(vararg files: File) {
         files.forEach { file ->

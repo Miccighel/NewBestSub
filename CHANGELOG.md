@@ -10,13 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Nothing yet.
 
+## [2.0.6] - 2025-09-12
+
+### Added
+- README refresh: clarified deterministic runs (`--deterministic` / `--seed`), file outputs (CSV/Parquet, FUN/VAR/TOP), streaming cadence, and run‑container naming.
+- Python helper: **`parse_run_name.py`** to parse container folder names; documented in README.
+- Shields: grouped and sorted badges; added Maven Central, build, tests, logging, and DOI where relevant.
+
+### Changed
+- **NATURAL vs INTERNAL correlation** clarified end‑to‑end (README, tests, and view docs). Views always receive **NATURAL** values; selection rules are explicit:
+  - **BEST** → FUN final file is `(K asc, corr asc)` → pick **last** per `K`; TOP is **descending** → pick **first** per `K`.
+  - **WORST** → FUN final file is `(K asc, corr desc)` → pick **last** per `K`; TOP is **ascending** → pick **first** per `K`.
+- Tests enhanced with deeper comments and selection explanations (CSVView & ParquetView smoke).
+
+### Fixed
+- Early runtime validation: enforce `-po ≥ #topics` with clearer messages; improved distinction between CLI parse errors and runtime validation errors.
+
 ## [2.0.4] - 2025-09-03
 
 ### Changed
-- Clarified **NATURAL vs INTERNAL** correlation and the per-target selection rules for FUN and TOP across docs and tests.
-
-### Fixed
-- Program: early `-po ≥ #topics` validation and clearer runtime error handling (CLI vs runtime validation).
+- Internal maintenance and minor documentation tweaks.
 
 ## [2.0.3] - 2025-08-29
 
@@ -51,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial public release of **NewBestSub**.
 
-[Unreleased]: https://github.com/Miccighel/NewBestSub/compare/v2.0.4...HEAD
+[Unreleased]: https://github.com/Miccighel/NewBestSub/compare/v2.0.6...HEAD
+[2.0.6]: https://github.com/Miccighel/NewBestSub/compare/v2.0.4...v2.0.6
 [2.0.4]: https://github.com/Miccighel/NewBestSub/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/Miccighel/NewBestSub/compare/v2.0.0...v2.0.3
 [2.0.0]: https://github.com/Miccighel/NewBestSub/compare/v1.0.0...v2.0.0

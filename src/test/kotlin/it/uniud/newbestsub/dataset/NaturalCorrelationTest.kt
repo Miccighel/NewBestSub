@@ -18,28 +18,28 @@ import kotlin.io.path.exists
  * Focused tests for NATURAL vs INTERNAL correlation as observed by the views.
  *
  * We verify:
- * - Views treat incoming correlations as NATURAL (no sign flips).
- * - CSVView emits FUN/VAR/TOP exactly as will be on disk (with final rewrite ordering).
- * - ParquetView code paths execute (smoke) without reflecting internals.
+ * • Views treat incoming correlations as NATURAL (no sign flips).
+ * • CSVView emits FUN/VAR/TOP exactly as will be on disk (with final rewrite ordering).
+ * • ParquetView code paths execute (smoke) without reflecting internals.
  *
  * Extra: we print an explanation for which line to pick from FUN/TOP and why:
- * - FUN (after final rewrite):
- *     BEST  -> file is (K asc, corr asc)     → pick LAST line per K (max).
- *     WORST -> file is (K asc, corr desc)    → pick LAST line per K (min).
- * - TOP (as provided to the view, already target-ordered):
- *     BEST  -> descending per K              → pick FIRST line per K (max).
- *     WORST -> ascending per K               → pick FIRST line per K (min).
+ * • FUN (after final rewrite):
+ *     BEST  → file is (K asc, corr asc)     → pick LAST line per K (max).
+ *     WORST → file is (K asc, corr desc)    → pick LAST line per K (min).
+ * • TOP (as provided to the view, already target-ordered):
+ *     BEST  → descending per K              → pick FIRST line per K (max).
+ *     WORST → ascending per K               → pick FIRST line per K (min).
  */
 @DisplayName("NaturalCorrelation – CSV golden + Parquet buffer (with selection explanations)")
 class NaturalCorrelationViewsTest {
 
-    /* ========================================================================================
+    /*
      * CSV – FUN/VAR: out-of-order appends -> final rewrite; print selection rule (BEST)
-     * ======================================================================================== */
+     */
     @Test
     @DisplayName("CSVView FUN/VAR: global sort + selection explanation (BEST)")
     fun testCsvFunVarGlobalSortWithExplanation_Best() {
-        // Ensure we exercise the final rewrite logic
+        /** Exercise the final rewrite logic. */
         System.setProperty("nbs.csv.finalRewrite", "true")
 
         println("[NaturalCorrelation/CSV] - Test begins (FUN/VAR, BEST).")
@@ -55,13 +55,17 @@ class NaturalCorrelationViewsTest {
         val varPath = Paths.get(view.getVariableValuesFilePath(model))
         deleteIfExists(funPath); deleteIfExists(varPath)
 
+        /**
+         * Emit a single (K, corr, VAR) row into the CSV view.
+         * Correlation is on the NATURAL scale and will be globally sorted on close.
+         */
         fun emit(cardinality: Int, correlation: Double, variableCsvRaw: String) {
             val corrStr = String.format(Locale.ROOT, "%.6f", correlation)
             val ev = CardinalityResult(
                 target = model.targetToAchieve,
                 threadName = "t",
                 cardinality = cardinality,
-                correlation = correlation,               // NATURAL
+                correlation = correlation,
                 functionValuesCsvLine = "$cardinality,$corrStr",
                 variableValuesCsvLine = variableCsvRaw
             )
@@ -69,7 +73,7 @@ class NaturalCorrelationViewsTest {
             println("[NaturalCorrelation/CSV] - append FUN/VAR -> K=$cardinality corr=$corrStr")
         }
 
-        // Deliberately out of order; final rewrite will sort (K asc, corr asc) for BEST
+        /** Deliberately out of order; final rewrite will sort (K asc, corr asc) for BEST. */
         emit(2, 0.70, "1 1 0 0")
         emit(1, 0.90, "1 0 0 0")
         emit(2, 0.60, "0 1 0 0")
@@ -89,7 +93,7 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - VAR lines (BEST, first 4 shown):")
         varLines.take(4).forEach { println("  $it") }
 
-        // Minimal sanity
+        /** Minimal sanity checks for line counts and B64 prefix. */
         assertEquals(4, funLines.size)
         assertEquals(4, varLines.size)
         assertTrue(varLines.all { it.startsWith("B64:") })
@@ -97,13 +101,13 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - Test ends (FUN/VAR, BEST).")
     }
 
-    /* ========================================================================================
+    /*
      * CSV – FUN/VAR: out-of-order appends -> final rewrite; print selection rule (WORST)
-     * ======================================================================================== */
+     */
     @Test
     @DisplayName("CSVView FUN/VAR: global sort + selection explanation (WORST)")
     fun testCsvFunVarGlobalSortWithExplanation_Worst() {
-        // Ensure we exercise the final rewrite logic
+        /** Exercise the final rewrite logic. */
         System.setProperty("nbs.csv.finalRewrite", "true")
 
         println("[NaturalCorrelation/CSV] - Test begins (FUN/VAR, WORST).")
@@ -119,13 +123,17 @@ class NaturalCorrelationViewsTest {
         val varPath = Paths.get(view.getVariableValuesFilePath(model))
         deleteIfExists(funPath); deleteIfExists(varPath)
 
+        /**
+         * Emit a single (K, corr, VAR) row into the CSV view.
+         * Correlation is on the NATURAL scale and will be globally sorted on close.
+         */
         fun emit(cardinality: Int, correlation: Double, variableCsvRaw: String) {
             val corrStr = String.format(Locale.ROOT, "%.6f", correlation)
             val ev = CardinalityResult(
                 target = model.targetToAchieve,
                 threadName = "t",
                 cardinality = cardinality,
-                correlation = correlation,               // NATURAL
+                correlation = correlation,
                 functionValuesCsvLine = "$cardinality,$corrStr",
                 variableValuesCsvLine = variableCsvRaw
             )
@@ -133,7 +141,7 @@ class NaturalCorrelationViewsTest {
             println("[NaturalCorrelation/CSV] - append FUN/VAR -> K=$cardinality corr=$corrStr")
         }
 
-        // Deliberately out of order; final rewrite will sort (K asc, corr desc) for WORST
+        /** Deliberately out of order; final rewrite will sort (K asc, corr desc) for WORST. */
         emit(2, 0.70, "1 1 0 0")
         emit(1, 0.90, "1 0 0 0")
         emit(2, 0.60, "0 1 0 0")
@@ -153,7 +161,7 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - VAR lines (WORST, first 4 shown):")
         varLines.take(4).forEach { println("  $it") }
 
-        // Minimal sanity
+        /** Minimal sanity checks for line counts and B64 prefix. */
         assertEquals(4, funLines.size)
         assertEquals(4, varLines.size)
         assertTrue(varLines.all { it.startsWith("B64:") })
@@ -161,9 +169,9 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - Test ends (FUN/VAR, WORST).")
     }
 
-    /* ========================================================================================
+    /*
      * CSV – FUN/VAR: WORST with NEGATIVE correlations (ordering + selection)
-     * ======================================================================================== */
+     */
     @Test
     @DisplayName("CSVView FUN/VAR: WORST with negative values → file is desc, pick LAST = min (possibly negative)")
     fun testCsvFunVarGlobalSortWithExplanation_Worst_Negatives() {
@@ -182,6 +190,10 @@ class NaturalCorrelationViewsTest {
         val varPath = Paths.get(view.getVariableValuesFilePath(model))
         deleteIfExists(funPath); deleteIfExists(varPath)
 
+        /**
+         * Emit a single (K, corr, VAR) row into the CSV view.
+         * Correlation is on the NATURAL scale and will be globally sorted on close.
+         */
         fun emit(cardinality: Int, correlation: Double, variableCsvRaw: String) {
             val corrStr = String.format(Locale.ROOT, "%.6f", correlation)
             val ev = CardinalityResult(
@@ -196,9 +208,11 @@ class NaturalCorrelationViewsTest {
             println("[NaturalCorrelation/CSV] - append FUN/VAR -> K=$cardinality corr=$corrStr")
         }
 
-        // Mix positives and negatives; WORST final file sorts desc per K, but we pick LAST (min) per K.
-        // K=1 group: 0.10, -0.30  → file order (desc): 0.10, -0.30 → pick LAST = -0.30
-        // K=2 group: 0.05, -0.20  → file order (desc): 0.05, -0.20 → pick LAST = -0.20
+        /**
+         * Mix positives and negatives; WORST final file sorts desc per K, and we pick LAST (min) per K.
+         * K=1 group: 0.10, -0.30  → file order: 0.10, -0.30  → pick LAST = -0.30
+         * K=2 group: 0.05, -0.20  → file order: 0.05, -0.20  → pick LAST = -0.20
+         */
         emit(1, 0.10, "1 0 0 0")
         emit(2, 0.05, "0 1 0 0")
         emit(1, -0.30, "1 1 0 0")
@@ -214,7 +228,7 @@ class NaturalCorrelationViewsTest {
         funLines.forEach { println("  $it") }
         explainFunSelection(model.targetToAchieve, funLines, tag = "Explain/FUN-WORST-NEG")
 
-        // Quick check: last of K=1 should be -0.30; last of K=2 should be -0.20
+        /** Quick check on picked minima per K. */
         val byK = parseFunPairs(funLines)
         assertEquals(-0.30, byK[1]!!.last(), 1e-12)
         assertEquals(-0.20, byK[2]!!.last(), 1e-12)
@@ -227,13 +241,13 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - Test ends (FUN/VAR, WORST with negatives).")
     }
 
-    /* ========================================================================================
+    /*
      * CSV – TOP: batch replace semantics; print selection rule (WORST)
-     * ======================================================================================== */
+     */
     @Test
     @DisplayName("CSVView TOP: replace-batch and selection explanation (WORST)")
     fun testCsvTopWriteWithExplanation_Worst() {
-        // Disable live TOP writes; flush once on close
+        /** Disable live TOP writes; flush once on close. */
         System.setProperty("nbs.csv.top.live", "false")
 
         println("[NaturalCorrelation/CSV] - Test begins (TOP, WORST).")
@@ -245,14 +259,13 @@ class NaturalCorrelationViewsTest {
         )
         val view = CSVView()
 
-        val topPath = Paths.get(view.getTopSolutionsFilePath(model))
-        deleteIfExists(topPath)
-
-        // For WORST, provide ascending correlation within each K
+        /**
+         * For WORST, provide ascending correlation within each K.
+         */
         fun topBlockAsc(cardinality: Int, base: Double): List<String> =
             (0 until 10).map { i -> "$cardinality,${String.format(Locale.ROOT, "%.6f", base + 0.01 * i)},B64:" }
 
-        // Initial blocks for K=1,2
+        /** Initial blocks for K=1 and K=2. */
         val batch1 = mapOf(
             1 to topBlockAsc(1, 0.10),
             2 to topBlockAsc(2, 0.20)
@@ -260,7 +273,7 @@ class NaturalCorrelationViewsTest {
         view.onReplaceTopBatch(model, batch1)
         println("[NaturalCorrelation/CSV] - replaceTopBatch -> K=1,2 (initial)")
 
-        // Replace only K=1 with a new ascending block starting at 0.30
+        /** Replace only K=1 with a new ascending block starting at 0.30. */
         val batch2 = mapOf(1 to topBlockAsc(1, 0.30))
         view.onReplaceTopBatch(model, batch2)
         println("[NaturalCorrelation/CSV] - replaceTopBatch -> K=1 (new content)")
@@ -268,22 +281,22 @@ class NaturalCorrelationViewsTest {
         view.closeStreams(model)
         println("[NaturalCorrelation/CSV] - closeStreams -> write TOP once [WORST, asc]")
 
-        assertTrue(topPath.exists(), "TOP file should exist")
+        assertTrue(topPathExists(view, model), "TOP file should exist")
 
-        val topLines = Files.readAllLines(topPath).filter { it.isNotBlank() }
+        val topLines = readTopLines(view, model)
         println("[NaturalCorrelation/CSV] - TOP lines (WORST, first 6):")
         topLines.take(6).forEach { println("  $it") }
 
-        // Clarify selection rule: for WORST, pick the FIRST line per K (ascending)
+        /** Clarify selection rule: for WORST, pick the FIRST line per K (ascending). */
         val dataRows = topLines.drop(1)
         explainTopSelection(model.targetToAchieve, dataRows, tag = "Explain/TOP-WORST")
 
         println("[NaturalCorrelation/CSV] - Test ends (TOP, WORST).")
     }
 
-    /* ========================================================================================
+    /*
      * CSV – TOP: WORST with NEGATIVE correlations (ordering + selection)
-     * ======================================================================================== */
+     */
     @Test
     @DisplayName("CSVView TOP: WORST with negative values → ascending per K, pick FIRST = min (negative)")
     fun testCsvTopWriteWithExplanation_Worst_Negatives() {
@@ -298,12 +311,11 @@ class NaturalCorrelationViewsTest {
         )
         val view = CSVView()
 
-        val topPath = Paths.get(view.getTopSolutionsFilePath(model))
-        deleteIfExists(topPath)
-
-        // Ascending sequences that include negatives:
-        // K=1: -0.50, -0.40, ..., -0.10  → pick FIRST = -0.50
-        // K=2: -0.20, -0.10,  0.00, ..., 0.20 → pick FIRST = -0.20
+        /**
+         * Ascending sequences that include negatives:
+         * K=1: -0.50, -0.40, …, -0.10 → pick FIRST = -0.50
+         * K=2: -0.20, -0.10,  0.00, …, 0.20 → pick FIRST = -0.20
+         */
         fun topBlockAscSeries(cardinality: Int, start: Double, step: Double, count: Int): List<String> =
             (0 until count).map { i -> "$cardinality,${String.format(Locale.ROOT, "%.6f", start + step * i)},B64:" }
 
@@ -317,16 +329,16 @@ class NaturalCorrelationViewsTest {
         view.closeStreams(model)
         println("[NaturalCorrelation/CSV] - closeStreams -> write TOP once [WORST-NEG, asc]")
 
-        assertTrue(topPath.exists(), "TOP file should exist")
+        assertTrue(topPathExists(view, model), "TOP file should exist")
 
-        val topLines = Files.readAllLines(topPath).filter { it.isNotBlank() }
+        val topLines = readTopLines(view, model)
         println("[NaturalCorrelation/CSV] - TOP lines (WORST-NEG, first 6):")
         topLines.take(6).forEach { println("  $it") }
 
         val dataRows = topLines.drop(1)
         explainTopSelection(model.targetToAchieve, dataRows, tag = "Explain/TOP-WORST-NEG")
 
-        // Sanity: first of each K is the min (negative)
+        /** Sanity: first of each K is the minimum (negative). */
         val byK = parseTopTriples(dataRows)
         assertEquals(-0.50, byK[1]!!.first(), 1e-12)
         assertEquals(-0.20, byK[2]!!.first(), 1e-12)
@@ -334,13 +346,13 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - Test ends (TOP, WORST with negatives).")
     }
 
-    /* ========================================================================================
+    /*
      * CSV – TOP: batch replace semantics; print selection rule (BEST)
-     * ======================================================================================== */
+     */
     @Test
     @DisplayName("CSVView TOP: replace-batch and selection explanation (BEST)")
     fun testCsvTopWriteWithExplanation_Best() {
-        // Disable live TOP writes; flush once on close
+        /** Disable live TOP writes; flush once on close. */
         System.setProperty("nbs.csv.top.live", "false")
 
         println("[NaturalCorrelation/CSV] - Test begins (TOP, BEST).")
@@ -352,22 +364,21 @@ class NaturalCorrelationViewsTest {
         )
         val view = CSVView()
 
-        val topPath = Paths.get(view.getTopSolutionsFilePath(model))
-        deleteIfExists(topPath)
-
-        // For BEST, provide descending correlation within each K
+        /**
+         * For BEST, provide descending correlation within each K.
+         */
         fun topBlockDesc(cardinality: Int, start: Double): List<String> =
             (0 until 10).map { i -> "$cardinality,${String.format(Locale.ROOT, "%.6f", start - 0.01 * i)},B64:" }
 
-        // Initial blocks for K=1,2
+        /** Initial blocks for K=1 and K=2 (descending). */
         val batch1 = mapOf(
-            1 to topBlockDesc(1, 0.30), // 0.30, 0.29, ... 0.21
-            2 to topBlockDesc(2, 0.20)  // 0.20, 0.19, ... 0.11
+            1 to topBlockDesc(1, 0.30),
+            2 to topBlockDesc(2, 0.20)
         )
         view.onReplaceTopBatch(model, batch1)
         println("[NaturalCorrelation/CSV] - replaceTopBatch -> K=1,2 (initial, desc)")
 
-        // Replace only K=1 with a new descending block starting at 0.40
+        /** Replace only K=1 with a new descending block starting at 0.40. */
         val batch2 = mapOf(1 to topBlockDesc(1, 0.40))
         view.onReplaceTopBatch(model, batch2)
         println("[NaturalCorrelation/CSV] - replaceTopBatch -> K=1 (new content, desc)")
@@ -375,22 +386,22 @@ class NaturalCorrelationViewsTest {
         view.closeStreams(model)
         println("[NaturalCorrelation/CSV] - closeStreams -> write TOP once [BEST, desc]")
 
-        assertTrue(topPath.exists(), "TOP file should exist")
+        assertTrue(topPathExists(view, model), "TOP file should exist")
 
-        val topLines = Files.readAllLines(topPath).filter { it.isNotBlank() }
+        val topLines = readTopLines(view, model)
         println("[NaturalCorrelation/CSV] - TOP lines (BEST, first 6):")
         topLines.take(6).forEach { println("  $it") }
 
-        // Clarify selection rule: for BEST, pick the FIRST line per K (descending)
+        /** Clarify selection rule: for BEST, pick the FIRST line per K (descending). */
         val dataRows = topLines.drop(1)
         explainTopSelection(model.targetToAchieve, dataRows, tag = "Explain/TOP-BEST")
 
         println("[NaturalCorrelation/CSV] - Test ends (TOP, BEST).")
     }
 
-    /* ========================================================================================
+    /*
      * Parquet – buffer NATURAL preservation; simple smoke for file paths
-     * ======================================================================================== */
+     */
     @Test
     @DisplayName("ParquetView.onAppendCardinality keeps NATURAL correlation in buffer (smoke)")
     fun testParquetViewBufferKeepsNaturalCorrelation() {
@@ -407,12 +418,12 @@ class NaturalCorrelationViewsTest {
             target = model.targetToAchieve,
             threadName = "t",
             cardinality = 5,
-            correlation = 0.42,               // NATURAL
-            functionValuesCsvLine = "5,0.42", // NATURAL
-            variableValuesCsvLine = "B64:"    // minimal
+            correlation = 0.42,
+            functionValuesCsvLine = "5,0.42",
+            variableValuesCsvLine = "B64:"
         )
 
-        // Append one row; ensure code path executes
+        /** Append one row; ensure code path executes. */
         view.onAppendCardinality(model, ev)
         println("[NaturalCorrelation/Parquet] - onAppendCardinality -> K=5 corr=0.420000")
         println("[NaturalCorrelation/Parquet] - Test ends (buffer).")
@@ -454,15 +465,17 @@ class NaturalCorrelationViewsTest {
         view.onReplaceTopBatch(model, mapOf(1 to topBlock(1, 0.40)))
         println("[NaturalCorrelation/Parquet] - replaceTopBatch -> K=1 (new content)")
 
-        // We don't inspect Parquet output here; just ensure code path runs.
+        /**
+         * We do not inspect Parquet output here; the goal is to ensure the code path runs without exceptions.
+         */
         view.closeStreams(model)
         println("[NaturalCorrelation/Parquet] - closeStreams -> write FUN/VAR/TOP")
         println("[NaturalCorrelation/Parquet] - Test ends (files).")
     }
 
-    /* ========================================================================================
+    /*
      * Explain/parse helpers
-     * ======================================================================================== */
+     */
 
     private fun parseFunPairs(lines: List<String>): Map<Int, List<Double>> {
         val pairs = lines.filter { it.isNotBlank() }.map { line ->
@@ -512,9 +525,9 @@ class NaturalCorrelationViewsTest {
         }
     }
 
-    /* ========================================================================================
- * CSV – FUN/VAR: BEST with MIXED positive/negative (ordering + selection)
- * ======================================================================================== */
+    /*
+     * CSV – FUN/VAR: BEST with MIXED positive/negative (ordering + selection)
+     */
     @Test
     @DisplayName("CSVView FUN/VAR: BEST with mixed ± values → file asc, pick LAST = max")
     fun testCsvFunVarGlobalSortWithExplanation_Best_MixedSigns() {
@@ -533,6 +546,10 @@ class NaturalCorrelationViewsTest {
         val varPath = Paths.get(view.getVariableValuesFilePath(model))
         deleteIfExists(funPath); deleteIfExists(varPath)
 
+        /**
+         * Emit a single (K, corr, VAR) row into the CSV view.
+         * Correlation is on the NATURAL scale and will be globally sorted on close.
+         */
         fun emit(k: Int, corr: Double, rawVar: String) {
             val corrStr = String.format(Locale.ROOT, "%.6f", corr)
             view.onAppendCardinality(
@@ -541,7 +558,7 @@ class NaturalCorrelationViewsTest {
                     target = model.targetToAchieve,
                     threadName = "t",
                     cardinality = k,
-                    correlation = corr,                    // NATURAL
+                    correlation = corr,
                     functionValuesCsvLine = "$k,$corrStr",
                     variableValuesCsvLine = rawVar
                 )
@@ -549,9 +566,11 @@ class NaturalCorrelationViewsTest {
             println("[NaturalCorrelation/CSV] - append FUN/VAR -> K=$k corr=$corrStr")
         }
 
-        // Mixed per K; BEST final file is asc per K; we pick LAST (max).
-        // K=1: -0.30, +0.10 → asc: -0.30, 0.10 → pick LAST=0.10
-        // K=2: -0.05, +0.20 → asc: -0.05, 0.20 → pick LAST=0.20
+        /**
+         * Mixed per K; BEST final file is ascending per K; we pick LAST (max).
+         * K=1: -0.30, +0.10 → asc: -0.30, 0.10 → pick LAST = 0.10
+         * K=2: -0.05, +0.20 → asc: -0.05, 0.20 → pick LAST = 0.20
+         */
         emit(1, -0.30, "1 0 0 0")
         emit(2, 0.20, "0 1 0 0")
         emit(1, 0.10, "1 1 0 0")
@@ -579,9 +598,9 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - Test ends (FUN/VAR, BEST with mixed ±).")
     }
 
-    /* ========================================================================================
+    /*
      * CSV – TOP: BEST with MIXED positive/negative (ordering + selection)
-     * ======================================================================================== */
+     */
     @Test
     @DisplayName("CSVView TOP: BEST with mixed ± values → descending per K, pick FIRST = max")
     fun testCsvTopWriteWithExplanation_Best_MixedSigns() {
@@ -599,11 +618,12 @@ class NaturalCorrelationViewsTest {
         val topPath = Paths.get(view.getTopSolutionsFilePath(model))
         deleteIfExists(topPath)
 
-        // For BEST we provide DESC sequences that cross zero (positive down to negative).
-        // K=1 (initial):  +0.15, +0.10, +0.05, 0.00, -0.05, -0.10, -0.15 → pick FIRST = +0.15
-        // Then we REPLACE K=1 with a stronger block:
-        //                 +0.25, +0.20, ..., -0.25 → pick FIRST = +0.25 (overwrites older K=1)
-        // K=2:            +0.12, +0.08, +0.04, 0.00, -0.04, -0.08, -0.12 → pick FIRST = +0.12
+        /**
+         * For BEST provide descending sequences that cross zero (positive down to negative).
+         * K=1 initial: +0.15, +0.10, +0.05, 0.00, -0.05, -0.10, -0.15 → pick FIRST = +0.15
+         * Replacement for K=1: +0.25, +0.20, …, -0.25 → pick FIRST = +0.25 (overwrites older K=1)
+         * K=2: +0.12, +0.08, +0.04, 0.00, -0.04, -0.08, -0.12 → pick FIRST = +0.12
+         */
         fun descCrossZero(cardinality: Int, start: Double, step: Double, count: Int): List<String> =
             (0 until count).map { i ->
                 val v = start - step * i
@@ -618,7 +638,7 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - replaceTopBatch -> K=1,2 (initial, desc across zero)")
 
         val replaceK1 = mapOf(
-            1 to descCrossZero(1, start = 0.25, step = 0.05, count = 11) // 0.25 .. -0.25
+            1 to descCrossZero(1, start = 0.25, step = 0.05, count = 11)
         )
         view.onReplaceTopBatch(model, replaceK1)
         println("[NaturalCorrelation/CSV] - replaceTopBatch -> K=1 (replacement, stronger desc)")
@@ -635,7 +655,7 @@ class NaturalCorrelationViewsTest {
         val dataRows = topLines.drop(1)
         explainTopSelection(model.targetToAchieve, dataRows, tag = "Explain/TOP-BEST-MIX")
 
-        // Sanity: K=1 first should be 0.25; K=2 first should be 0.12
+        /** Sanity: K=1 first should be 0.25; K=2 first should be 0.12. */
         val byK = parseTopTriples(dataRows)
         assertEquals(0.25, byK[1]!!.first(), 1e-12)
         assertEquals(0.12, byK[2]!!.first(), 1e-12)
@@ -643,9 +663,9 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - Test ends (TOP, BEST with mixed ±).")
     }
 
-    /* ========================================================================================
- * CSV – FUN/VAR: WORST with MIXED positive/negative (ordering + selection)
- * ======================================================================================== */
+    /*
+     * CSV – FUN/VAR: WORST with MIXED positive/negative (ordering + selection)
+     */
     @Test
     @DisplayName("CSVView FUN/VAR: WORST with mixed ± values → file desc, pick LAST = min")
     fun testCsvFunVarGlobalSortWithExplanation_Worst_MixedSigns() {
@@ -664,13 +684,17 @@ class NaturalCorrelationViewsTest {
         val varPath = Paths.get(view.getVariableValuesFilePath(model))
         deleteIfExists(funPath); deleteIfExists(varPath)
 
+        /**
+         * Emit a single (K, corr, VAR) row into the CSV view.
+         * Correlation is on the NATURAL scale and will be globally sorted on close.
+         */
         fun emit(k: Int, corr: Double, rawVar: String) {
             val corrStr = String.format(Locale.ROOT, "%.6f", corr)
             val ev = CardinalityResult(
                 target = model.targetToAchieve,
                 threadName = "t",
                 cardinality = k,
-                correlation = corr,                 // NATURAL
+                correlation = corr,
                 functionValuesCsvLine = "$k,$corrStr",
                 variableValuesCsvLine = rawVar
             )
@@ -678,9 +702,11 @@ class NaturalCorrelationViewsTest {
             println("[NaturalCorrelation/CSV] - append FUN/VAR -> K=$k corr=$corrStr")
         }
 
-        // Mixed per K; WORST final file is (K asc, corr desc); we pick LAST (min).
-        // K=1:  0.30, -0.10 → desc: 0.30, -0.10 → pick LAST = -0.10
-        // K=2:  0.20, -0.05 → desc: 0.20, -0.05 → pick LAST = -0.05
+        /**
+         * Mixed per K; WORST final file is (K asc, corr desc); we pick LAST (min).
+         * K=1:  0.30, -0.10 → desc: 0.30, -0.10 → pick LAST = -0.10
+         * K=2:  0.20, -0.05 → desc: 0.20, -0.05 → pick LAST = -0.05
+         */
         emit(1, 0.30, "1 0 0 0")
         emit(2, 0.20, "0 1 0 0")
         emit(1, -0.10, "1 1 0 0")
@@ -697,7 +723,7 @@ class NaturalCorrelationViewsTest {
         explainFunSelection(model.targetToAchieve, funLines, tag = "Explain/FUN-WORST-MIX")
 
         val byK = parseFunPairs(funLines)
-        assertEquals(-0.10, byK[1]!!.last(), 1e-12)  // pick LAST = min
+        assertEquals(-0.10, byK[1]!!.last(), 1e-12)
         assertEquals(-0.05, byK[2]!!.last(), 1e-12)
 
         val varLines = Files.readAllLines(varPath).filter { it.isNotBlank() }
@@ -708,9 +734,9 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - Test ends (FUN/VAR, WORST with mixed ±).")
     }
 
-    /* ========================================================================================
+    /*
      * CSV – TOP: WORST with MIXED positive/negative (ordering + selection)
-     * ======================================================================================== */
+     */
     @Test
     @DisplayName("CSVView TOP: WORST with mixed ± values → ascending per K, pick FIRST = min")
     fun testCsvTopWriteWithExplanation_Worst_MixedSigns() {
@@ -728,11 +754,12 @@ class NaturalCorrelationViewsTest {
         val topPath = Paths.get(view.getTopSolutionsFilePath(model))
         deleteIfExists(topPath)
 
-        // For WORST we provide ASC sequences that cross zero (negative up to positive).
-        // K=1 (initial):  -0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15 → pick FIRST = -0.15
-        // Replace K=1 with a more negative block:
-        //                  -0.40, -0.35, ..., 0.10 → pick FIRST = -0.40 (overwrites older K=1)
-        // K=2:            -0.12, -0.08, -0.04, 0.00, 0.04, 0.08, 0.12 → pick FIRST = -0.12
+        /**
+         * For WORST provide ascending sequences that cross zero (negative up to positive).
+         * K=1 initial: -0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15 → pick FIRST = -0.15
+         * Replacement for K=1: -0.40, -0.35, …, 0.10 → pick FIRST = -0.40 (overwrites older K=1)
+         * K=2: -0.12, -0.08, -0.04, 0.00, 0.04, 0.08, 0.12 → pick FIRST = -0.12
+         */
         fun ascCrossZero(cardinality: Int, start: Double, step: Double, count: Int): List<String> =
             (0 until count).map { i ->
                 val v = start + step * i
@@ -747,7 +774,7 @@ class NaturalCorrelationViewsTest {
         println("[NaturalCorrelation/CSV] - replaceTopBatch -> K=1,2 (initial, asc across zero)")
 
         val replaceK1 = mapOf(
-            1 to ascCrossZero(1, start = -0.40, step = 0.05, count = 11) // -0.40 .. +0.10
+            1 to ascCrossZero(1, start = -0.40, step = 0.05, count = 11)
         )
         view.onReplaceTopBatch(model, replaceK1)
         println("[NaturalCorrelation/CSV] - replaceTopBatch -> K=1 (replacement, stronger asc)")
@@ -765,16 +792,15 @@ class NaturalCorrelationViewsTest {
         explainTopSelection(model.targetToAchieve, dataRows, tag = "Explain/TOP-WORST-MIX")
 
         val byK = parseTopTriples(dataRows)
-        assertEquals(-0.40, byK[1]!!.first(), 1e-12)  // pick FIRST = min
+        assertEquals(-0.40, byK[1]!!.first(), 1e-12)
         assertEquals(-0.12, byK[2]!!.first(), 1e-12)
 
         println("[NaturalCorrelation/CSV] - Test ends (TOP, WORST with mixed ±).")
     }
 
-
-    /* ========================================================================================
+    /*
      * Test scaffolding
-     * ======================================================================================== */
+     */
 
     private fun stubModel(
         datasetName: String,
@@ -799,4 +825,10 @@ class NaturalCorrelationViewsTest {
     private fun deleteIfExists(p: Path) {
         runCatching { if (Files.exists(p)) Files.delete(p) }
     }
+
+    private fun topPathExists(view: CSVView, model: DatasetModel): Boolean =
+        Paths.get(view.getTopSolutionsFilePath(model)).exists()
+
+    private fun readTopLines(view: CSVView, model: DatasetModel): List<String> =
+        Files.readAllLines(Paths.get(view.getTopSolutionsFilePath(model))).filter { it.isNotBlank() }
 }

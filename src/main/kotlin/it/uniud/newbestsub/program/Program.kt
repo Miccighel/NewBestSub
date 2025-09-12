@@ -22,16 +22,16 @@ import java.io.FileNotFoundException
 import java.nio.file.FileSystemException
 
 /**
- * Main program entry point for NewBestSub.
+ * Main entry point for NewBestSub.
  *
- * Responsibilities:
- * - Parse CLI arguments and validate them.
- * - Initialize logging: bootstrap log → parameterized log.
- * - Load dataset and build parameter tokens.
- * - Manage deterministic seeding via RandomBridge.
- * - Run experiments (Best/Worst/Average/All), expansions, and merging.
- * - Copy results into NewBestSub-Experiments/ when requested.
- * - Catch and log errors (CLI, FS, runtime validation, jMetal, OOM) with actionable hints.
+ * Responsibilities
+ * • Parse CLI arguments and validate them.
+ * • Initialize logging (bootstrap log → parameterized log).
+ * • Load dataset and build parameter tokens.
+ * • Manage deterministic seeding via RandomBridge.
+ * • Run experiments (Best/Worst/Average/All), expansions, and merging.
+ * • Optionally copy results into NewBestSub-Experiments/.
+ * • Catch and log errors (CLI, FS, runtime validation, jMetal, OOM) with actionable hints.
  */
 object Program {
 
@@ -43,31 +43,33 @@ object Program {
 
         val options = loadCommandLineOptions()
 
-        /* -------- Bootstrap logging to a timestamped file (no params yet) -------- */
+        /* Bootstrap logging to a timestamped file (no params yet) */
         val bootstrapLogPath = LogManager.getBootstrapLogFilePath()
         System.setProperty("baseLogFileName", bootstrapLogPath)
         var logger: Logger = LogManager.updateRootLoggerLevel(Level.INFO)
 
-        /* -------- Catch uncaught exceptions from worker threads (e.g., coroutines) -------- */
+        /* Catch uncaught exceptions from worker threads (for example, coroutines) */
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             when (e) {
                 is ParseException -> {
-                    // Runtime validation-style ParseException (e.g., -po too small)
-                    logger.error("Runtime configuration error on thread {}: {}", t.name, e.message ?: "ParseException", e)
+                    /* Runtime validation-style ParseException (for example, -po too small) */
+                    logger.error("Runtime configuration error on thread {}: {}", t.name, e.message ?: "ParseException")
+                    logger.debug("Stacktrace (debug):", e)
                     if (e.message?.contains("<<p>>", true) == true || e.message?.contains("<<po>>", true) == true) {
                         logger.info("Hint: set -po (population) ≥ number of topics (see dataset header / logs).")
                     }
                     logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to configuration error.")
                 }
                 else -> {
-                    logger.error("Uncaught exception on thread {}: {}", t.name, e.message ?: "unknown", e)
+                    logger.error("Uncaught exception on thread {}: {}", t.name, e.message ?: "unknown")
+                    logger.debug("Stacktrace (debug):", e)
                     logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
                 }
             }
         }
 
         try {
-            /* --------------------------- 1) CLI parsing --------------------------- */
+            /* 1) CLI parsing */
             val parser: CommandLineParser = DefaultParser()
             val commandLine: CommandLine = parser.parse(options, arguments)
 
@@ -140,7 +142,7 @@ object Program {
                 val b = raw[1].toIntOrNull()
                     ?: throw ParseException("Value for the option <<pe>> or <<perc>> is not an integer. Check the usage section below")
 
-                // Normalize (and clamp to 1..100 if your workflow expects percentile bounds)
+                /* Normalize (and clamp to 1..100 if your workflow expects percentile bounds) */
                 val lo = minOf(a, b).coerceAtLeast(1)
                 val hi = maxOf(a, b).coerceAtMost(100)
                 if (a > b) {
@@ -152,16 +154,15 @@ object Program {
                 percentiles = (lo..hi).toList()
             }
 
-            /* --------------------------- 2) Controller + dataset load --------------------------- */
+            /* 2) Controller + dataset load */
             val datasetController = DatasetController(targetToAchieve)
             datasetController.load(datasetPath)
 
-            /* PRE-VALIDATE: for Best/Worst/All, enforce -po ≥ #topics (fail early on main thread) */
+            /* Pre-validate: for Best/Worst/All, enforce -po ≥ #topics (fail early on main thread) */
             run {
                 if (targetToAchieve != Constants.TARGET_AVERAGE) {
                     val topics = datasetController.models[0].numberOfTopics
                     if (populationSize < topics) {
-                        // Mirror the message style thrown deeper to keep consistency
                         throw ParseException(
                             "Value for the option <<p>> or <<po>> must be greater or equal than/to $topics. " +
                             "Current value is $populationSize. Check the usage section below."
@@ -203,11 +204,7 @@ object Program {
                 logger.info("${Constants.NEWBESTSUB_EXPERIMENTS_NAME} detected.")
             }
 
-            if (targetToAchieve == Constants.TARGET_ALL || targetToAchieve == Constants.TARGET_AVERAGE) {
-                logger.info("Percentiles: ${percentiles.joinToString(", ")}. [Experiment: Average]")
-            }
-
-            /* --------------------------- Deterministic mode --------------------------- */
+            /* Deterministic mode */
             val deterministicRequested = commandLine.hasOption("det") || commandLine.hasOption("sd")
             val seedFromCli: Long? = if (commandLine.hasOption("sd")) {
                 commandLine.getOptionValue("sd")?.toLongOrNull()
@@ -237,7 +234,7 @@ object Program {
                 null
             }
 
-            /* --------------------------- Helpers --------------------------- */
+            /* Helpers */
             val resultCleaner = {
                 logger.info("Cleaning of useless results from last expansion started.")
                 datasetController.clean(datasetController.aggregatedDataResultPaths, "Cleaning aggregated data at paths:")
@@ -259,7 +256,7 @@ object Program {
                 value
             }
 
-            /* --------------------------- 3) Run modes --------------------------- */
+            /* 3) Run modes */
             if (commandLine.hasOption("mr")) {
                 val numberOfExecutions = try {
                     Integer.parseInt(commandLine.getOptionValue("mr")).also {
@@ -326,7 +323,7 @@ object Program {
                 val systemExpansionCoefficient = try {
                     Integer.parseInt(commandLine.getOptionValue("es"))
                 } catch (_: NumberFormatException) {
-                    throw ParseException("Value for the option <<es>> or <<exps> is not an integer. Check the usage section below")
+                    throw ParseException("Value for the option <<es>> or <<exps>> is not an integer. Check the usage section below")
                 }
                 val systemMaximumExpansionCoefficient = parseMaximumExpansionCoefficient.invoke()
                 val trueNumberOfSystems = datasetController.models[0].numberOfSystems
@@ -375,31 +372,34 @@ object Program {
                 msg.contains("greater or equal", true) || msg.contains("greater than", true)
 
             if (looksLikeRuntimeConfig) {
-                // Runtime validation error (e.g., -po too small for #topics)
-                logger.error("Configuration error: {}", msg, exception)
+                logger.error("Configuration error: {}", msg)
+                logger.debug("Stacktrace (debug):", exception)
                 if (msg.contains("<<p>>", true) || msg.contains("<<po>>", true)) {
                     logger.info("Hint: set -po (population) ≥ number of topics of the dataset.")
                 }
                 logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to configuration error.")
             } else {
-                // Genuine CLI parse error → pretty help
-                logger.error("Invalid command line arguments: {}", msg.ifBlank { "unknown ParseException" }, exception)
+                logger.error("Invalid command line arguments: {}", msg.ifBlank { "unknown ParseException" })
+                logger.debug("Stacktrace (debug):", exception)
                 printNiceHelp(options, exception.message)
                 logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to invalid arguments.")
             }
 
         } catch (exception: FileNotFoundException) {
             val cwd = File(".").absoluteFile.normalize().path
-            logger.error("File not found (cwd: {}): {}", cwd, exception.message ?: "unknown", exception)
+            logger.error("File not found (cwd: {}): {}", cwd, exception.message ?: "unknown")
+            logger.debug("Stacktrace (debug):", exception)
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
         } catch (exception: FileSystemException) {
             logger.error(
                 "Filesystem error (file='{}', other='{}', reason='{}').",
-                exception.file, exception.otherFile, exception.reason, exception
+                exception.file, exception.otherFile, exception.reason
             )
+            logger.debug("Stacktrace (debug):", exception)
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
         } catch (exception: JMetalException) {
-            logger.error("jMetal error: {}", exception.message ?: "unknown JMetalException", exception)
+            logger.error("jMetal error: {}", exception.message ?: "unknown JMetalException")
+            logger.debug("Stacktrace (debug):", exception)
             val msg = exception.message ?: ""
             if (msg.contains("must be greater or equal", true)) {
                 logger.info("Hint: set -po (population) ≥ number of topics (current dataset topics logged above).")
@@ -418,19 +418,20 @@ object Program {
                 else ->
                     "Java heap space exhausted. Increase -Xmx or reduce population/iterations/repetitions."
             }
-            logger.error("${Constants.NEWBESTSUB_NAME} ran out of memory. $kindHint", e)
+            logger.error("${Constants.NEWBESTSUB_NAME} ran out of memory. $kindHint")
+            logger.debug("Stacktrace (debug):", e)
             logger.info(
                 "Try: increase heap (for example, -Xmx32g), or reduce -po / -i / -r. Also consider -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof for diagnostics."
             )
             logger.info(
-                "Example: java -Xms32g -Xmx32g -XX:+UseG1GC -XX:+UseStringDeduplication -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof -jar NewBestSub-2.0-jar-with-dependencies.jar -fi \"mmlu\" -c \"Pearson\" -po 20000 -i 100000 -r 2000 -t \"All\" -pe 1,100 -l Limited"
+                "Example: java -Xms32g -Xmx32g -XX:+UseG1GC -XX:+UseStringDeduplication -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=heapdump.hprof -jar NewBestSub-2.0-jar-with-dependencies.jar -fi \"mmlu\" -c \"Pearson\" -po 20000 -i 100000 -r 2000 -pe 1,100 -l Limited"
             )
             logger.info("${Constants.NEWBESTSUB_NAME} execution terminated due to OutOfMemoryError.")
         }
     }
 
     /**
-     * Run `solve` with a small try/catch that turns model-time ParseExceptions
+     * Run solve with a small try/catch that turns model-time ParseExceptions
      * into friendly hints, without invoking the CLI help printer.
      */
     private fun runSolveWithRuntimeValidationHints(
@@ -444,15 +445,15 @@ object Program {
             val msg = e.message ?: "ParseException"
             val poCase = msg.contains("<<p>>", true) || msg.contains("<<po>>", true)
             if (poCase) {
-                logger.error("Configuration error during solve: {}", msg, e)
+                logger.error("Configuration error during solve: {}", msg)
+                logger.debug("Stacktrace (debug):", e)
                 logger.info("Hint: -po (population) must be ≥ number of topics for this dataset.")
                 logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
             } else {
-                // Unknown runtime ParseException → still log cleanly.
-                logger.error("Runtime ParseException during solve: {}", msg, e)
+                logger.error("Runtime ParseException during solve: {}", msg)
+                logger.debug("Stacktrace (debug):", e)
                 logger.info("${Constants.NEWBESTSUB_NAME} execution terminated.")
             }
-            // Stop further workflow after a hard validation failure.
             throw e
         }
     }
@@ -539,9 +540,16 @@ object Program {
         return options
     }
 
-    /** Pretty help and usage printer using the new Commons CLI help API. */
+    /** Pretty help and usage printer using the new Commons CLI 1.10 help API. */
     private fun printNiceHelp(options: Options, cause: String?) {
-        val out = TextHelpAppendable(java.io.PrintWriter(System.out, true))
+        /* Output target: System.out (flushed). Set wider page width and paddings. */
+        val appendable = TextHelpAppendable(java.io.PrintWriter(System.out, true)).apply {
+            /* Configure layout: width=100, leftPad=1, indent=3 */
+            getTextStyleBuilder()
+                .setMaxWidth(100)
+                .setLeftPad(1)
+                .setIndent(3)
+        }
 
         val header = buildString {
             appendLine("NewBestSub")
@@ -578,6 +586,7 @@ object Program {
             appendLine("• Use --det / --seed for reproducible runs.")
         }
 
+        /* Stable option order (same as before) */
         val priority = listOf(
             "fi", "c", "t", "l",
             "i", "po",
@@ -593,21 +602,26 @@ object Program {
         }
 
         val formatter = HelpFormatter.builder()
-            .setHelpAppendable(out)
+            .setHelpAppendable(appendable)
             .setComparator(optionOrder)
             .get()
-            .apply { syntaxPrefix = "Usage: " }
+            .apply { setSyntaxPrefix("Usage: ") }
 
-        formatter.printHelp(
-            "${Constants.NEWBESTSUB_NAME} [options]",
-            header,
-            options,
-            footer,
-            /* autoUsage = */ true
-        )
+        try {
+            formatter.printHelp(
+                "${Constants.NEWBESTSUB_NAME} [options]",
+                header,
+                options,
+                footer,
+                /* autoUsage = */ true
+            )
+        } catch (ioe: java.io.IOException) {
+            /* Very unlikely for System.out; log minimal noise. */
+            System.err.println("Failed to write help text: ${ioe.message}")
+        }
     }
 
-    /** Initialize Snappy's native temp directory under `target/tmp-snappy`. */
+    /** Initialize Snappy's native temp directory under target/tmp-snappy. */
     private fun initSnappyTempDir() {
         val key = "org.xerial.snappy.tempdir"
         if (System.getProperty(key).isNullOrBlank()) {

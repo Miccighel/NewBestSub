@@ -12,23 +12,24 @@ import java.util.*
  * correlation methods, and various configuration parameters used across the project.
  *
  * Conventions:
- * - Paths always include a trailing [PATH_SEPARATOR].
- * - File/folder names are constructed from tokens separated by [FILE_NAME_SEPARATOR].
- * - Run-specific outputs use [RUN_TIMESTAMP] to guarantee uniqueness per execution.
+ * • Paths always include a trailing [PATH_SEPARATOR].
+ * • File/folder names are constructed from tokens separated by [FILE_NAME_SEPARATOR].
+ * • Run-specific outputs use [RUN_TIMESTAMP] to guarantee uniqueness per execution.
  */
 object Constants {
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // Filesystem paths
-    // -----------------------------------------------------------------------------------------------------------------
-
+    /**
+     * Filesystem paths
+     *
+     * Absolute and project-relative locations used for inputs, outputs, and logging.
+     */
     /** System-dependent path separator (e.g., "/" on Unix, "\\" on Windows). */
     val PATH_SEPARATOR: String = FileSystems.getDefault().separator.toString()
 
     /** Parent directory of the current working directory (absolute). */
     val BASE_PATH: String = "${Paths.get("").toAbsolutePath().parent}$PATH_SEPARATOR"
 
-    /** Project name token: `"NewBestSub"`. */
+    /** Project name token: "NewBestSub". */
     const val NEWBESTSUB_NAME: String = "NewBestSub"
 
     /** Absolute path to the current working directory (with trailing [PATH_SEPARATOR]). */
@@ -40,10 +41,11 @@ object Constants {
     /** Default output directory under the project (`<project>/res/`). */
     val NEWBESTSUB_OUTPUT_PATH: String = "${NEWBESTSUB_PATH}res$PATH_SEPARATOR"
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // Experiments folder structure
-    // -----------------------------------------------------------------------------------------------------------------
-
+    /**
+     * Experiments folder structure
+     *
+     * Locations used when copying results into a sibling experiments repository.
+     */
     /** Base name of the experiments' folder. */
     const val NEWBESTSUB_EXPERIMENTS_NAME: String = "NewBestSub-Experiments"
 
@@ -62,12 +64,13 @@ object Constants {
     val NEWBESTSUB_EXPERIMENTS_INPUT_PATH: String =
         "${NEWBESTSUB_EXPERIMENTS_PATH}data$PATH_SEPARATOR$NEWBESTSUB_NAME$PATH_SEPARATOR$RUN_TIMESTAMP"
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // LogManager
-    // -----------------------------------------------------------------------------------------------------------------
-
+    /**
+     * LogManager
+     *
+     * Filenames and frequency knobs for logging.
+     */
     /** Base filename (prefix) for execution logs. */
-    const val LOG_FILE_NAME: String = "Execution"
+    const val LOG_FILE_NAME: String = "Run"
 
     /** Log file extension. */
     const val LOG_FILE_SUFFIX: String = ".log"
@@ -76,15 +79,16 @@ object Constants {
      * Controls logging frequency (in percentage milestones).
      *
      * Example:
-     * - `LOGGING_FACTOR = 1` → log every 1% progress
-     * - `LOGGING_FACTOR = 5` → log every 5% progress
+     * • LOGGING_FACTOR = 1 → log every 1% progress
+     * • LOGGING_FACTOR = 5 → log every 5% progress
      */
     const val LOGGING_FACTOR: Int = 1
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // Targets (evaluation modes)
-    // -----------------------------------------------------------------------------------------------------------------
-
+    /**
+     * Targets (evaluation modes)
+     *
+     * Tokens used to select the optimization objective.
+     */
     /** Evaluation target: best system subset. */
     const val TARGET_BEST: String = "Best"
 
@@ -100,20 +104,22 @@ object Constants {
     /** Placeholder for unavailable cardinality values. */
     const val CARDINALITY_NOT_AVAILABLE: String = "X"
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // Correlation methods
-    // -----------------------------------------------------------------------------------------------------------------
-
+    /**
+     * Correlation methods
+     *
+     * Identifiers for correlation backends.
+     */
     /** Pearson correlation identifier. */
     const val CORRELATION_PEARSON: String = "Pearson"
 
     /** Kendall correlation identifier. */
     const val CORRELATION_KENDALL: String = "Kendall"
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // File naming components
-    // -----------------------------------------------------------------------------------------------------------------
-
+    /**
+     * File naming components
+     *
+     * Suffixes and separators for CSV/Parquet artifacts.
+     */
     /** Suffix used for function values files. */
     const val FUNCTION_VALUES_FILE_SUFFIX: String = "Fun"
 
@@ -135,26 +141,23 @@ object Constants {
     /** Suffix for merged result files. */
     const val MERGED_RESULT_FILE_SUFFIX: String = "Merged"
 
-    /** Separator used in file names (typically `"-"`). */
+    /** Separator used in file names (typically "-"). */
     const val FILE_NAME_SEPARATOR: String = "-"
 
     /** File extension for CSV outputs. */
     const val CSV_FILE_EXTENSION: String = ".csv"
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // Streaming throttling
-    // -----------------------------------------------------------------------------------------------------------------
-
     /**
-     * Generation warm-up: number of generations to skip completely before streaming begins.
+     * Streaming throttling
+     *
+     * Gates that control how frequently generations are streamed/logged.
      */
+    /** Number of generations to skip completely before streaming begins. */
     const val GENERATION_WARMUP: Int = 100
 
     /**
-     * Generation stride: after the warm-up, stream/log every N-th generation.
-     *
-     * Used to reduce I/O load and output size during long evolutionary runs.
+     * After the warm-up, stream/log every N-th generation to reduce I/O
+     * during long evolutionary runs.
      */
     const val GENERATION_STRIDE: Int = 10
-
 }

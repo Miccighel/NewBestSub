@@ -27,7 +27,7 @@ import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.DOUBLE
 import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT32
 import org.apache.parquet.schema.Types
 
-// Minimal NIO fallback (no Hadoop winutils)
+/* Minimal NIO fallback (no Hadoop winutils). */
 import org.apache.parquet.io.OutputFile
 import org.apache.parquet.io.PositionOutputStream
 import java.nio.ByteBuffer
@@ -38,51 +38,60 @@ import java.text.DecimalFormatSymbols
 import java.util.Base64
 
 /**
- * # ParquetView
+ * ParquetView.
  *
- * Streaming-first Parquet writer for **FUN**, **VAR**, and **TOP** tables, plus
- * generic “final” tables (Aggregated/Info). Mirrors CSVView semantics.
+ * Streaming oriented Parquet writer for FUN, VAR, and TOP tables, plus generic
+ * final tables (Aggregated and Info). Mirrors CSVView semantics.
+ *
+ * Responsibilities
+ * - Streamed FUN/VAR buffering followed by a single aligned write.
+ * - Optional TOP batches merge and write by increasing K.
+ * - Generic table writer that does not depend on the CSV layer.
+ *
+ * Platform notes
+ * - On Windows without winutils, falls back to a pure NIO OutputFile implementation.
+ * - Compression codec can be selected via system property `-Dnbs.parquet.codec`.
  */
 class ParquetView {
 
     private val logger = LogManager.getLogger(LogManager.ROOT_LOGGER_NAME)
 
-    /* ---------------- Paths (Parquet subfolder) ---------------- */
+    /* Paths (Parquet subfolder). */
 
     private fun funParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.FUNCTION_VALUES_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.FUNCTION_VALUES_FILE_SUFFIX
+            )
 
     private fun varParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.VARIABLE_VALUES_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.VARIABLE_VALUES_FILE_SUFFIX
+            )
 
     private fun topParquetPath(model: DatasetModel): String =
         ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(
-                    ViewPaths.fileBaseParts(model, model.targetToAchieve),
-                    Constants.TOP_SOLUTIONS_FILE_SUFFIX
-                )
+            ViewPaths.parquetNameNoTs(
+                ViewPaths.fileBaseParts(model, model.targetToAchieve),
+                Constants.TOP_SOLUTIONS_FILE_SUFFIX
+            )
 
     fun getAggregatedDataParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.AGGREGATED_DATA_FILE_SUFFIX)
+            ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.AGGREGATED_DATA_FILE_SUFFIX)
     }
 
     fun getInfoParquetPath(model: DatasetModel, isTargetAll: Boolean = false): String {
         val token = if (isTargetAll) Constants.TARGET_ALL else model.targetToAchieve
         return ViewPaths.ensureParquetDir(model) +
-                ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.INFO_FILE_SUFFIX)
+            ViewPaths.parquetNameNoTs(ViewPaths.fileBaseParts(model, token), Constants.INFO_FILE_SUFFIX)
     }
 
-    /* ---------------- Schemas ---------------- */
+    /* Schemas. */
 
     private val schemaFun: MessageType = Types.buildMessage()
         .required(INT32).named("K")
@@ -100,13 +109,15 @@ class ParquetView {
         .required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named("TopicsB64")
         .named("Top")
 
-    private fun buildUtf8Schema(messageName: String, cols: List<String>): MessageType {
-        val b = Types.buildMessage()
-        cols.forEach { c -> b.required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named(c) }
-        return b.named(messageName)
+    private fun buildUtf8Schema(messageName: String, columnNames: List<String>): MessageType {
+        val builder = Types.buildMessage()
+        columnNames.forEach { columnName ->
+            builder.required(BINARY).`as`(LogicalTypeAnnotation.stringType()).named(columnName)
+        }
+        return builder.named(messageName)
     }
 
-    /* ---------------- Compression / platform helpers ---------------- */
+    /* Compression and platform helpers. */
 
     private fun isWindows(): Boolean =
         System.getProperty("os.name").lowercase(Locale.ROOT).contains("win")
@@ -120,6 +131,10 @@ class ParquetView {
         return if (isWindows()) CompressionCodecName.GZIP else CompressionCodecName.SNAPPY
     }
 
+    /**
+     * Ensure a writable directory for xerial-snappy temporary files.
+     * The selection prefers a sibling of the output directory, then java.io.tmpdir, then user.home.
+     */
     private fun ensureSnappyTemp(outPathStr: String) {
         if (System.getProperty("org.xerial.snappy.tempdir") != null) return
         val candidates = listOfNotNull(
@@ -127,12 +142,13 @@ class ParquetView {
             runCatching { Paths.get(System.getProperty("java.io.tmpdir", "")).resolve("tmp-snappy") }.getOrNull(),
             runCatching { Paths.get(System.getProperty("user.home", ".")).resolve(".snappy") }.getOrNull()
         )
-        for (p in candidates) {
+        for (candidate in candidates) {
             try {
-                Files.createDirectories(p)
-                System.setProperty("org.xerial.snappy.tempdir", p.toString())
+                Files.createDirectories(candidate)
+                System.setProperty("org.xerial.snappy.tempdir", candidate.toString())
                 return
-            } catch (_: Exception) { /* ignore */
+            } catch (_: Exception) {
+                /* Ignore and try next candidate. */
             }
         }
     }
@@ -143,35 +159,38 @@ class ParquetView {
         return check(System.getenv("HADOOP_HOME")) || check(System.getProperty("hadoop.home.dir"))
     }
 
-    /* ---------------- OutputFile fallback (Windows, no winutils) ---------------- */
+    /**
+     * OutputFile implementation backed by NIO for Windows environments without winutils.
+     * Writes with overwrite semantics.
+     */
+    private class NioOutputFile(private val nioPath: java.nio.file.Path) : OutputFile {
+        override fun create(blockSizeHint: Long): PositionOutputStream = createOrOverwrite(blockSizeHint)
 
-    private class NioOutputFile(private val path: java.nio.file.Path) : OutputFile {
-        override fun create(blockSizeHint: Long) = createOrOverwrite(blockSizeHint)
         override fun createOrOverwrite(blockSizeHint: Long): PositionOutputStream {
-            Files.createDirectories(path.parent)
-            val ch = FileChannel.open(
-                path,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE
+            Files.createDirectories(nioPath.parent)
+            val channel = FileChannel.open(
+                nioPath,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
             )
-            val singleByte = ByteBuffer.allocate(1) // reused per stream instance
+            val singleByteBuffer = ByteBuffer.allocate(1)
             return object : PositionOutputStream() {
-                private var pos = 0L
-                override fun getPos(): Long = pos
+                private var position: Long = 0
+                override fun getPos(): Long = position
                 override fun write(b: Int) {
-                    singleByte.clear()
-                    singleByte.put(0, b.toByte())
-                    ch.write(singleByte); pos += 1
+                    singleByteBuffer.clear()
+                    singleByteBuffer.put(0, b.toByte())
+                    channel.write(singleByteBuffer)
+                    position += 1
                 }
-
                 override fun write(b: ByteArray, off: Int, len: Int) {
-                    val bb = ByteBuffer.wrap(b, off, len)
-                    val n = ch.write(bb); pos += n.toLong()
+                    val byteBuffer = ByteBuffer.wrap(b, off, len)
+                    val written = channel.write(byteBuffer)
+                    position += written.toLong()
                 }
-
                 override fun flush() {}
-                override fun close() {
-                    ch.close()
-                }
+                override fun close() { channel.close() }
             }
         }
 
@@ -179,8 +198,10 @@ class ParquetView {
         override fun defaultBlockSize(): Long = 0L
     }
 
-    /* ---------------- Writer factory (RawLocalFS or NIO fallback, OVERWRITE) ---------------- */
-
+    /**
+     * ParquetWriter factory using RawLocalFS or NIO fallback with OVERWRITE mode.
+     * Applies page size, row group size, dictionary encoding, and compression.
+     */
     private fun openWriter(pathStr: String, schema: MessageType): ParquetWriter<Group> {
         val codec = chooseCodec()
         if (codec == CompressionCodecName.SNAPPY) runCatching { ensureSnappyTemp(pathStr) }
@@ -209,44 +230,52 @@ class ParquetView {
             .build()
     }
 
-    /* ---------------- Local formatting helpers ---------------- */
+    /* Local formatting helpers. */
 
-    private fun round6(x: Double): Double = round(x * 1_000_000.0) / 1_000_000.0
+    private fun round6(value: Double): Double = round(value * 1_000_000.0) / 1_000_000.0
 
     private val decimalFormat = DecimalFormat("0.000000", DecimalFormatSymbols(Locale.ROOT))
-    private fun fmt6(x: Double): String = decimalFormat.format(x)
+    private fun fmt6(value: Double): String = decimalFormat.format(value)
 
     private val nonAlNumbersUnderscoreRegex = Regex("[^A-Za-z0-9_]")
     private val tokenSplitRegex = Regex("[,;\\s|]+")
 
+    /**
+     * Normalize a cell string: trim, keep plain strings as is, and format decimals to 6 digits.
+     */
     private fun normalizeCell(cellText: String): String {
-        val t = cellText.trim()
-        if (t.isEmpty()) return ""
-        val looksDecimal = t.indexOfAny(charArrayOf('.', 'e', 'E')) >= 0
-        if (!looksDecimal) return t
-        val v = t.toDoubleOrNull() ?: return t
-        return fmt6(v)
+        val trimmed = cellText.trim()
+        if (trimmed.isEmpty()) return ""
+        val looksDecimal = trimmed.indexOfAny(charArrayOf('.', 'e', 'E')) >= 0
+        if (!looksDecimal) return trimmed
+        val numeric = trimmed.toDoubleOrNull() ?: return trimmed
+        return fmt6(numeric)
     }
 
+    /**
+     * Sanitize column names to `[A-Za-z_][A-Za-z0-9_]*` and ensure uniqueness.
+     * Empty or invalid names default to `col`, `col_2`, and so on.
+     */
     private fun sanitizeAndUniq(rawNames: List<String>): List<String> {
         val used = mutableSetOf<String>()
         return rawNames.map { raw ->
             var base = raw.trim().ifEmpty { "col" }.replace(nonAlNumbersUnderscoreRegex, "_")
             if (base.firstOrNull()?.isDigit() == true) base = "_$base"
             var name = base
-            var idx = 2
+            var suffix = 2
             while (!used.add(name)) {
-                name = "${base}_$idx"; idx++
+                name = "${base}_$suffix"
+                suffix++
             }
             name
         }
     }
 
-    /* ------------- Encode helpers (shared encoder + cached labels map) ------------- */
+    /* Encode helpers (shared encoder and cached label map). */
 
     private val base64Encoder = Base64.getEncoder().withoutPadding()
 
-    private data class LabelsKey(val identity: Int, val size: Int, val first: String?)
+    private data class LabelsKey(val identityHash: Int, val size: Int, val firstLabel: String?)
 
     private val labelIndexCache = mutableMapOf<LabelsKey, Map<String, Int>>()
 
@@ -256,115 +285,143 @@ class ParquetView {
     }
 
     /**
-     * Convert incoming topics field into canonical "B64:<...>".
-     * Accepts labels, numeric indices, bitstrings, or already-encoded "B64:".
+     * Convert an incoming topics field into the canonical "B64:<...>" representation.
+     * Accepts labels, numeric indices, bitstrings, or already encoded values.
      */
     private fun fieldToB64(raw: String, labels: Array<String>): String {
-        val t = raw.trim()
-        if (t.isEmpty()) return "B64:"
-        if (t.startsWith("B64:")) return t
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return "B64:"
+        if (trimmed.startsWith("B64:")) return trimmed
 
-        // True bitstring fast-path: ONLY '0'/'1'
+        /* Fast path for true bitstrings. Tight loop index variables by convention. */
         var isBitstring = true
         run {
-            var i = 0
-            while (i < t.length) {
-                val c = t[i]
-                if (c != '0' && c != '1') {
-                    isBitstring = false; break
+            var index = 0
+            while (index < trimmed.length) {
+                val ch = trimmed[index]
+                if (ch != '0' && ch != '1') {
+                    isBitstring = false
+                    break
                 }
-                i++
+                index++
             }
         }
         if (isBitstring) {
             val mask = BooleanArray(labels.size)
-            val n = minOf(labels.size, t.length)
-            var i = 0
-            while (i < n) {
-                mask[i] = (t[i] == '1'); i++
+            val copyLength = minOf(labels.size, trimmed.length)
+            var bitIndex = 0
+            while (bitIndex < copyLength) {
+                mask[bitIndex] = trimmed[bitIndex] == '1'
+                bitIndex++
             }
             return "B64:" + toBase64(mask)
         }
 
-        // Token path (handles single token too: label or numeric index)
-        val tokens = if (t.any { it == '|' || it == ';' || it == ',' || it.isWhitespace() || it == '[' || it == ']' }) {
-            t.removePrefix("[").removeSuffix("]").split(tokenSplitRegex).filter { it.isNotBlank() }
+        /* Token path (handles single token too: label or numeric index). */
+        val tokens = if (
+            trimmed.any { it == '|' || it == ';' || it == ',' || it.isWhitespace() || it == '[' || it == ']' }
+        ) {
+            trimmed.removePrefix("[").removeSuffix("]").split(tokenSplitRegex).filter { it.isNotBlank() }
         } else {
-            listOf(t)
+            listOf(trimmed)
         }
         if (tokens.isEmpty()) return "B64:"
 
         val mask = BooleanArray(labels.size)
-        var matched = 0
-        val allNumeric = tokens.all { tok -> tok.all { ch -> ch in '0'..'9' } }
+        var matchedCount = 0
+        val allNumeric = tokens.all { token -> token.all { ch -> ch in '0'..'9' } }
 
         if (allNumeric) {
-            for (tok in tokens) {
-                val idx = tok.toIntOrNull()
-                if (idx != null && idx in 0 until mask.size && !mask[idx]) {
-                    mask[idx] = true; matched++
+            for (token in tokens) {
+                val index = token.toIntOrNull()
+                if (index != null && index in 0 until mask.size && !mask[index]) {
+                    mask[index] = true
+                    matchedCount++
                 }
             }
         } else {
-            val byLabel = indexByLabel(labels)
-            for (tok in tokens) {
-                val idx = byLabel[tok] ?: tok.toIntOrNull()
-                if (idx != null && idx in 0 until mask.size && !mask[idx]) {
-                    mask[idx] = true; matched++
+            val indexByTopicLabel = indexByLabel(labels)
+            for (token in tokens) {
+                val index = indexByTopicLabel[token] ?: token.toIntOrNull()
+                if (index != null && index in 0 until mask.size && !mask[index]) {
+                    mask[index] = true
+                    matchedCount++
                 }
             }
         }
 
-        if (matched == 0) {
-            logger.warn("ParquetView fieldToB64] topics field did not match labels/indices; emitting empty mask. raw='{}'", raw)
+        if (matchedCount == 0) {
+            logger.warn(
+                "ParquetView fieldToB64] topics field did not match labels or indices; emitting empty mask. raw='{}'",
+                raw
+            )
         }
         return "B64:" + toBase64(mask)
     }
 
+    /**
+     * Pack a boolean mask into little endian 64 bit words and Base64 encode the bytes.
+     * The output length is 8 * ceil(maskLength / 64).
+     */
     private fun toBase64(mask: BooleanArray): String {
-        val words = (mask.size + 63) ushr 6
-        val packed = LongArray(words)
+        val wordCount = (mask.size + 63) ushr 6
+        val packedWords = LongArray(wordCount)
+
         var bitInWord = 0
         var wordIndex = 0
-        var accumulator = 0L
-        var i = 0
-        while (i < mask.size) {
-            if (mask[i]) accumulator = accumulator or (1L shl bitInWord)
+        var wordAccumulator = 0L
+        var maskIndex = 0
+
+        /* Tight loop indices by convention. */
+        while (maskIndex < mask.size) {
+            if (mask[maskIndex]) wordAccumulator = wordAccumulator or (1L shl bitInWord)
             bitInWord++
             if (bitInWord == 64) {
-                packed[wordIndex++] = accumulator; accumulator = 0L; bitInWord = 0
+                packedWords[wordIndex++] = wordAccumulator
+                wordAccumulator = 0L
+                bitInWord = 0
             }
-            i++
+            maskIndex++
         }
-        if (bitInWord != 0) packed[wordIndex] = accumulator
-        val out = ByteArray(words * java.lang.Long.BYTES)
-        var offset = 0
-        for (word in packed) {
+        if (bitInWord != 0) packedWords[wordIndex] = wordAccumulator
+
+        val outBytes = ByteArray(wordCount * java.lang.Long.BYTES)
+        var outOffset = 0
+        for (word in packedWords) {
             var x = word
-            var b = 0
-            while (b < java.lang.Long.BYTES) {
-                out[offset + b] = (x and 0xFF).toByte()
+            var byteIndex = 0
+            while (byteIndex < java.lang.Long.BYTES) {
+                outBytes[outOffset + byteIndex] = (x and 0xFF).toByte()
                 x = x ushr 8
-                b++
+                byteIndex++
             }
-            offset += java.lang.Long.BYTES
+            outOffset += java.lang.Long.BYTES
         }
-        return base64Encoder.encodeToString(out)
+        return base64Encoder.encodeToString(outBytes)
     }
 
-    /* ---------------- Streaming state ---------------- */
+    /* Streaming state. */
 
-    private data class ViewKey(val dataset: String, val execution: Int, val target: String)
-    private data class FunVarRow(val k: Int, val naturalCorrelation: Double, val topicsMaskB64: String)
+    private data class ViewKey(val datasetName: String, val executionIndex: Int, val targetToken: String)
 
-    private val funVarBuffers: MutableMap<ViewKey, MutableList<FunVarRow>> = mutableMapOf()
+    private data class FunVarRow(
+        val cardinality: Int,
+        val naturalCorrelation: Double,
+        val topicsMaskB64: String
+    )
 
-    private data class TopRow(val k: Int, val naturalCorrelation: Double, val topicsMaskB64: String)
+    private val funVarBuffersByKey: MutableMap<ViewKey, MutableList<FunVarRow>> = mutableMapOf()
 
-    private val topBlocks: MutableMap<ViewKey, MutableMap<Int, List<TopRow>>> = mutableMapOf()
+    private data class TopRow(val cardinality: Int, val naturalCorrelation: Double, val topicsMaskB64: String)
 
-    /* ---------------- Snapshot (non-streamed) ---------------- */
+    private val topBlocksByKey: MutableMap<ViewKey, MutableMap<Int, List<TopRow>>> = mutableMapOf()
 
+    /* Snapshot (non streamed). */
+
+    /**
+     * Write a full snapshot of FUN, VAR, and TOP (when applicable).
+     * Uses the natural correlation as provided by the model.
+     */
     fun printSnapshot(
         model: DatasetModel,
         allSolutions: List<BinarySolution>,
@@ -379,15 +436,15 @@ class ParquetView {
         runCatching {
             val funFactory = SimpleGroupFactory(schemaFun)
             val varFactory = SimpleGroupFactory(schemaVar)
-            openWriter(funParquetPath(model), schemaFun).use { funW ->
-                openWriter(varParquetPath(model), schemaVar).use { varW ->
-                    for (s in allSolutions) {
-                        val bss = s as BestSubsetSolution
-                        val k = bss.getCardinality().toInt()
-                        val corrNatural = round6(model.naturalCorrOf(bss))
-                        val mask = bss.retrieveTopicStatus()
-                        funW.write(funFactory.newGroup().append("K", k).append("Correlation", corrNatural))
-                        varW.write(varFactory.newGroup().append("K", k).append("TopicsB64", "B64:" + toBase64(mask)))
+            openWriter(funParquetPath(model), schemaFun).use { funWriter ->
+                openWriter(varParquetPath(model), schemaVar).use { varWriter ->
+                    for (solution in allSolutions) {
+                        val bestSubset = solution as BestSubsetSolution
+                        val cardinality = bestSubset.getCardinality().toInt()
+                        val naturalCorrelation = round6(model.naturalCorrOf(bestSubset))
+                        val mask = bestSubset.retrieveTopicStatus()
+                        funWriter.write(funFactory.newGroup().append("K", cardinality).append("Correlation", naturalCorrelation))
+                        varWriter.write(varFactory.newGroup().append("K", cardinality).append("TopicsB64", "B64:" + toBase64(mask)))
                     }
                 }
             }
@@ -395,15 +452,15 @@ class ParquetView {
 
         if (actualTarget != Constants.TARGET_AVERAGE) {
             runCatching {
-                val factory = SimpleGroupFactory(schemaTop)
-                openWriter(topParquetPath(model), schemaTop).use { w ->
-                    for (s in topSolutions) {
-                        val bss = s as BestSubsetSolution
-                        w.write(
-                            factory.newGroup()
-                                .append("K", bss.getCardinality().toInt())
-                                .append("Correlation", round6(model.naturalCorrOf(bss)))
-                                .append("TopicsB64", "B64:" + toBase64(bss.retrieveTopicStatus()))
+                val topFactory = SimpleGroupFactory(schemaTop)
+                openWriter(topParquetPath(model), schemaTop).use { topWriter ->
+                    for (solution in topSolutions) {
+                        val bestSubset = solution as BestSubsetSolution
+                        topWriter.write(
+                            topFactory.newGroup()
+                                .append("K", bestSubset.getCardinality().toInt())
+                                .append("Correlation", round6(model.naturalCorrOf(bestSubset)))
+                                .append("TopicsB64", "B64:" + toBase64(bestSubset.retrieveTopicStatus()))
                         )
                     }
                 }
@@ -411,134 +468,152 @@ class ParquetView {
         }
     }
 
-    /* ---------------- Streaming hooks ---------------- */
+    /* Streaming hooks. */
 
-    /** Buffer one streamed FUN/VAR row (topics normalized to B64). `ev.correlation` is NATURAL. */
-    fun onAppendCardinality(model: DatasetModel, ev: CardinalityResult) {
+    /**
+     * Buffer one streamed FUN/VAR row with topics normalized to B64.
+     * The event correlation is the natural correlation used for ordering.
+     */
+    fun onAppendCardinality(model: DatasetModel, event: CardinalityResult) {
         if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) return
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
-        val buf = funVarBuffers.getOrPut(viewKey) { mutableListOf() }
+        val buffer = funVarBuffersByKey.getOrPut(viewKey) { mutableListOf() }
 
-        val naturalCorrelation = ev.correlation
-        val topicsMaskB64 = fieldToB64(ev.variableValuesCsvLine, model.topicLabels)
+        val naturalCorrelation = event.correlation
+        val topicsMaskB64 = fieldToB64(event.variableValuesCsvLine, model.topicLabels)
 
-        buf += FunVarRow(k = ev.cardinality, naturalCorrelation = naturalCorrelation, topicsMaskB64 = topicsMaskB64)
+        buffer += FunVarRow(
+            cardinality = event.cardinality,
+            naturalCorrelation = naturalCorrelation,
+            topicsMaskB64 = topicsMaskB64
+        )
     }
 
     /**
-     * Merge/replace per-K TOP blocks.
-     * Lines are "K,Corr,Topics", where Corr is NATURAL and producer already ordered by target.
+     * Merge or replace per K TOP blocks.
+     * Lines are "K,Corr,Topics", where Corr is natural, and the producer already orders by target.
      */
     fun onReplaceTopBatch(model: DatasetModel, blocks: Map<Int, List<String>>) {
         if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) return
         if (blocks.isEmpty()) return
 
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
-        val cache = topBlocks.getOrPut(viewKey) { mutableMapOf() }
+        val cache = topBlocksByKey.getOrPut(viewKey) { mutableMapOf() }
 
-        for ((kFixed, lines) in blocks) {
-            val parsed: List<TopRow> = lines.mapNotNull { line ->
-                val p = line.split(',', limit = 3)
-                if (p.size < 3) return@mapNotNull null
-                val corrNatural = p[1].trim().toDoubleOrNull() ?: return@mapNotNull null
-                TopRow(k = kFixed, naturalCorrelation = corrNatural, topicsMaskB64 = fieldToB64(p[2], model.topicLabels))
+        for ((fixedCardinality, lines) in blocks) {
+            val parsedRows: List<TopRow> = lines.mapNotNull { line ->
+                val parts = line.split(',', limit = 3)
+                if (parts.size < 3) return@mapNotNull null
+                val corrNatural = parts[1].trim().toDoubleOrNull() ?: return@mapNotNull null
+                TopRow(
+                    cardinality = fixedCardinality,
+                    naturalCorrelation = corrNatural,
+                    topicsMaskB64 = fieldToB64(parts[2], model.topicLabels)
+                )
             }
-            if (parsed.isNotEmpty()) cache[kFixed] = parsed
+            if (parsedRows.isNotEmpty()) cache[fixedCardinality] = parsedRows
         }
     }
 
     /**
      * Flush all buffered rows to Parquet and clear internal state.
-     * Ordering:
-     * - FUN/VAR sorted by (K asc, corr asc) except WORST (K asc, corr desc).
-     * - TOP written by ascending K and producer-provided block order.
+     *
+     * Ordering
+     * - FUN/VAR sorted by (K ascending, correlation ascending) except WORST which uses correlation descending.
+     * - TOP written by increasing K and producer provided order within each block.
      */
     fun closeStreams(model: DatasetModel) {
         val enabled = !System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)
         val viewKey = ViewKey(model.datasetName, model.currentExecution, model.targetToAchieve)
 
         if (!enabled) {
-            funVarBuffers.remove(viewKey); topBlocks.remove(viewKey); labelIndexCache.clear()
+            funVarBuffersByKey.remove(viewKey)
+            topBlocksByKey.remove(viewKey)
+            labelIndexCache.clear()
             logger.info("skipped (disabled).")
             return
         }
 
-        val totStart = System.nanoTime()
+        val totalStartNs = System.nanoTime()
 
-        val sortStart = System.nanoTime()
+        /* Sort FUN/VAR by natural correlation with K as primary key. */
+        val sortStartNs = System.nanoTime()
         val orderedRows: List<FunVarRow> = run {
-            val rows = funVarBuffers[viewKey].orEmpty()
-            if (rows.isEmpty()) emptyList()
-            else {
-                val cmp =
+            val rows = funVarBuffersByKey[viewKey].orEmpty()
+            if (rows.isEmpty()) emptyList() else {
+                val comparator =
                     if (model.targetToAchieve == Constants.TARGET_WORST)
-                        compareBy<FunVarRow> { it.k }.thenByDescending { it.naturalCorrelation }
+                        compareBy<FunVarRow> { it.cardinality }.thenByDescending { it.naturalCorrelation }
                     else
-                        compareBy<FunVarRow> { it.k }.thenBy { it.naturalCorrelation }
-                rows.sortedWith(cmp)
+                        compareBy<FunVarRow> { it.cardinality }.thenBy { it.naturalCorrelation }
+                rows.sortedWith(comparator)
             }
         }
-        val sortEnd = System.nanoTime()
+        val sortEndNs = System.nanoTime()
 
-        val funVarStart = System.nanoTime()
+        /* Write FUN and VAR. */
+        val funVarStartNs = System.nanoTime()
         runCatching {
             val funFactory = SimpleGroupFactory(schemaFun)
             val varFactory = SimpleGroupFactory(schemaVar)
-            openWriter(funParquetPath(model), schemaFun).use { funW ->
-                openWriter(varParquetPath(model), schemaVar).use { varW ->
-                    var count = 0
-                    for (r in orderedRows) {
-                        funW.write(funFactory.newGroup().append("K", r.k).append("Correlation", round6(r.naturalCorrelation)))
-                        varW.write(varFactory.newGroup().append("K", r.k).append("TopicsB64", r.topicsMaskB64))
-                        count++
+            openWriter(funParquetPath(model), schemaFun).use { funWriter ->
+                openWriter(varParquetPath(model), schemaVar).use { varWriter ->
+                    var rowCount = 0
+                    for (row in orderedRows) {
+                        funWriter.write(funFactory.newGroup().append("K", row.cardinality).append("Correlation", round6(row.naturalCorrelation)))
+                        varWriter.write(varFactory.newGroup().append("K", row.cardinality).append("TopicsB64", row.topicsMaskB64))
+                        rowCount++
                     }
-                    logger.info("FUN/VAR rows={} writeOk", count)
+                    logger.info("FUN/VAR rows={} writeOk", rowCount)
                 }
             }
         }.onFailure { logger.warn("FUN/VAR Parquet write (streamed) failed", it) }
-        val funVarEnd = System.nanoTime()
+        val funVarEndNs = System.nanoTime()
 
-        val topStart = System.nanoTime()
+        /* Write TOP if applicable. */
+        val topStartNs = System.nanoTime()
         if (model.targetToAchieve != Constants.TARGET_AVERAGE) {
             runCatching {
-                val cache = topBlocks[viewKey].orEmpty().toSortedMap()
-                val factory = SimpleGroupFactory(schemaTop)
-                var count = 0
-                openWriter(topParquetPath(model), schemaTop).use { w ->
+                val cache = topBlocksByKey[viewKey].orEmpty().toSortedMap()
+                val topFactory = SimpleGroupFactory(schemaTop)
+                var rowCount = 0
+                openWriter(topParquetPath(model), schemaTop).use { topWriter ->
                     for ((_, block) in cache) {
                         for (row in block) {
-                            w.write(
-                                factory.newGroup()
-                                    .append("K", row.k)
+                            topWriter.write(
+                                topFactory.newGroup()
+                                    .append("K", row.cardinality)
                                     .append("Correlation", round6(row.naturalCorrelation))
                                     .append("TopicsB64", row.topicsMaskB64)
                             )
-                            count++
+                            rowCount++
                         }
                     }
                 }
-                logger.info("TOP rows={} writeOk", count)
+                logger.info("TOP rows={} writeOk", rowCount)
             }.onFailure { logger.warn("TOP Parquet write (streamed) failed", it) }
         }
-        val topEnd = System.nanoTime()
+        val topEndNs = System.nanoTime()
 
-        // Clean up state
-        funVarBuffers.remove(viewKey)
-        topBlocks.remove(viewKey)
+        /* Cleanup state. */
+        funVarBuffersByKey.remove(viewKey)
+        topBlocksByKey.remove(viewKey)
         labelIndexCache.clear()
 
-        val totEnd = System.nanoTime()
+        val totalEndNs = System.nanoTime()
         logger.info(
             "sort={}ms FUN+VAR={}ms TOP={}ms TOTAL={}ms",
-            (sortEnd - sortStart) / 1_000_000,
-            (funVarEnd - funVarStart) / 1_000_000,
-            (topEnd - topStart) / 1_000_000,
-            (totEnd - totStart) / 1_000_000
+            (sortEndNs - sortStartNs) / 1_000_000,
+            (funVarEndNs - funVarStartNs) / 1_000_000,
+            (topEndNs - topStartNs) / 1_000_000,
+            (totalEndNs - totalStartNs) / 1_000_000
         )
     }
 
-    /* ---------------- Final-table writer (no CSV dependency) ---------------- */
-
+    /**
+     * Write a generic UTF 8 table as Parquet without involving the CSV layer.
+     * The first row is treated as a header. Column names are sanitized and deduplicated.
+     */
     fun writeTable(rows: List<Array<String>>, outPath: String) {
         if (rows.isEmpty()) return
         if (System.getProperty("nbs.parquet.enabled", "true").equals("false", ignoreCase = true)) {
@@ -548,21 +623,21 @@ class ParquetView {
 
         val header = rows.first().map { it }
         val dataRows = rows.drop(1)
-        val colNames = sanitizeAndUniq(header)
+        val columnNames = sanitizeAndUniq(header)
 
-        val schema = buildUtf8Schema("Table", colNames)
-        val factory = SimpleGroupFactory(schema)
+        val schema = buildUtf8Schema("Table", columnNames)
+        val groupFactory = SimpleGroupFactory(schema)
 
         runCatching {
-            openWriter(outPath, schema).use { w ->
-                for (r in dataRows) {
-                    val g = factory.newGroup()
-                    var i = 0
-                    while (i < colNames.size) {
-                        g.append(colNames[i], normalizeCell(r.getOrNull(i) ?: ""))
-                        i++
+            openWriter(outPath, schema).use { writer ->
+                for (row in dataRows) {
+                    val group = groupFactory.newGroup()
+                    var columnIndex = 0
+                    while (columnIndex < columnNames.size) { /* tight loop index by convention */
+                        group.append(columnNames[columnIndex], normalizeCell(row.getOrNull(columnIndex) ?: ""))
+                        columnIndex++
                     }
-                    w.write(g)
+                    writer.write(group)
                 }
             }
         }.onFailure { logger.warn("Parquet table write failed for $outPath", it) }

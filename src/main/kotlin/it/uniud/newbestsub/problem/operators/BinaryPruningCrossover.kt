@@ -7,82 +7,115 @@ import org.uma.jmetal.util.binarySet.BinarySet
 import org.uma.jmetal.util.pseudorandom.JMetalRandom
 
 /**
- * Uniform crossover for binary masks with a light "pruning"/repair step so children are valid.
+ * BinaryPruningCrossover — AND/OR crossover with pruning/expansion.
  *
- * Semantics (intended to match your previous behavior):
- * - **Uniform gene mixing**: for each bit, children receive either (A,B) or (B,A) with p=0.5.
- * - **K can drift**: crossover is free to change the number of selected topics.
- * - **Repair**: if a child ends up with K==0 (all zeros), flip one random bit to true
- *   so the solution is usable by the evaluator (and avoids NaNs).
+ * Behavior (applied with probability [crossoverProbability]):
+ * • child1 = A AND B  (intersection / pruning)
+ * • child2 = A OR  B  (union / expansion)
+ * • If child1 ends up empty (K == 0), flip one random bit to true (repair).
+ * • If crossover does not occur, children are value-copies of the parents.
  *
- * Determinism: relies on the jMetal [JMetalRandom] singleton. Seed it upstream.
+ * Determinism:
+ * All randomness uses jMetal's [JMetalRandom] singleton; set the seed upstream.
+ *
+ * @param crossoverProbability Per-mating crossover probability in (0.0, 1.0].
  */
 class BinaryPruningCrossover(
     private val crossoverProbability: Double
 ) : CrossoverOperator<BinarySolution> {
 
+    /** Two parents are required by this operator. */
+    override fun numberOfRequiredParents(): Int = 2
+
+    /** Two children are produced by this operator. */
+    override fun numberOfGeneratedChildren(): Int = 2
+
+    /** Returns the configured crossover probability. */
+    override fun crossoverProbability(): Double = crossoverProbability
+
+    /**
+     * Execute AND/OR crossover with repair on the pruned child.
+     *
+     * Parents must be [BestSubsetSolution]. Children preserve objective vectors
+     * from their respective parents.
+     *
+     * @param parents Exactly two [BestSubsetSolution] parents.
+     * @return Two children (list size = 2).
+     * @throws IllegalArgumentException if [parents].size != 2.
+     * @throws ClassCastException if parents are not [BestSubsetSolution].
+     */
     override fun execute(parents: List<BinarySolution>): List<BinarySolution> {
         require(parents.size == 2) { "BinaryPruningCrossover requires exactly two parents" }
 
-        val parentA = parents[0] as BestSubsetSolution
-        val parentB = parents[1] as BestSubsetSolution
+        val pA = parents[0] as BestSubsetSolution
+        val pB = parents[1] as BestSubsetSolution
 
-        val topicCount = parentA.retrieveTopicStatus().size
-        val rng = JMetalRandom.getInstance().randomGenerator
+        /* Sizes derived from parent A; parent B is assumed shape-compatible. */
+        val n = pA.retrieveTopicStatus().size
+        val m = pA.objectives().size
 
-        // No crossover? Return copies as children.
-        if (rng.nextDouble() > crossoverProbability) {
-            return listOf(parentA.copy(), parentB.copy())
+        val rng = JMetalRandom.getInstance()
+
+        /* No crossover path: return value-copies of parents. */
+        if (rng.nextDouble() >= crossoverProbability) {
+            val c1 = cloneFromParent(pA, n, m)
+            val c2 = cloneFromParent(pB, n, m)
+            return listOf(c1, c2)
         }
 
-        // Prepare empty children (variables and mirrors will be set below)
-        val child1 = BestSubsetSolution(1, 2, topicCount, parentA.topicLabels, null)
-        val child2 = BestSubsetSolution(1, 2, topicCount, parentA.topicLabels, null)
+        /* Prepare empty children with the same shape as parents. */
+        val c1 = BestSubsetSolution(1, m, n, pA.topicLabels, null)
+        val c2 = BestSubsetSolution(1, m, n, pA.topicLabels, null)
 
-        // Parent bitsets
-        val bitsA = parentA.variables()[0] as BinarySet
-        val bitsB = parentB.variables()[0] as BinarySet
+        val a = pA.variables()[0] as BinarySet
+        val b = pB.variables()[0] as BinarySet
 
-        // New child bitsets
-        val childBits1 = BinarySet(topicCount)
-        val childBits2 = BinarySet(topicCount)
+        /* Build AND / OR masks in fresh BinarySets to avoid mutating parents. */
+        val andBits = BinarySet(n).apply { this.or(a); this.and(b) }   /* A ∧ B (pruning) */
+        val orBits  = BinarySet(n).apply { this.or(a); this.or(b) }    /* A ∨ B (expansion) */
 
-        var bitIndex = 0
-        while (bitIndex < topicCount) {
-            val takeFromAFirst = rng.nextDouble() < 0.5
-            if (takeFromAFirst) {
-                childBits1.set(bitIndex, bitsA.get(bitIndex))
-                childBits2.set(bitIndex, bitsB.get(bitIndex))
-            } else {
-                childBits1.set(bitIndex, bitsB.get(bitIndex))
-                childBits2.set(bitIndex, bitsA.get(bitIndex))
-            }
-            bitIndex++
+        c1.variables()[0] = andBits
+        c2.variables()[0] = orBits
+
+        /* Repair: ensure child1 is non-empty to keep K ≥ 1. */
+        if (andBits.cardinality() == 0) {
+            val idx = if (n <= 1) 0 else rng.nextInt(0, n - 1)
+            andBits.set(idx, true)
         }
 
-        // Repair: ensure non-empty masks
-        if (childBits1.cardinality() == 0) {
-            val flip = if (topicCount == 1) 0 else (rng.nextDouble() * topicCount).toInt()
-            childBits1.set(flip, true)
-        }
-        if (childBits2.cardinality() == 0) {
-            val flip = if (topicCount == 1) 0 else (rng.nextDouble() * topicCount).toInt()
-            childBits2.set(flip, true)
-        }
+        /* Copy objective values from parents. */
+        copyObjectives(from = pA, to = c1, m = m)
+        copyObjectives(from = pB, to = c2, m = m)
 
-        // Install bitsets and refresh mirrors
-        child1.variables()[0] = childBits1
-        child2.variables()[0] = childBits2
-        child1.topicStatus = child1.retrieveTopicStatus().toTypedArray()
-        child2.topicStatus = child2.retrieveTopicStatus().toTypedArray()
+        /* Refresh mirrors / derived status if BestSubsetSolution expects it. */
+        c1.topicStatus = c1.retrieveTopicStatus().toTypedArray()
+        c2.topicStatus = c2.retrieveTopicStatus().toTypedArray()
 
-        return listOf(child1, child2)
+        return listOf(c1, c2)
     }
 
-    override fun crossoverProbability(): Double {
-        return crossoverProbability
+    /**
+     * Create a value-clone child from a parent (variables + objectives).
+     * Bitset is copied; objectives are copied; metadata replicated where available.
+     */
+    private fun cloneFromParent(parent: BestSubsetSolution, n: Int, m: Int): BestSubsetSolution {
+        val child = BestSubsetSolution(1, m, n, parent.topicLabels, null)
+        /* Copy bitset */
+        val bits = BinarySet(n).apply { this.or(parent.variables()[0] as BinarySet) }
+        child.variables()[0] = bits
+        /* Copy objectives */
+        copyObjectives(from = parent, to = child, m = m)
+        /* Refresh mirrors */
+        child.topicStatus = child.retrieveTopicStatus().toTypedArray()
+        return child
     }
 
-    override fun numberOfRequiredParents(): Int = 2
-    override fun numberOfGeneratedChildren(): Int = 2
+    /** Copy objective vector values (size [m]) from one solution to another. */
+    private fun copyObjectives(from: BestSubsetSolution, to: BestSubsetSolution, m: Int) {
+        var i = 0
+        while (i < m) {
+            to.objectives()[i] = from.objectives()[i]
+            i++
+        }
+    }
 }

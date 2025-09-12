@@ -1,19 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NewBestSub – Maven POM
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
+    <!-- Basic coordinates and project metadata -->
     <modelVersion>4.0.0</modelVersion>
     <groupId>it.uniud.newbestsub</groupId>
     <artifactId>NewBestSub</artifactId>
-    <version>2.0.5</version>
+    <version>2.0.6</version>
     <url>https://github.com/Miccighel/NewBestSub</url>
 
+    <!-- Organization info used by Maven site and artifact metadata -->
     <organization>
         <name>Uniud</name>
         <url>https://www.uniud.it/</url>
     </organization>
 
+    <!-- Contributors and roles (exposed in site reports) -->
     <developers>
         <developer>
             <id>miccighel</id>
@@ -63,6 +69,7 @@
         </contributor>
     </contributors>
 
+    <!-- Default artifact repositories (Central) -->
     <repositories>
         <repository>
             <id>central</id>
@@ -70,25 +77,30 @@
         </repository>
     </repositories>
 
+    <!-- Plugin repositories; Dokka dev feed is required for Kotlin 2.2.x compatibility -->
     <pluginRepositories>
         <pluginRepository>
             <id>central</id>
             <name>Maven Central</name>
             <url>https://repo.maven.apache.org/maven2</url>
         </pluginRepository>
-        <!-- Needed for Dokka dev builds compatible with Kotlin 2.2.x -->
         <pluginRepository>
             <id>jetbrains-dokka-dev</id>
             <url>https://maven.pkg.jetbrains.space/kotlin/p/dokka/dev</url>
         </pluginRepository>
     </pluginRepositories>
 
+    <!--
+      Centralized versions and common build flags.
+      Keep this section authoritative to avoid drift across modules/plugins.
+    -->
     <properties>
+        <!-- Java toolchain and encoding -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>22</maven.compiler.source>
         <maven.compiler.target>22</maven.compiler.target>
 
-        <!-- Kotlin -->
+        <!-- Kotlin toolchain -->
         <kotlin.version>2.2.0</kotlin.version>
         <kotlin.stdlib.version>${kotlin.version}</kotlin.stdlib.version>
         <kotlin.test.version>${kotlin.version}</kotlin.test.version>
@@ -96,47 +108,51 @@
         <kotlin.maven.plugin.version>${kotlin.version}</kotlin.maven.plugin.version>
         <kotlin.coroutines.version>1.10.2</kotlin.coroutines.version>
 
-        <!-- Testing -->
+        <!-- Test stack -->
         <junit.jupiter.version>5.13.4</junit.jupiter.version>
 
-        <!-- Docs -->
+        <!-- Documentation (Dokka dev build for Kotlin 2.2) -->
         <dokka.version>2.0.20-dev-383</dokka.version>
         <dokka.output.dir>${project.build.directory}/dokka</dokka.output.dir>
 
-        <!-- Libraries -->
+        <!-- Libraries (math, CLI, EA) -->
         <apache.commons.version>3.6.1</apache.commons.version>
         <apache.commons.cli>1.10.0</apache.commons.cli>
 
-        <!-- Log4j2 / SLF4J -->
+        <!-- Logging bridge: Log4j 2.x + SLF4J -->
         <log4j.api.version>2.24.3</log4j.api.version>
         <log4j.core.version>2.24.3</log4j.core.version>
         <slf4j.version>1.7.36</slf4j.version>
 
+        <!-- CSV / jMetal core -->
         <opencsv.version>5.12.0</opencsv.version>
         <jmetal.version>6.9.1</jmetal.version>
 
-        <!-- Parquet / Hadoop / Snappy -->
+        <!-- Columnar IO and compression -->
         <parquet.version>1.15.2</parquet.version>
         <hadoop.version>3.3.6</hadoop.version>
         <snappy.version>1.1.10.5</snappy.version>
 
-        <!-- Plugins -->
+        <!-- Build plugins (pin for reproducibility) -->
         <maven.assembly-plugin.version>3.7.1</maven.assembly-plugin.version>
         <maven.dependency-plugin.version>3.7.0</maven.dependency-plugin.version>
         <maven.jar-plugin.version>3.4.2</maven.jar-plugin.version>
         <maven.surefire-plugin.version>3.5.3</maven.surefire-plugin.version>
 
+        <!-- Console colors on supported terminals -->
         <jansi.version>2.4.2</jansi.version>
 
-        <!-- Pin Yetus to silence old transitive POM warnings -->
+        <!-- Quiet transitive warnings; small utility annotations -->
         <yetus.audience.version>0.15.1</yetus.audience.version>
 
-        <!-- Fixed distribution tag for assembly artifact names -->
+        <!-- Fixed distribution tag used for fat-jar filenames -->
         <dist.version>2.0</dist.version>
 
+        <!-- Collections performance utilities -->
         <fastutil.version>8.5.14</fastutil.version>
     </properties>
 
+    <!-- Profiles for alternate doc layouts; "pages" writes Dokka into /docs for GitHub Pages hosting -->
     <profiles>
         <profile>
             <id>pages</id>
@@ -146,6 +162,11 @@
         </profile>
     </profiles>
 
+    <!--
+      Dependency management:
+      - Import Log4j BOM for consistent artifact alignment.
+      - Pin Yetus annotations (used as optional compile-time hints).
+    -->
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -163,7 +184,14 @@
         </dependencies>
     </dependencyManagement>
 
+    <!--
+      Runtime and test dependencies.
+      Notes:
+      - Parquet/Hadoop exclude legacy SLF4J/Log4j bindings to prevent clashes.
+      - Kotlin stdlib/test versions follow the toolchain.
+    -->
     <dependencies>
+        <!-- Numerics and CLI -->
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-math3</artifactId>
@@ -174,6 +202,8 @@
             <artifactId>commons-cli</artifactId>
             <version>${apache.commons.cli}</version>
         </dependency>
+
+        <!-- Logging stack -->
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-api</artifactId>
@@ -194,11 +224,15 @@
             <artifactId>jul-to-slf4j</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
+
+        <!-- CSV IO -->
         <dependency>
             <groupId>com.opencsv</groupId>
             <artifactId>opencsv</artifactId>
             <version>${opencsv.version}</version>
         </dependency>
+
+        <!-- Evolutionary algorithms (jMetal) -->
         <dependency>
             <groupId>org.uma.jmetal</groupId>
             <artifactId>jmetal-core</artifactId>
@@ -214,6 +248,8 @@
             <artifactId>jmetal-component</artifactId>
             <version>${jmetal.version}</version>
         </dependency>
+
+        <!-- Kotlin stdlib/test -->
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-test</artifactId>
@@ -225,6 +261,8 @@
             <artifactId>kotlinx-coroutines-core</artifactId>
             <version>${kotlin.coroutines.version}</version>
         </dependency>
+
+        <!-- JUnit 5 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
@@ -237,17 +275,23 @@
             <version>${junit.jupiter.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- Kotlin stdlib (explicit for reproducibility) -->
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-stdlib</artifactId>
             <version>${kotlin.version}</version>
         </dependency>
+
+        <!-- Console colors at runtime (optional) -->
         <dependency>
             <groupId>org.fusesource.jansi</groupId>
             <artifactId>jansi</artifactId>
             <version>${jansi.version}</version>
             <scope>runtime</scope>
         </dependency>
+
+        <!-- Columnar IO and Hadoop shims (bindings excluded) -->
         <dependency>
             <groupId>org.apache.parquet</groupId>
             <artifactId>parquet-hadoop</artifactId>
@@ -286,11 +330,15 @@
                 </exclusion>
             </exclusions>
         </dependency>
+
+        <!-- Compression library (bundles native backends) -->
         <dependency>
             <groupId>org.xerial.snappy</groupId>
             <artifactId>snappy-java</artifactId>
             <version>${snappy.version}</version>
         </dependency>
+
+        <!-- Compile-time optional: audience annotations -->
         <dependency>
             <groupId>org.apache.yetus</groupId>
             <artifactId>audience-annotations</artifactId>
@@ -298,23 +346,33 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- High-performance collections -->
         <dependency>
             <groupId>it.unimi.dsi</groupId>
             <artifactId>fastutil</artifactId>
             <version>${fastutil.version}</version>
         </dependency>
-
     </dependencies>
 
     <build>
-
+        <!--
+          finalName controls produced artifact base name.
+          We use a stable distribution tag (dist.version) for fat jars.
+        -->
         <finalName>${project.artifactId}-${dist.version}</finalName>
 
+        <!-- Kotlin sources layout -->
         <sourceDirectory>src/main/kotlin</sourceDirectory>
         <testSourceDirectory>src/test/kotlin</testSourceDirectory>
+
         <plugins>
 
-            <!-- Fixed-name fat jars using dist.version -->
+            <!--
+              Assembly: produces runnable fat-jars.
+              - jar-with-dependencies: standard shaded jar
+              - test-jar-with-dependencies: custom descriptor for test scope
+              Manifest mainClass enables `java -jar`.
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -344,6 +402,7 @@
                 </executions>
             </plugin>
 
+            <!-- Copies third-party jars to target/lib for classpath-friendly layouts -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
@@ -365,6 +424,7 @@
                 </executions>
             </plugin>
 
+            <!-- Builds the project test-jar and sets a runnable manifest for the main jar -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
@@ -387,7 +447,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Kotlin (jvmTarget=22) -->
+            <!-- Kotlin compiler (targets Java 22) -->
             <plugin>
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-maven-plugin</artifactId>
@@ -413,7 +473,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Surefire 3.x (JUnit 5 support) + Vector API module -->
+            <!-- Surefire for unit tests; enable Vector API incubator module for JDK 22 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -423,7 +483,7 @@
                 </configuration>
             </plugin>
 
-            <!-- (Optional) Failsafe with the same module flag for ITs -->
+            <!-- Optional: Failsafe for integration tests with the same module flag -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
@@ -441,7 +501,7 @@
                 </executions>
             </plugin>
 
-            <!-- Dokka bound to verify so classes exist -->
+            <!-- Dokka documentation; bound to verify so compiled classes are available -->
             <plugin>
                 <groupId>org.jetbrains.dokka</groupId>
                 <artifactId>dokka-maven-plugin</artifactId>
@@ -492,6 +552,10 @@
         </plugins>
     </build>
 
+    <!--
+      Reporting for `mvn site`.
+      Useful for GitHub Pages or local audits (licenses, SCM, plugins, dependencies).
+    -->
     <reporting>
         <plugins>
             <plugin>
@@ -509,7 +573,7 @@
                             <report>plugin-management</report>
                             <report>dependencies</report>
                             <report>dependency-management</report>
-                            <!-- omit dependency-info -->
+                            <!-- omit dependency-info to keep the site concise -->
                             <report>team</report>
                             <report>ci-management</report>
                             <report>issue-management</report>
