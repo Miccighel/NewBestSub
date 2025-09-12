@@ -154,9 +154,10 @@ class DatasetController(
 
         /* Synthesize labels once, reuse across models to keep correspondence. */
         val systemLabels = models[0].systemLabels
+        val random = if (seededRng == null) Random() else null
         val generatedTopicLabels = Array(expansionCoefficient) {
             /* Prefer SplittableRandom for deterministic runs; fall back to java.util.Random for ad-hoc experiments. */
-            val suffix = (seededRng?.nextInt(800, 999) ?: (Random().nextInt(999 - 800) + 800))
+            val suffix = (seededRng?.nextInt(800, 999) ?: (random!!.nextInt(999 - 800) + 800))
             "$suffix (F)"
         }
 
@@ -190,10 +191,11 @@ class DatasetController(
         val seededRng: SplittableRandom? =
             if (RandomBridge.isInstalled()) SplittableRandom(RandomBridge.childSeed("EXPAND_SYSTEMS", expansionNonce++))
             else null
+        val random = if (seededRng == null) Random() else null
 
         /* Generate stable, human-readable labels for synthetic systems. */
         val generatedSystemLabels = Array(expansionCoefficient) { index ->
-            val suffix = (seededRng?.nextInt(800, 999) ?: (Random().nextInt(999 - 800) + 800))
+            val suffix = (seededRng?.nextInt(800, 999) ?: (random!!.nextInt(999 - 800) + 800))
             "Sys$index$suffix (F)"
         }
 
