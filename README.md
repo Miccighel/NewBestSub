@@ -2,8 +2,6 @@
 
 <!-- Release & Docs -->
 [![Release](https://img.shields.io/github/v/release/Miccighel/NewBestSub)](https://github.com/Miccighel/NewBestSub/releases)
-[![Version](https://img.shields.io/badge/version-2.0.6-blue.svg)](#)
-[![Maven Central](https://img.shields.io/maven-central/v/it.uniud.newbestsub/NewBestSub?color=blue&logo=apachemaven)](https://central.sonatype.com/artifact/it.uniud.newbestsub/NewBestSub)
 [![Docs](https://img.shields.io/badge/docs-website-blue)](https://miccighel.github.io/NewBestSub/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.16950389.svg)](https://doi.org/10.5281/zenodo.16950389)
 [![License](https://img.shields.io/github/license/Miccighel/NewBestSub)](LICENSE)
