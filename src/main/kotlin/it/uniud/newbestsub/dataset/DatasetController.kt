@@ -1124,7 +1124,6 @@ class DatasetController(
         }
 
         val timeColIndexGlobal = findTimeColumnIndex(infoHeader)
-        val targetColIndexGlobal = findTargetColumnIndex(infoHeader)
 
         val mergedInfoLines = LinkedList<Array<String>>().apply { add(infoHeader) }
 
