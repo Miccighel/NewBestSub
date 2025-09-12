@@ -1,6 +1,11 @@
 # NewBestSub
 
-<!-- Project -->
+NewBestSub is a research tool for efficient topic-set reduction in IR evaluation. Its objective is to identify small subsets of topics that preserve, as closely as possible, the system ranking induced by the full topic set.
+
+The selection task is formulated as a bi-objective optimization—minimizing subset cardinality K while maximizing rank agreement with the full set—solved via NSGA-II. Given a system-by-topic AP matrix and a chosen correlation metric (Pearson or Kendall), the method explores the search space and streams results to CSV/Parquet, including best/worst subsets and percentile summaries. Deterministic execution is supported for reproducibility.
+
+[![Docs](https://img.shields.io/badge/docs-website-blue)](https://miccighel.github.io/NewBestSub/)
+[![CI](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml/badge.svg)](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Miccighel/NewBestSub)](https://github.com/Miccighel/NewBestSub/releases)
 [![Docs](https://img.shields.io/badge/docs-website-blue)](https://miccighel.github.io/NewBestSub/)
 [![License](https://img.shields.io/github/license/Miccighel/NewBestSub)](LICENSE)
@@ -25,231 +30,471 @@
 [![CI](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml/badge.svg)](https://github.com/Miccighel/NewBestSub/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Miccighel/NewBestSub/actions/workflows/codeql.yml/badge.svg)](https://github.com/Miccighel/NewBestSub/actions/workflows/codeql.yml)
 
+<!-- Publications -->
+[![JDIQ 2018](https://img.shields.io/badge/JDIQ-2018-0A7BBB?logo=acm&logoColor=white)](https://doi.org/10.1145/3239573)
+[![SIGIR 2018](https://img.shields.io/badge/SIGIR-2018-0A7BBB?logo=acm&logoColor=white)](https://doi.org/10.1145/3209978.3210108)
 
-> Efficient topic‑set reduction for IR evaluation using NSGA‑II.
+---
+
+> ⚠️ **Important notice: Migration from 1.0 to 2.0**
+>
+> Starting with version 2.0, NewBestSub has undergone major refactoring:
+> - Requires Java 22 and Kotlin 2.2 (previously Java 8 and Kotlin 1.x).
+> - Output format is now streaming-based with FUN, VAR, and TOP separation and 6-digit correlation precision.
+> - New deterministic mode and reproducible folder naming pattern.
+> - Updated CLI options (-fi, -c, -t, and others) see [CLI options](#cli-options).
+> - Artifacts renamed: `NewBestSub-2.0-jar-with-dependencies.jar` instead of `NewBestSub-1.0-...`.
+>
+> If you have scripts or pipelines based on 1.0, they will not work unmodified.
+> Please adapt your datasets, CLI calls, and parsing code to the new schema.
 
 ---
 
 ## Table of contents
 
-- [Overview](#overview)
-- [Installation](#installation)
-- [Quick start (CLI)](#quick-start-cli)
-- [Input format](#input-format)
-- [CLI reference](#cli-reference)
-- [Outputs & folder layout](#outputs--folder-layout)
-- [Natural vs. internal correlation](#natural-vs-internal-correlation)
-- [Deterministic & reproducible runs](#deterministic--reproducible-runs)
-- [Logging](#logging)
-- [Performance notes & tips](#performance-notes--tips)
-- [Developing](#developing)
-- [Citation](#citation)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Build](#build)
+- [Release artifacts & versioning](#release-artifacts--versioning)
+- [Run from release](#run-from-release)
+- [Quick start](#quick-start)
+- [Dataset schema](#dataset-schema)
+- [Outputs](#outputs)
+  - [CSV](#csv)
+  - [Parquet](#parquet)
+  - [VAR/TOP Base64 layout](#vartop-base64-layout)
+  - [Decoding snippets](#decoding-snippets)
+  - [Additional notes](#additional-notes)
+- [CLI options](#cli-options)
+- [Deterministic execution](#deterministic-execution)
+- [Folder naming pattern](#folder-naming-pattern)
+- [Tools](#tools)
+- [Architecture overview](#architecture-overview)
+- [Testing](#testing)
+- [Build and logging](#build-and-logging)
+- [Troubleshooting](#troubleshooting)
 - [Changelog](#changelog)
+- [Citation](#citation)
 - [License](#license)
 
-## Overview
+---
 
-**NewBestSub** searches for small subsets of topics that preserve the ranking of retrieval systems as measured by a correlation metric (Pearson or Kendall). It supports three targets:
+## Features
 
-- **BEST** – maximize correlation (pick strongest subsets).
-- **WORST** – minimize correlation (stress test robustness).
-- **AVERAGE** – sample random subsets per cardinality *K* and compute percentiles.
+- BEST, WORST, and AVERAGE experiments powered by NSGA-II (jMetal 6.9.x).
+- Streaming engine:
+  - FUN and VAR: append only when the per-K representative improves for Best and Worst; exactly one row per K for Average.
+  - TOP: replace the entire per-K block on change (up to 10 rows), keeping output stable.
+- MNDS environmental selection (Merge Non-Dominated Sort) plus local crowding distance.
+- Incremental evaluation ("Step 3"): O(S) updates via cached per-system sums and fixed-K swap hints.
+- Compact genotype I/O: VAR and mask-based TOP carry packed Base64 bitmasks (see layout below).
+- Dual outputs: streaming-first CSV and Parquet; consistent 6-digit precision for correlations.
+- Deterministic mode: explicit `--seed` or stable derived seed from run parameters.
 
-Results are streamed to CSV (always) and optionally Parquet, with careful attention to deterministic execution and logging for large runs.
+---
 
-## Installation
+## Requirements
 
-### CLI (recommended for experiments)
+- JDK 22+ (set JAVA_HOME to a JDK, not a JRE)
+- Maven 3.9+
+- Internet access (for dependency downloads on first build)
 
-1. Download the shaded jar from **GitHub Releases**: `NewBestSub-2.0-jar-with-dependencies.jar`.
-2. Run with Java 22+:
+---
 
-```bash
-java -Xms32g -Xmx32g -jar NewBestSub-2.0-jar-with-dependencies.jar \
-  -fi "mmlu" -c "Pearson" -t "Best" -po 20000 -i 100000 -l Limited --det
-```
-
-### As a library (Maven Central)
-
-Add the core artifact if you want to integrate programmatically:
-
-**Maven**
-
-```xml
-<dependency>
-  <groupId>it.uniud.newbestsub</groupId>
-  <artifactId>NewBestSub</artifactId>
-  <version>2.0.6</version>
-</dependency>
-```
-
-**Gradle (Kotlin DSL)**
-
-```kts
-implementation("it.uniud.newbestsub:NewBestSub:2.0.6")
-```
-
-## Quick start (CLI)
-
-**BEST (Pearson):**
+## Build
 
 ```bash
-java -Xms32g -Xmx32g -jar NewBestSub-2.0-jar-with-dependencies.jar \
-  -fi "mmlu" -c "Pearson" -t "Best" -po 20000 -i 100000 -l Limited --det
+mvn -DskipTests=false clean package
 ```
 
-**AVERAGE (1..100 percentiles):**
+Artifacts:
+```
+target/NewBestSub-2.0.jar
+target/NewBestSub-2.0-jar-with-dependencies.jar
+target/NewBestSub-2.0-test-jar-with-dependencies.jar
+```
 
+---
+
+## Release artifacts & versioning
+
+We pin the **distribution filenames** to a *major/minor* track for stable scripting, while the Maven **project version** keeps full semver (including patches). The latest release is **2.0.4**.
+
+- **Release assets (fat & test-fat jars)**  
+  Produced by the Assembly plugin using a pinned `dist.version` →  
+  `NewBestSub-2.0-jar-with-dependencies.jar`  
+  `NewBestSub-2.0-test-jar-with-dependencies.jar`
+
+- **Local Maven artifact (thin jar)**  
+  Also pinned via `finalName` to the same `dist.version` →  
+  `target/NewBestSub-2.0.jar`
+
+- **Why this pinning?**  
+  Patch bumps (2.0.1, 2.0.2, 2.0.3, 2.0.4, …) won’t break scripts or docs that reference the
+  stable `NewBestSub-2.0*.jar` names.
+
+- **Coordinates remain precise**  
+  If you depend via Maven/Gradle, you still pull the full project version (e.g. `2.0.4`):  
+  `it.uniud.newbestsub:NewBestSub:2.0.4`
+
+- **Override the label (optional)**  
+  ```bash
+  mvn -Ddist.version=2.1 clean package
+  ```
+  → produces `NewBestSub-2.1.jar`, `NewBestSub-2.1-jar-with-dependencies.jar`, etc. (POM version unchanged).
+
+> When building from source, you’ll typically see **both** pinned artifacts:
+> - `target/NewBestSub-2.0.jar` (thin jar)  
+> - `target/NewBestSub-2.0-jar-with-dependencies.jar` (fat jar)
+
+---
+
+## Run from release
+
+Instead of building from source, you can download a ready-to-use JAR:
+
+1. Go to the [Releases page](https://github.com/Miccighel/NewBestSub/releases).
+2. Download the asset named:
+
+   ```
+   NewBestSub-<version>-jar-with-dependencies.jar
+   ```
+
+   (Pinned distribution name example: `NewBestSub-2.0-jar-with-dependencies.jar`).
+
+3. Run it with Java 22:
+
+   ```bash
+   java -Xmx4g -jar NewBestSub-2.0-jar-with-dependencies.jar --help
+   ```
+
+4. Example toy run:
+
+   ```bash
+   java -Xmx1g -jar NewBestSub-2.0-jar-with-dependencies.jar -fi samples/toy -c Pearson -t Best -po 50 -i 5000 -log Limited
+   ```
+
+---
+
+## Quick start
+
+Show help:
 ```bash
-java -Xms32g -Xmx32g -jar NewBestSub-2.0-jar-with-dependencies.jar \
-  -fi "mmlu" -c "Pearson" -t "Average" -r 2000 -pe 1,100 -l Limited --det
+java -Xmx4g -jar target/NewBestSub-2.0-jar-with-dependencies.jar --help
 ```
 
-**ALL (Best/Worst + Average):**
-
+Small toy run (adjust -i, -po, and -r to your machine):
 ```bash
-java -Xms32g -Xmx32g -jar NewBestSub-2.0-jar-with-dependencies.jar \
-  -fi "mmlu" -c "Pearson" -t "All" -po 20000 -i 100000 -r 2000 -pe 1,100 -l Limited
+# BEST (Pearson)
+java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar   -fi samples/toy -c Pearson -t Best -po 50 -i 5000 -log Limited
+
+# WORST (Pearson)
+java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar   -fi samples/toy -c Pearson -t Worst -po 50 -i 5000 -log Limited
+
+# AVERAGE (Kendall, 5 to 95th percentiles, 100 reps)
+java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar   -fi samples/toy -c Kendall -t Average -r 100 -pe 5,95 -log Limited
+
+# ALL (combine Best, Worst, and Average)
+java -Xmx1g -jar target/NewBestSub-2.0-jar-with-dependencies.jar   -fi samples/toy -c Pearson -t All -po 50 -i 5000 -r 100 -pe 1,100 -log Limited
 ```
 
-## Input format
+Tip: on large runs ensure -Xmx is sized appropriately, and keep `-po >= #topics`.
 
-CSV with systems as rows and topics as columns. First header cell is `sys`.
+---
 
+## Dataset schema
+
+CSV layout (wide table, systems by topics of AP values):
+
+- Header row: first cell is empty; remaining cells are topic labels (`t1,t2,...`).
+- Rows: first cell is a system label; remaining cells are Average Precision (AP) values for each topic.
+- AP range: expected `0.0 .. 1.0` (no hard clamp). Missing values are not allowed.
+- Order: row and column order is preserved and used in outputs.
+- Constraint: when running Best, Worst, or All, population must satisfy `-po >= #topics`.
+
+Example (`samples/toy.csv`):
 ```csv
-sys,t1,t2,t3,t4,t5
+,t1,t2,t3,t4,t5
 BM25,0.31,0.45,0.22,0.18,0.40
 QL,0.28,0.48,0.19,0.21,0.36
 RM3,0.40,0.51,0.26,0.17,0.42
 ```
 
-## CLI reference
+---
 
-Required flags vary by target:
+## Outputs
 
-- **Common required**: `-fi/--fileIn`, `-c/--corr`, `-t/--targ`, `-l/--log`
-- **Best/Worst/All**: also `-i/--iter`, `-po/--pop` (and `-po ≥ #topics`)
-- **Average/All**: also `-r/--rep`, `-pe/--perc A,B` (two integers; range normalized)
+Results are written into a per-run container named from parameters (see Folder naming pattern).
+Each container has `CSV/` and `Parquet/` subfolders.
 
-Key options (abridged):
+### CSV
 
-| Option | Long        | Meaning |
-|-------:|-------------|---------|
-| `-fi`  | `--fileIn`  | Dataset name (CSV under `data/`, without `.csv`). |
-| `-c`   | `--corr`    | Correlation method: `Pearson` or `Kendall`. |
-| `-t`   | `--targ`    | Target: `Best`, `Worst`, `Average`, `All`. |
-| `-l`   | `--log`     | Logging: `Verbose`, `Limited`, `Off`. |
-| `-i`   | `--iter`    | Iterations (Best/Worst/All). |
-| `-po`  | `--pop`     | Population size (Best/Worst/All); must be ≥ number of topics. |
-| `-r`   | `--rep`     | Repetitions per K (Average/All). |
-| `-pe`  | `--perc`    | Percentiles (two ints, e.g., `1,100`). |
-| `-et`  | `--expt`    | Topic expansion step. |
-| `-es`  | `--exps`    | System expansion step. |
-| `-mx`  | `--max`     | Maximum size for expansions. |
-| `-mr`  | `--mrg`     | Repeat program N times and merge. |
-| `--det`| `--deterministic` | Enable deterministic mode. |
-| `--sd` | `--seed`    | Master seed (implies deterministic). |
-| `--copy` |           | Copy outputs into `NewBestSub-Experiments/` if present. |
+- `...-Fun.csv` contains `K corr` (space-separated; `K` integer; `corr` with 6 digits; always **natural** correlation).
+- `...-Var.csv` contains `K B64:<payload>` where `<payload>` is the packed Base64 mask.
+- `...-Top-10-Solutions.csv` is either:
+  - `K,Correlation,B64:<payload>` (mask-based), or
+  - `K,Correlation,topic1;topic2;...` (label-based), depending on the view configuration.
+- `...-Final.csv` and `...-Info.csv` contain summaries and metadata.
 
-## Outputs & folder layout
+**Selection recipes** (per K):
 
-Base paths (relative to repo):  
-- Input: `./data/`  
-- Output: `./res/`  
-- Logs: `./log/`
+- **FUN** (after the view’s final rewrite)
+  - BEST  → file is `(K asc, corr asc)` → **pick LAST** (max).
+  - WORST → file is `(K asc, corr desc)` → **pick LAST** (min).
+- **TOP**
+  - BEST  → lines are **descending** → **pick FIRST** (max).
+  - WORST → lines are **ascending**  → **pick FIRST** (min).
 
-Each run is parameterized by a token and timestamp, e.g.:
+### Parquet
+
+- `...-Fun.parquet` schema: `{ K:int, Correlation:double }`
+- `...-Var.parquet` schema: `{ K:int, Mask:string }` (bare Base64, no `B64:` prefix)
+- `...-Top-10-Solutions.parquet` schema: `{ K:int, Correlation:double, MaskOrTopics:string }`
+
+### VAR/TOP Base64 layout
+
+We pack the topic-presence mask into Base64 as follows:
+
+- Pack bits into 64-bit words, LSB-first within each word (bit 0 becomes topic 0).
+- Serialize each 64-bit word as little-endian bytes.
+- Encode the concatenated bytes using Base64 without padding.
+- CSV uses a `B64:` prefix; Parquet stores the **bare** payload.
+
+### Decoding snippets
+
+**Kotlin** (mirror of production code):
+
+```kotlin
+fun decodeMaskFromBase64(b64OrPrefixed: String, expectedSize: Int): BooleanArray {
+    val s = b64OrPrefixed.trim()
+    val start = s.indexOf("B64:")
+    val payload = if (start >= 0) s.substring(start + 4) else s
+
+    val raw = java.util.Base64.getDecoder().decode(payload)
+    val out = BooleanArray(expectedSize)
+
+    var bitAbsolute = 0
+    var offset = 0
+    while (offset < raw.size && bitAbsolute < expectedSize) {
+        // Assemble one 64-bit little-endian word
+        var w = 0L
+        var i = 0
+        while (i < 8 && offset + i < raw.size) {
+            val b = (raw[offset + i].toLong() and 0xFFL) // <-- note the L
+            w = w or (b shl (8 * i))
+            i++
+        }
+        // Expand 64 LSB-first bits
+        var bitInWord = 0
+        while (bitInWord < 64 && bitAbsolute < expectedSize) {
+            out[bitAbsolute] = ((w ushr bitInWord) and 1L) != 0L
+            bitInWord++
+            bitAbsolute++
+        }
+        offset += 8
+    }
+    return out
+}
 
 ```
-res/<dataset>/<token>/FUN.csv
-res/<dataset>/<token>/VAR.csv
-res/<dataset>/<token>/TOP.csv
-log/<token>-time<YYYY-MM-DD-HH-mm-ss>.log
+
+**Python**:
+
+```python
+import base64
+
+def decode_mask_from_base64(b64_or_prefixed: str, n_topics: int) -> list[bool]:
+    s = b64_or_prefixed.strip()
+    idx = s.find("B64:")
+    payload = s[idx+4:] if idx >= 0 else s
+
+    raw = base64.b64decode(payload)
+    out = [False] * n_topics
+
+    bit_abs = 0
+    off = 0
+    while off < len(raw) and bit_abs < n_topics:
+        # Assemble one 64-bit little-endian word
+        w = 0
+        for i in range(8):
+            if off + i >= len(raw):
+                break
+            w |= raw[off + i] << (8 * i)
+        # Expand 64 LSB-first bits
+        for bit in range(64):
+            if bit_abs >= n_topics:
+                break
+            out[bit_abs] = ((w >> bit) & 1) != 0
+            bit_abs += 1
+        off += 8
+    return out
+
 ```
 
-### CSV formats
+### Additional notes
 
-- **FUN**: `K,correlation` (one or more lines per `K`)
-- **VAR**: `B64:<payload>` where the bitmask is packed as 64‑bit words (LSB‑first), serialized **little‑endian**, and Base64‑encoded **without padding**
-- **TOP**: `Cardinality,Correlation,TopicsB64` with topics encoded via `B64:<payload>`
+- **FUN**: improvements-only for Best/Worst, one row per K for Average.  
+- **VAR**: aligned with FUN rows.  
+- **TOP**: up to 10 rows per K, replaced atomically.  
+- **Negative correlations**: expected for Worst, possible at small K in Average.
 
-### Parquet (optional)
+---
 
-Parquet files mirror CSV content; the packed mask uses the same bit‑layout as `VAR` without the `B64:` prefix in the field payload.
+## CLI options
 
-## Natural vs internal correlation
+**Required**
+- `-fi, --fileIn <file>` input CSV basename (no extension)
+- `-c, --corr <Pearson|Kendall>` correlation method
+- `-t, --targ <Best|Worst|Average|All>` target
+- `-l, --log <Verbose|Limited|Off>` logging level
 
-Views operate on **natural** correlation (no sign flips). Selection rules:
+**Optional, general**
+- `--copy` copy results into `NewBestSub-Experiments` sibling folder
+- `-det, --deterministic` enable deterministic mode
+- `-sd, --seed <long>` master seed (implies deterministic mode)
+- `-mr, --mrg <int>` merge N executions
+- `-et, --expt <int>` add fake topics per step
+- `-es, --exps <int>` add fake systems per step
+- `-mx, --max <int>` cap for expansions
 
-- **FUN (after final rewrite)**  
-  - **BEST**: file sorted `(K asc, corr asc)` → pick **LAST** line per K (max).  
-  - **WORST**: file sorted `(K asc, corr desc)` → pick **LAST** line per K (min).
+**Optional, target-specific**
+- `-i, --iter <int>` iterations (Best, Worst, All)
+- `-po, --pop <int>` population size (must be >= number of topics; Best, Worst, All)
+- `-r, --rep <int>` repetitions per K (Average, All)
+- `-pe, --perc <a,b>` percentile range (Average, All)
 
-- **TOP (already target‑ordered when provided to the view)**  
-  - **BEST**: **descending** per K → pick **FIRST** line (max).  
-  - **WORST**: **ascending** per K → pick **FIRST** line (min).
+---
 
-`NaN` correlations, if any, are relegated to a suffix to keep deterministic ordering.
+## Deterministic execution
 
-## Deterministic & reproducible runs
+- `--seed <long>` sets the master seed explicitly.
+- `--deterministic` enables reproducibility. If `--seed` is absent, a stable seed is derived.
+- The effective seed is logged and embedded in the output folder name.
 
-Use `--det` (or `--seed <long>`) to install a deterministic RNG bridge over jMetal:
+---
+
+## Folder naming pattern
+
+Example:
+```
+AH99-Pearson-top50-sys129-po1000-i10000-r2000-time2025-08-22-19-19-40
+```
+
+Pattern:
+```
+<DATASET>-<CORR>-top<Topics>-sys<Systems>-po<Population>-i<Iterations>[-r<Repetitions>][-exec<Executions>][-seed<Seed>][-det]-time<YYYY-MM-DD-HH-mm-ss>
+```
+
+---
+
+## Tools
+
+### parse_run_name.py
+
+Located in `tools/parse_run_name.py`. Parses run folder names back into a parameter dictionary.
+
+Example:
 
 ```bash
-... --det
-# or
-... --seed 1234567890
+python tools/parse_run_name.py "mmlu-Pearson-top18955-sys34-po20000-i100000-r2000-time2025-08-24-17-15-53" --pretty
 ```
 
-- All randomness flows through the `JMetalRandom` singleton.  
-- Seeds are derived from parameters to make runs reproducible (when `--det` is enabled).
+Output:
 
-## Logging
+```json
+{
+  "dataset": "mmlu",
+  "correlation": "Pearson",
+  "topics": 18955,
+  "systems": 34,
+  "population": 20000,
+  "iterations": 100000,
+  "repetitions": 2000,
+  "executions": null,
+  "seed": null,
+  "deterministic": false,
+  "timestamp": "2025-08-24-17-15-53"
+}
+```
 
-Logs are written via Log4j2. On startup a bootstrap file is created; once parameters are known, logging switches to a parameterized filename based on the token and `-time<timestamp>` marker. The configuration expects the `baseLogFileName` system property (see `log4j2.xml`).
+---
 
-## Performance notes & tips
+## Architecture overview
 
-- Large experiments: prefer **G1** GC and high heap (e.g., `-Xms32g -Xmx32g`).  
-- If you hit “GC overhead limit exceeded”, you can disable it with `-XX:-UseGCOverheadLimit`, but increasing `-Xmx` is usually better.  
-- For **Best/Worst/All**, ensure `-po ≥ #topics`; the program validates early and provides hints.  
-- CSV streaming throttles generation logging using `GENERATION_WARMUP` and `GENERATION_STRIDE` to reduce I/O.
+- **DatasetModel**: loads data, wires correlation and targets, runs NSGA-II, emits streaming events.
+- **Streaming NSGA-II wrapper**: calls a per-generation hook and uses MNDS plus crowding in replacement.
+- **Incremental evaluation**: cached per-system sums and swap deltas.
+- **Operators**: BinaryPruningCrossover, FixedKSwapMutation.
 
-## Developing
+---
 
-Build & test:
+## Testing
 
+JUnit 5 with Surefire 3.x:
 ```bash
-mvn -q -DskipTests=false clean verify
+mvn -DskipTests=false -Dmaven.test.skip=false -Dsurefire.printSummary=true test
 ```
 
-Generate API docs (Dokka) locally:
+Key test areas (2.0.4):
+- Views (CSV/Parquet) with BEST/WORST, including negative/mixed correlations.
+- Model AVERAGE path: one representative per K; percentile completeness.
+- Operators: FixedKSwap mutation (fixed-K swap/repair); BinaryPruning crossover (AND/OR + feasibility repair).
+- Bitmask encoding/decoding round trips and edge cases across 64-bit boundaries.
 
-```bash
-mvn -q -Ppages -DskipTests=true verify
-```
+---
 
-Run unit tests only:
+## Build and logging
 
-```bash
-mvn -q -DskipITs=true -Dtest='*Test' test
-```
+Key versions (see `pom.xml`):
+- Kotlin 2.2.0, Java 22, jMetal 6.9.1
+- Parquet 1.15.2 and Hadoop 3.3.6, Log4j2 2.24.3, JUnit 5.13.4
 
-## Citation
+Logging:
+- Console plus rolling file (`log4j2.xml`)
+- Uses `baseLogFileName` system property for destinations
 
-If you use **NewBestSub** in your research, please cite the Zenodo DOI:
+---
 
-> Soprano, M., Roitero, K., Lunardi, R., & Mizzaro, S. (2025). *NewBestSub* (v2.0.6). Zenodo. https://doi.org/10.5281/zenodo.16950389
+## Troubleshooting
+
+- **OutOfMemoryError**: increase `-Xmx`, or reduce `-po`, `-i`, or `-r`.
+- **Population smaller than topics**: ensure `-po >= #topics`.
+- **TOP incomplete**: blocks are emitted only when filled; small runs may delay some Ks.
+- **Multiple SLF4J bindings**: use Log4j2 only.
+
+---
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for detailed release notes. Highlights for **2.0.6**:
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
-- NATURAL vs INTERNAL correlation clarified end‑to‑end (docs & tests).  
-- Deterministic mode and seed plumbing consolidated.  
-- CSV/Parquet formats documented, including Base64 packing details.  
-- Readme shields grouped and sorted; examples expanded.
+**2.0.4 — 2025‑09‑03**
+- NATURAL vs INTERNAL clarified; selection rules for FUN/TOP documented.
+- AVERAGE percentile interpretation documented with selection recipe.
+- Program: early `-po ≥ #topics` validation + friendlier runtime error handling.
+- Tests: BEST/WORST view goldens (incl. negative/mixed); operator tests.
+
+**2.0.3 — 2025‑08‑29**
+- Container folder names now include the iteration token when provided by CLI.
+- AVERAGE CSV/Parquet filenames omit the iteration token by design.
+- `numberOfIterations` assigned at start of `DatasetModel.solve()` for consistent naming.
+
+**2.0.0 — 2025‑08‑24**
+- Java 22 + Kotlin 2.2 toolchain; jMetal 6.9.1.
+- Streaming NSGA‑II + MNDS; incremental evaluation with swap hints.
+- Compact VAR/TOP Base64 masks; 6‑digit correlation precision.
+
+---
+
+## Citation
+
+Software archive: <https://doi.org/10.5281/zenodo.16950389>
+
+- Kevin Roitero, Michael Soprano, Andrea Brunello, Stefano Mizzaro. *Reproduce and Improve: An Evolutionary Approach to Select a Few Good Topics for Information Retrieval Evaluation*. ACM JDIQ 10(3), Article 12, 2018. https://doi.org/10.1145/3239573
+- Kevin Roitero, Michael Soprano, Stefano Mizzaro. *Effectiveness Evaluation with a Subset of Topics: A Practical Approach*. In SIGIR '18, 1145–1148. https://doi.org/10.1145/3209978.3210108
+
+---
 
 ## License
 
-This project is licensed under the terms of the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE).

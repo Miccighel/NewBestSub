@@ -1,0 +1,76 @@
+name: Rebuild & Update Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to rebuild (e.g., v1.2.3)
+        required: true
+      clean:
+        description: Delete existing assets first (true/false)
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}          # checks out the tag's commit
+          fetch-depth: 0                  # good hygiene for tags
+
+      - name: Set up JDK 22
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '22'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn -B -ntp -DskipTests=false clean package
+
+      - name: Install GitHub CLI
+        uses: cli/cli-action@v2
+        with:
+          version: latest
+
+      - name: Ensure release exists for tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Will exit non-zero if the release doesn't exist
+          gh release view "${{ inputs.tag }}" >/dev/null
+
+      - name: Optionally delete existing assets
+        if: ${{ inputs.clean == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # List current asset names (uses gh's built-in query, no jq needed)
+          assets=$(gh release view "${{ inputs.tag }}" --json assets -q '.assets[].name' || true)
+          if [ -n "$assets" ]; then
+            while IFS= read -r name; do
+              echo "Deleting asset: $name"
+              gh release delete-asset "${{ inputs.tag }}" "$name" -y
+            done <<< "$assets"
+          fi
+
+      - name: Upload JAR(s) to the same release (overwrite by name)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(target/*-jar-with-dependencies.jar)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No *-jar-with-dependencies.jar found in target/"; exit 1
+          fi
+          gh release upload "${{ inputs.tag }}" "${files[@]}" --clobber
+          echo "Uploaded ${#files[@]} asset(s) to release ${{ inputs.tag }}"
+
