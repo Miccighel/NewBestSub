@@ -130,7 +130,7 @@
 
         <!-- Columnar IO and compression -->
         <parquet.version>1.15.2</parquet.version>
-        <hadoop.version>3.3.6</hadoop.version>
+        <hadoop.version>3.4.0</hadoop.version>
         <snappy.version>1.1.10.5</snappy.version>
 
         <!-- Build plugins (pin for reproducibility) -->
