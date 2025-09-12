@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to rebuild (e.g., v1.2.3)
+        description: Existing tag to rebuild (e.g., v2.0.6)
         required: true
       clean:
         description: Delete existing assets first (true/false)
@@ -21,8 +21,8 @@ jobs:
       - name: Checkout tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}          # checks out the tag's commit
-          fetch-depth: 0                  # good hygiene for tags
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
 
       - name: Set up JDK 22
         uses: actions/setup-java@v4
@@ -34,16 +34,11 @@ jobs:
       - name: Build with Maven
         run: mvn -B -ntp -DskipTests=false clean package
 
-      - name: Install GitHub CLI
-        uses: cli/cli-action@v2
-        with:
-          version: latest
-
       - name: Ensure release exists for tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Will exit non-zero if the release doesn't exist
+          gh --version
           gh release view "${{ inputs.tag }}" >/dev/null
 
       - name: Optionally delete existing assets
@@ -52,8 +47,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # List current asset names (uses gh's built-in query, no jq needed)
-          assets=$(gh release view "${{ inputs.tag }}" --json assets -q '.assets[].name' || true)
+          assets="$(gh release view "${{ inputs.tag }}" --json assets -q '.assets[].name' || true)"
           if [ -n "$assets" ]; then
             while IFS= read -r name; do
               echo "Deleting asset: $name"
@@ -73,4 +67,3 @@ jobs:
           fi
           gh release upload "${{ inputs.tag }}" "${files[@]}" --clobber
           echo "Uploaded ${#files[@]} asset(s) to release ${{ inputs.tag }}"
-
